@@ -194,7 +194,7 @@ function VehiclesPageContent() {
   const handleStatusChange = async (id: string, status: VehicleStatus) => {
     const vehicle = vehicles.find((v) => v.id === id);
     if (!vehicle || !user) return;
-    if (!(MANUAL_VEHICLE_STATUSES as VehicleStatus[]).includes(status)) return;
+    if (!(MANUAL_VEHICLE_STATUSES as readonly VehicleStatus[]).includes(status)) return;
     setStatusSavingId(id);
     const previousStatus = vehicle.status;
     try {
