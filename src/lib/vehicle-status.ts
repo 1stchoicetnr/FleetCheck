@@ -15,11 +15,11 @@ export const VEHICLE_STATUSES: VehicleStatus[] = [
 ];
 
 /** Statuses tech/management can set manually (Checked Out is set by check-out only). */
-export const MANUAL_VEHICLE_STATUSES: VehicleStatus[] = [
+export const MANUAL_VEHICLE_STATUSES = [
   "ready",
   "needs_work",
   "out_of_service",
-];
+] as const;
 
 function hasMajorProblems(
   issues: MaintenanceIssue[],
