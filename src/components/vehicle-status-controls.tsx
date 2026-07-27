@@ -11,7 +11,7 @@ interface VehicleStatusControlsProps {
   disabled?: boolean;
 }
 
-const BUTTON_STYLES = {
+const BUTTON_STYLES: Record<(typeof MANUAL_VEHICLE_STATUSES)[number], { active: string; idle: string }> = {
   ready: {
     active: "border-green-600 bg-green-50 text-green-900 ring-2 ring-green-600/20",
     idle: "border-green-200 bg-white text-green-800 hover:bg-green-50",
