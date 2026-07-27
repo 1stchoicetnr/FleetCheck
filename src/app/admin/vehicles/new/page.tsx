@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
 import { canManageFleet } from "@/lib/fleet-config";
 import { getFleets, saveVehicle } from "@/lib/storage";
-import { Fleet, Vehicle, FLEET_TYPE_LABELS } from "@/lib/types";
+import { Fleet, Vehicle, fleetTypeLabel } from "@/lib/types";
 import { generateId } from "@/lib/utils";
 
 export default function NewVehiclePage() {
@@ -62,7 +62,7 @@ export default function NewVehiclePage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <AppHeader title="Add Vehicle" />
+      <AppHeader title="Add Vehicle" backHref="/admin" />
       <div className="max-w-lg mx-auto px-4 py-6 space-y-4">
         <Input
           label="License Plate"
@@ -106,7 +106,7 @@ export default function NewVehiclePage() {
           >
             {fleets.map((f) => (
               <option key={f.id} value={f.id}>
-                {f.name} ({FLEET_TYPE_LABELS[f.type]})
+                {f.name} ({fleetTypeLabel(f.type)})
               </option>
             ))}
           </select>

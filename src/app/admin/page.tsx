@@ -5,32 +5,30 @@ import { useRouter } from "next/navigation";
 import { AppHeader } from "@/components/app-header";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
-import { canManageFleet } from "@/lib/fleet-config";
+import { canManageFleet, canManageKnownIssues } from "@/lib/fleet-config";
 import {
-  getSettings,
-  saveSettings,
   getFleets,
   getUsers,
   getVehicles,
+  getChecks,
 } from "@/lib/storage";
-import { AppSettings, Fleet, User, Vehicle, FLEET_TYPE_LABELS } from "@/lib/types";
+import { Fleet, User, Vehicle, fleetTypeLabel } from "@/lib/types";
 import Link from "next/link";
-import { getPendingNotifications } from "@/lib/notifications";
-import { Plus, Bell, Users, Truck, Save, Send } from "lucide-react";
+import { buildLastCheckMap, formatLastCheckLine } from "@/lib/vehicle-check-status";
+import { Plus, Bell, Users, Truck } from "lucide-react";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { formatDate } from "@/lib/utils";
+import { KnownIssueEditor } from "@/components/known-issue-editor";
+import { hasOpenKnownIssue } from "@/lib/known-issue";
 
 export default function AdminPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
-  const [settings, setSettings] = useState<AppSettings | null>(null);
   const [fleets, setFleets] = useState<Fleet[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [saved, setSaved] = useState(false);
-  const [pendingNotifications, setPendingNotifications] = useState<
-    ReturnType<typeof getPendingNotifications>
-  >([]);
+  const [checks, setChecks] = useState<Awaited<ReturnType<typeof getChecks>>>([]);
 
   useEffect(() => {
     if (!loading && !user) router.replace("/");
@@ -38,25 +36,20 @@ export default function AdminPage() {
   }, [user, loading, router]);
 
   useEffect(() => {
-    Promise.all([getSettings(), getFleets(), getUsers(), getVehicles()]).then(
-      ([s, f, u, v]) => {
-        setSettings(s);
+    Promise.all([getFleets(), getUsers(), getVehicles(), getChecks()]).then(
+      ([f, u, v, c]) => {
         setFleets(f);
         setUsers(u);
         setVehicles(v);
+        setChecks(c);
       }
     );
-    setPendingNotifications(getPendingNotifications());
-  }, [saved]);
+  }, []);
 
-  const handleSaveNotifications = async () => {
-    if (!settings) return;
-    await saveSettings(settings);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  };
+  if (loading || !user) return null;
 
-  if (loading || !user || !settings) return null;
+  const lastCheckMap = buildLastCheckMap(checks);
+  const fleetMap = Object.fromEntries(fleets.map((f) => [f.id, f]));
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -99,7 +92,7 @@ export default function AdminPage() {
                 <div>
                   <p className="font-medium">{f.name}</p>
                   <p className="text-xs text-gray-500">
-                    {FLEET_TYPE_LABELS[f.type]}
+                    {fleetTypeLabel(f.type)}
                   </p>
                 </div>
                 <span className="text-sm text-gray-400">
@@ -110,154 +103,77 @@ export default function AdminPage() {
           </CardContent>
         </Card>
 
-        {/* Notification Settings */}
+        {/* Fleet vehicles */}
         <Card>
-          <CardContent className="py-5 space-y-4">
-            <div className="flex items-center gap-2">
-              <Bell className="h-5 w-5 text-brand-600" />
-              <CardTitle>Notifications</CardTitle>
-            </div>
-
-            <label className="flex items-center justify-between p-3 rounded-xl bg-gray-50">
-              <span className="text-sm font-medium">Slack Notifications</span>
-              <input
-                type="checkbox"
-                checked={settings.notificationSettings.slackEnabled}
-                onChange={(e) =>
-                  setSettings({
-                    ...settings,
-                    notificationSettings: {
-                      ...settings.notificationSettings,
-                      slackEnabled: e.target.checked,
-                    },
-                  })
-                }
-                className="h-5 w-5 rounded text-brand-600"
-              />
-            </label>
-
-            {settings.notificationSettings.slackEnabled && (
-              <Input
-                label="Slack Webhook URL"
-                placeholder="https://hooks.slack.com/..."
-                value={settings.notificationSettings.slackWebhookUrl || ""}
-                onChange={(e) =>
-                  setSettings({
-                    ...settings,
-                    notificationSettings: {
-                      ...settings.notificationSettings,
-                      slackWebhookUrl: e.target.value,
-                    },
-                  })
-                }
-              />
-            )}
-
-            <label className="flex items-center justify-between p-3 rounded-xl bg-gray-50">
-              <span className="text-sm font-medium">Email Notifications</span>
-              <input
-                type="checkbox"
-                checked={settings.notificationSettings.emailEnabled}
-                onChange={(e) =>
-                  setSettings({
-                    ...settings,
-                    notificationSettings: {
-                      ...settings.notificationSettings,
-                      emailEnabled: e.target.checked,
-                    },
-                  })
-                }
-                className="h-5 w-5 rounded text-brand-600"
-              />
-            </label>
-
-            {settings.notificationSettings.emailEnabled && (
-              <Input
-                label="Email Recipients (comma-separated)"
-                placeholder="manager@company.com, tech@company.com"
-                value={settings.notificationSettings.emailRecipients?.join(", ") || ""}
-                onChange={(e) =>
-                  setSettings({
-                    ...settings,
-                    notificationSettings: {
-                      ...settings.notificationSettings,
-                      emailRecipients: e.target.value
-                        .split(",")
-                        .map((s) => s.trim())
-                        .filter(Boolean),
-                    },
-                  })
-                }
-              />
-            )}
-
-            <div className="space-y-2">
-              {[
-                ["alertOnPoorCondition", "Alert on poor condition"],
-                ["alertOnMaintenance", "Alert on maintenance issues"],
-                ["alertOnOutOfService", "Alert when out of service"],
-              ].map(([key, label]) => (
-                <label
-                  key={key}
-                  className="flex items-center justify-between p-3 rounded-xl bg-gray-50"
+          <CardContent className="py-5 space-y-3">
+            <CardTitle>Fleet Vehicles</CardTitle>
+            <p className="text-xs text-gray-500">
+              Current status for each vehicle in the fleet.
+            </p>
+            {vehicles.map((v) => {
+              const fleet = fleetMap[v.fleetId];
+              const lastCheck = lastCheckMap.get(v.id);
+              return (
+                <div
+                  key={v.id}
+                  className="py-3 border-b border-gray-100 last:border-0 space-y-2"
                 >
-                  <span className="text-sm">{label}</span>
-                  <input
-                    type="checkbox"
-                    checked={
-                      settings.notificationSettings[
-                        key as keyof typeof settings.notificationSettings
-                      ] as boolean
-                    }
-                    onChange={(e) =>
-                      setSettings({
-                        ...settings,
-                        notificationSettings: {
-                          ...settings.notificationSettings,
-                          [key]: e.target.checked,
-                        },
-                      })
-                    }
-                    className="h-5 w-5 rounded text-brand-600"
-                  />
-                </label>
-              ))}
-            </div>
-
-            <Button size="lg" className="w-full" onClick={handleSaveNotifications}>
-              <Save className="h-4 w-4 mr-2" />
-              {saved ? "Saved!" : "Save Settings"}
-            </Button>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-medium">{v.plate}</p>
+                      <p className="text-xs text-gray-500">
+                        {v.year} {v.make} {v.model}
+                        {fleet ? ` · ${fleet.name}` : ""}
+                      </p>
+                    </div>
+                    <StatusBadge status={v.status} />
+                  </div>
+                  {lastCheck && (
+                    <p className="text-xs text-gray-400">
+                      {formatLastCheckLine(lastCheck)}
+                    </p>
+                  )}
+                  {hasOpenKnownIssue(v) && (
+                    <p className="text-xs text-amber-800 font-medium">
+                      Known issue: {v.knownIssue!.text.trim()}
+                    </p>
+                  )}
+                  {user && canManageKnownIssues(user.role) && (
+                    <KnownIssueEditor
+                      vehicle={v}
+                      canEdit
+                      userId={user.id}
+                      userName={user.name}
+                      onUpdated={(updated) =>
+                        setVehicles((prev) =>
+                          prev.map((item) => (item.id === updated.id ? updated : item))
+                        )
+                      }
+                    />
+                  )}
+                </div>
+              );
+            })}
+            {vehicles.length === 0 && (
+              <p className="text-sm text-gray-500">No vehicles registered.</p>
+            )}
           </CardContent>
         </Card>
 
-        {pendingNotifications.length > 0 && (
-          <Card>
-            <CardContent className="py-5 space-y-3">
-              <div className="flex items-center gap-2">
-                <Send className="h-5 w-5 text-brand-600" />
-                <CardTitle>Queued Notifications</CardTitle>
+        {/* Alerts */}
+        <Link href="/alerts/settings">
+          <Card className="hover:shadow-md transition-shadow">
+            <CardContent className="py-5 flex items-center gap-3">
+              <Bell className="h-6 w-6 text-brand-600" />
+              <div>
+                <CardTitle className="text-base">Alert Settings</CardTitle>
+                <p className="text-sm text-gray-500">
+                  Configure in-app and Slack alerts
+                </p>
               </div>
-              <p className="text-xs text-gray-500">
-                Alerts queued locally — connect webhooks in production
-              </p>
-              {pendingNotifications.slice(0, 5).map((n) => (
-                <div
-                  key={n.id}
-                  className="p-3 rounded-xl bg-gray-50 text-sm border border-gray-100"
-                >
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="font-medium capitalize">{n.channel}</span>
-                    <span className="text-xs text-gray-400">
-                      {new Date(n.createdAt).toLocaleString()}
-                    </span>
-                  </div>
-                  <p className="text-gray-700">{n.message}</p>
-                </div>
-              ))}
             </CardContent>
           </Card>
-        )}
+        </Link>
       </div>
     </div>
   );

@@ -1,9 +1,14 @@
 import type { Metadata, Viewport } from "next";
+import { Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/hooks/use-auth";
 import { ServiceWorkerRegister } from "@/components/service-worker-register";
 import { OfflineBanner } from "@/components/offline-banner";
 
+const inter = Inter({
+  subsets: ["latin"],
+  display: "swap",
+});
 export const metadata: Metadata = {
   title: "FleetCheck",
   description: "Vehicle documentation, damage tracking, and accountability",
@@ -20,6 +25,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
+  viewportFit: "cover",
   themeColor: "#2563eb",
 };
 
@@ -34,8 +40,7 @@ export default function RootLayout({
         <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
         <link rel="apple-touch-icon" href="/icons/icon.svg" />
       </head>
-      <body className="min-h-screen">
-        <AuthProvider>
+      <body className={`${inter.className} min-h-screen`}>        <AuthProvider>
           <ServiceWorkerRegister />
           <OfflineBanner />
           <main className="min-h-screen safe-bottom">{children}</main>

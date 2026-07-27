@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getPendingSyncCount } from "@/lib/storage";
+import { getPendingSyncCount, syncPendingRecords } from "@/lib/storage";
 
 export function useOnlineStatus() {
   const [online, setOnline] = useState(true);
@@ -35,7 +35,34 @@ export function usePendingSync() {
     return () => clearInterval(interval);
   }, [online]);
 
+  useEffect(() => {
+    if (online) {
+      syncPendingRecords().then((n) => {
+        if (n > 0) setCount(0);
+      });
+    }
+  }, [online]);
+
   return count;
+}
+
+interface SpeechRecognitionResultEvent {
+  results: { [index: number]: { [index: number]: { transcript: string } } };
+}
+
+interface BrowserSpeechRecognition {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onstart: (() => void) | null;
+  onend: (() => void) | null;
+  onresult: ((event: SpeechRecognitionResultEvent) => void) | null;
+  start: () => void;
+}
+
+interface WindowWithSpeech extends Window {
+  SpeechRecognition?: new () => BrowserSpeechRecognition;
+  webkitSpeechRecognition?: new () => BrowserSpeechRecognition;
 }
 
 export function useSpeechRecognition() {
@@ -43,20 +70,20 @@ export function useSpeechRecognition() {
   const [transcript, setTranscript] = useState("");
 
   const start = (onResult: (text: string) => void) => {
-    const SpeechRecognition =
-      (window as unknown as { SpeechRecognition?: typeof window.SpeechRecognition }).SpeechRecognition ||
-      (window as unknown as { webkitSpeechRecognition?: typeof window.SpeechRecognition }).webkitSpeechRecognition;
+    const win = window as WindowWithSpeech;
+    const SpeechRecognitionClass =
+      win.SpeechRecognition ?? win.webkitSpeechRecognition;
 
-    if (!SpeechRecognition) return;
+    if (!SpeechRecognitionClass) return;
 
-    const recognition = new SpeechRecognition();
+    const recognition = new SpeechRecognitionClass();
     recognition.continuous = false;
     recognition.interimResults = false;
     recognition.lang = "en-US";
 
     recognition.onstart = () => setListening(true);
     recognition.onend = () => setListening(false);
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
+    recognition.onresult = (event: SpeechRecognitionResultEvent) => {
       const text = event.results[0][0].transcript;
       setTranscript(text);
       onResult(text);

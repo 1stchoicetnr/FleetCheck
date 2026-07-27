@@ -6,7 +6,7 @@ import { AppHeader } from "@/components/app-header";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
-import { canViewReports } from "@/lib/fleet-config";
+import { canViewReports, canExportHistory } from "@/lib/fleet-config";
 import {
   getChecks,
   getVehicles,
@@ -14,10 +14,11 @@ import {
   getVehicleById,
   getFleetById,
 } from "@/lib/storage";
-import { CheckRecord, Vehicle, Fleet } from "@/lib/types";
+import { CheckRecord, Vehicle, Fleet, FUEL_LEVEL_LABELS } from "@/lib/types";
 import { formatDate, formatMileage } from "@/lib/utils";
 import { generateCheckPDF, downloadPDF } from "@/lib/pdf";
 import { Download, FileText } from "lucide-react";
+import { checksToCsv, downloadCsv } from "@/lib/export-checks";
 
 export default function ReportsPage() {
   const { user, loading } = useAuth();
@@ -25,6 +26,8 @@ export default function ReportsPage() {
   const [checks, setChecks] = useState<CheckRecord[]>([]);
   const [vehicles, setVehicles] = useState<Record<string, Vehicle>>({});
   const [fleets, setFleets] = useState<Record<string, Fleet>>({});
+  const [vehicleFilter, setVehicleFilter] = useState<string>("all");
+  const [vehicleList, setVehicleList] = useState<Vehicle[]>([]);
 
   useEffect(() => {
     if (!loading && !user) router.replace("/");
@@ -41,6 +44,7 @@ export default function ReportsPage() {
         getFleets(),
       ]);
       setChecks(c.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
+      setVehicleList(v);
       setVehicles(Object.fromEntries(v.map((x) => [x.id, x])));
       setFleets(Object.fromEntries(f.map((x) => [x.id, x])));
     }
@@ -57,15 +61,45 @@ export default function ReportsPage() {
 
   if (loading || !user) return null;
 
+  const filteredChecks =
+    vehicleFilter === "all"
+      ? checks
+      : checks.filter((c) => c.vehicleId === vehicleFilter);
+
+  const exportAll = () => {
+    const csv = checksToCsv(filteredChecks, vehicles);
+    downloadCsv(csv, `fleetcheck-records-${Date.now()}.csv`);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <AppHeader title="Reports" />
       <div className="max-w-lg mx-auto px-4 py-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-gray-500">{checks.length} records</p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-gray-500">{filteredChecks.length} records</p>
+          <div className="flex gap-2 flex-wrap">
+            <select
+              className="rounded-lg border border-gray-200 px-3 py-2 text-sm flex-1 min-w-[140px]"
+              value={vehicleFilter}
+              onChange={(e) => setVehicleFilter(e.target.value)}
+            >
+              <option value="all">All vehicles</option>
+              {vehicleList.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.plate}
+                </option>
+              ))}
+            </select>
+            {canExportHistory(user.role) && filteredChecks.length > 0 && (
+              <Button size="sm" variant="outline" onClick={exportAll}>
+                <Download className="h-4 w-4 mr-1" />
+                Export CSV
+              </Button>
+            )}
+          </div>
         </div>
 
-        {checks.length === 0 ? (
+        {filteredChecks.length === 0 ? (
           <div className="text-center py-12">
             <FileText className="h-12 w-12 mx-auto text-gray-300 mb-4" />
             <p className="text-gray-500">No check records yet.</p>
@@ -74,7 +108,7 @@ export default function ReportsPage() {
             </p>
           </div>
         ) : (
-          checks.map((check) => {
+          filteredChecks.map((check) => {
             const vehicle = vehicles[check.vehicleId];
             return (
               <Card key={check.id}>
@@ -103,8 +137,11 @@ export default function ReportsPage() {
                       {check.conditionRating}
                     </span>
                   </div>
-                  <div className="text-sm text-gray-600 flex gap-4">
+                  <div className="text-sm text-gray-600 flex flex-wrap gap-x-4 gap-y-1">
                     <span>{formatMileage(check.startOdometer)}</span>
+                    {check.fuelLevel && (
+                      <span>Fuel: {FUEL_LEVEL_LABELS[check.fuelLevel]}</span>
+                    )}
                     {check.maintenanceIssues.length > 0 && (
                       <span className="text-orange-600">
                         {check.maintenanceIssues.length} issue

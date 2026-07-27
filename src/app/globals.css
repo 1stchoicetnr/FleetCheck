@@ -2,20 +2,64 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
-
 @layer base {
   html {
     -webkit-tap-highlight-color: transparent;
   }
   body {
     @apply bg-gray-50 text-gray-900 antialiased;
-    font-family: "Inter", system-ui, sans-serif;
   }
 }
 
 @layer utilities {
   .safe-bottom {
     padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+
+  /* Full-screen native camera shell — no square or max-width constraints */
+  .camera-viewport {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+    touch-action: none;
+    background: #000;
+  }
+
+  .camera-media {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    object-fit: cover;
+    object-position: center;
+  }
+
+  .camera-media-mirror {
+    transform: scaleX(-1);
+  }
+
+  .camera-preview-media {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    object-fit: contain;
+    object-position: center;
+    background: #000;
+  }
+
+  .photo-guide-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    width: 100vw;
+    height: 100vh;
+    pointer-events: none;
   }
 }

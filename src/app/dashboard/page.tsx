@@ -3,9 +3,10 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
+import { canViewFleetOverview } from "@/lib/fleet-config";
 import { AppHeader } from "@/components/app-header";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
-import Link from "next/link";
+import { FleetStatusStats } from "@/components/fleet-status-stats";
 import {
   Car,
   ClipboardList,
@@ -16,6 +17,7 @@ import {
   FileText,
   Bell,
 } from "lucide-react";
+import Link from "next/link";
 
 export default function DashboardPage() {
   const { user, loading } = useAuth();
@@ -61,6 +63,20 @@ export default function DashboardPage() {
       color: "bg-orange-100 text-orange-700",
     },
     {
+      href: "/alerts",
+      icon: <Bell className="h-7 w-7" />,
+      label: "Alerts",
+      desc: "Damage, status & known issues",
+      color: "bg-yellow-100 text-yellow-700",
+    },
+    {
+      href: "/alerts/settings",
+      icon: <Settings className="h-7 w-7" />,
+      label: "Alert Settings",
+      desc: "In-app & Slack toggles",
+      color: "bg-purple-100 text-purple-700",
+    },
+    {
       href: "/reports",
       icon: <FileText className="h-7 w-7" />,
       label: "Issue Reports",
@@ -88,8 +104,15 @@ export default function DashboardPage() {
       href: "/alerts",
       icon: <Bell className="h-7 w-7" />,
       label: "Alerts",
-      desc: "Maintenance & condition alerts",
+      desc: "Damage, status & known issues",
       color: "bg-yellow-100 text-yellow-700",
+    },
+    {
+      href: "/alerts/settings",
+      icon: <Settings className="h-7 w-7" />,
+      label: "Alert Settings",
+      desc: "In-app & Slack toggles",
+      color: "bg-purple-100 text-purple-700",
     },
   ];
 
@@ -111,14 +134,28 @@ export default function DashboardPage() {
     },
   ];
 
+  type DashboardLink = (typeof driverLinks)[number];
+
+  function mergeLinks(...groups: DashboardLink[][]): DashboardLink[] {
+    const byHref = new Map<string, DashboardLink>();
+    for (const group of groups) {
+      for (const link of group) {
+        byHref.set(link.href, link);
+      }
+    }
+    return Array.from(byHref.values());
+  }
+
   let links = driverLinks;
   if (role === "tech") links = techLinks;
   else if (role === "management") links = managementLinks;
-  else if (role === "super_admin") links = adminLinks;
+  else if (role === "super_admin") links = mergeLinks(driverLinks, adminLinks);
+
+  const showFleetStats = canViewFleetOverview(role);
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <AppHeader title="Dashboard" />
+      <AppHeader title="Dashboard" showBack={false} />
       <div className="max-w-lg mx-auto px-4 py-6 space-y-4">
         <div className="mb-2">
           <h2 className="text-2xl font-bold text-gray-900">
@@ -127,9 +164,18 @@ export default function DashboardPage() {
           <p className="text-gray-500 text-sm">What would you like to do?</p>
         </div>
 
+        {showFleetStats && (
+          <div className="space-y-2">
+            <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
+              Fleet status
+            </h3>
+            <FleetStatusStats />
+          </div>
+        )}
+
         <div className="grid gap-3">
           {links.map((link) => (
-            <Link key={link.href} href={link.href}>
+            <Link key={link.label} href={link.href}>
               <Card className="hover:shadow-md transition-shadow active:scale-[0.98]">
                 <CardContent className="flex items-center gap-4 py-4">
                   <div className={`rounded-xl p-3 ${link.color}`}>

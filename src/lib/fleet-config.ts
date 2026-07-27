@@ -1,9 +1,9 @@
-import { FleetType } from "./types";
+import { FleetType, MaintenanceIssue, normalizeFleetType } from "./types";
 
 export interface FleetTypeConfig {
   requiresTowEquipmentCheck: boolean;
   extraPhotoPrompts: string[];
-  maintenancePriority: string[];
+  maintenancePriority: MaintenanceIssue[];
   checkIntervalHours: number;
 }
 
@@ -28,40 +28,72 @@ export const FLEET_TYPE_CONFIG: Record<FleetType, FleetTypeConfig> = {
   },
   service_vehicle: {
     requiresTowEquipmentCheck: false,
-    extraPhotoPrompts: ["Tool storage", "Equipment rack"],
+    extraPhotoPrompts: [
+      "Tool storage",
+      "Equipment rack",
+      "Camera mount",
+      "Dashboard electronics",
+    ],
     maintenancePriority: ["brakes", "noise", "dashboard_light"],
-    checkIntervalHours: 12,
-  },
-  camera_car: {
-    requiresTowEquipmentCheck: false,
-    extraPhotoPrompts: ["Camera mount", "Dashboard electronics"],
-    maintenancePriority: ["dashboard_light", "noise", "ac"],
-    checkIntervalHours: 12,
-  },
-  other: {
-    requiresTowEquipmentCheck: false,
-    extraPhotoPrompts: [],
-    maintenancePriority: ["brakes", "low_tire", "dashboard_light"],
     checkIntervalHours: 12,
   },
 };
 
-export function getFleetConfig(type: FleetType): FleetTypeConfig {
-  return FLEET_TYPE_CONFIG[type];
+export function getFleetConfig(type: string): FleetTypeConfig {
+  return FLEET_TYPE_CONFIG[normalizeFleetType(type)];
 }
 
 export function canOverride(role: string): boolean {
   return role === "super_admin";
 }
 
+const FLEET_STATUS_ROLES = new Set([
+  "super_admin",
+  "tech",
+  "management",
+]);
+
+/** Tech, Management, and Super Admin — fleet overview & status changes. */
+export function canViewFleetOverview(role: string): boolean {
+  return FLEET_STATUS_ROLES.has(role);
+}
+
 export function canUpdateStatus(role: string): boolean {
-  return role === "super_admin" || role === "tech";
+  return FLEET_STATUS_ROLES.has(role);
 }
 
 export function canViewReports(role: string): boolean {
   return role === "super_admin" || role === "management";
 }
 
+export function canPerformCheckIn(role: string): boolean {
+  return role === "driver" || role === "super_admin";
+}
+
+export function canManageKnownIssues(role: string): boolean {
+  return role === "super_admin" || role === "tech" || role === "management";
+}
+
 export function canManageFleet(role: string): boolean {
   return role === "super_admin";
+}
+
+export function canViewAlerts(role: string): boolean {
+  return role === "super_admin" || role === "management" || role === "tech";
+}
+
+export function canManageAlertSettings(role: string): boolean {
+  return role === "super_admin" || role === "management" || role === "tech";
+}
+
+export function canManageVehicleMaintenance(role: string): boolean {
+  return role === "super_admin" || role === "tech" || role === "management";
+}
+
+export function canViewVehicleHistory(role: string): boolean {
+  return role === "super_admin" || role === "tech" || role === "management";
+}
+
+export function canExportHistory(role: string): boolean {
+  return role === "super_admin" || role === "management";
 }
