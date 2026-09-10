@@ -18,6 +18,8 @@ interface GuidedPhotoCaptureProps {
   testingBrowseMode?: boolean;
   /** Company checklist. Defaults to the 30-step policy. */
   steps?: PhotoStep[];
+  testingFinishLabel?: string;
+  allCompleteMessage?: string;
 }
 
 export function GuidedPhotoCapture({
@@ -27,6 +29,8 @@ export function GuidedPhotoCapture({
   onAllComplete,
   testingBrowseMode = false,
   steps = PHOTO_ANGLES,
+  testingFinishLabel = "Finish preview → Mileage",
+  allCompleteMessage = "All photos accepted — moving to mileage...",
 }: GuidedPhotoCaptureProps) {
   const requiredPhotos = steps.filter((p) => p.required);
   const acceptedCount = requiredPhotos.filter((p) => photos[p.angle]).length;
@@ -152,7 +156,7 @@ export function GuidedPhotoCapture({
             </Button>
             {testingBrowseMode && (
               <Button size="lg" className="w-full" onClick={advanceWithoutPhoto}>
-                {isLastStep ? "Finish preview → Mileage" : "Next step"}
+                {isLastStep ? testingFinishLabel : "Next step"}
                 <ChevronRight className="h-5 w-5 ml-1" />
               </Button>
             )}
@@ -192,7 +196,7 @@ export function GuidedPhotoCapture({
             {testingBrowseMode && (
               <div className="space-y-2">
                 <Button size="lg" className="w-full" onClick={advanceWithoutPhoto}>
-                  {isLastStep ? "Finish preview → Mileage" : "Next step (no photo)"}
+                  {isLastStep ? testingFinishLabel : "Next step (no photo)"}
                   <ChevronRight className="h-5 w-5 ml-1" />
                 </Button>
                 <button
@@ -264,7 +268,7 @@ export function GuidedPhotoCapture({
 
       {allComplete && !testingBrowseMode && (
         <p className="text-center text-green-700 font-semibold text-sm bg-green-50 rounded-xl py-3 border border-green-200">
-          All photos accepted — moving to mileage...
+          {allCompleteMessage}
         </p>
       )}
 

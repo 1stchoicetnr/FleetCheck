@@ -27,6 +27,7 @@ import {
   VehiclePhoto,
 } from "@/lib/types";
 import { formatDate, formatUnitLabel, generateId } from "@/lib/utils";
+import { PHOTO_EXAMPLE_PATHS } from "@/lib/photo-examples";
 import { Check } from "lucide-react";
 
 export default function CheckoutCapturePage() {
@@ -198,6 +199,8 @@ export default function CheckoutCapturePage() {
           photos={photos}
           steps={steps}
           testingBrowseMode={canSkipPhotosForTesting()}
+          testingFinishLabel="Finish preview → Submit"
+          allCompleteMessage="All photos accepted — submit the report below."
           onAccept={(angle, url) => {
             setPhotos((prev) => ({ ...prev, [angle]: url }));
           }}
@@ -211,7 +214,26 @@ export default function CheckoutCapturePage() {
           onAllComplete={() => setPhotosReady(true)}
         />
 
-        <div className="pt-2 pb-6 safe-bottom">
+        {canSkipPhotosForTesting() && !allFilled && (
+          <Button
+            type="button"
+            variant="outline"
+            size="md"
+            className="w-full"
+            onClick={() => {
+              const filled: Partial<Record<PhotoAngle, string>> = {};
+              for (const step of required) {
+                filled[step.angle] = PHOTO_EXAMPLE_PATHS[step.angle];
+              }
+              setPhotos(filled);
+              setPhotosReady(true);
+            }}
+          >
+            Fill example photos (testing)
+          </Button>
+        )}
+
+        <div className="sticky bottom-0 -mx-4 px-4 pt-3 pb-6 safe-bottom bg-gray-50/95 border-t border-gray-200">
           <Button
             size="xl"
             className="w-full"
