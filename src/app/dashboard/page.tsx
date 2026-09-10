@@ -9,6 +9,7 @@ import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { FleetStatusStats } from "@/components/fleet-status-stats";
 import {
   Car,
+  ClipboardCheck,
   ClipboardList,
   Settings,
   BarChart3,
@@ -16,6 +17,7 @@ import {
   Plus,
   FileText,
   Bell,
+  ShieldCheck,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -39,10 +41,17 @@ export default function DashboardPage() {
 
   const driverLinks = [
     {
+      href: "/checkout",
+      icon: <ClipboardCheck className="h-7 w-7" />,
+      label: "Checkout Report",
+      desc: "Handoff photos — company, unit, odometer",
+      color: "bg-emerald-100 text-emerald-700",
+    },
+    {
       href: "/check-in",
       icon: <Car className="h-7 w-7" />,
       label: "Check In / Out",
-      desc: "Start or end your shift",
+      desc: "Shift start/end, mileage, signature",
       color: "bg-green-100 text-green-700",
     },
     {
@@ -54,7 +63,16 @@ export default function DashboardPage() {
     },
   ];
 
+  const officeLink = {
+    href: "/office",
+    icon: <ShieldCheck className="h-7 w-7" />,
+    label: "Office review",
+    desc: "PASS / Conditional / FAIL checkout reports",
+    color: "bg-indigo-100 text-indigo-700",
+  };
+
   const techLinks = [
+    officeLink,
     {
       href: "/vehicles",
       icon: <Wrench className="h-7 w-7" />,
@@ -86,6 +104,7 @@ export default function DashboardPage() {
   ];
 
   const managementLinks = [
+    officeLink,
     {
       href: "/reports",
       icon: <BarChart3 className="h-7 w-7" />,

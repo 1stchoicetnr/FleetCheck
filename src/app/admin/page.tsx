@@ -12,8 +12,9 @@ import {
   getUsers,
   getVehicles,
   getChecks,
+  getCompanies,
 } from "@/lib/storage";
-import { Fleet, User, Vehicle, fleetTypeLabel } from "@/lib/types";
+import { Company, Fleet, User, Vehicle, fleetTypeLabel } from "@/lib/types";
 import Link from "next/link";
 import { buildLastCheckMap, formatLastCheckLine } from "@/lib/vehicle-check-status";
 import { Plus, Bell, Users, Truck } from "lucide-react";
@@ -28,6 +29,7 @@ export default function AdminPage() {
   const [fleets, setFleets] = useState<Fleet[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [companies, setCompanies] = useState<Company[]>([]);
   const [checks, setChecks] = useState<Awaited<ReturnType<typeof getChecks>>>([]);
 
   useEffect(() => {
@@ -36,14 +38,19 @@ export default function AdminPage() {
   }, [user, loading, router]);
 
   useEffect(() => {
-    Promise.all([getFleets(), getUsers(), getVehicles(), getChecks()]).then(
-      ([f, u, v, c]) => {
-        setFleets(f);
-        setUsers(u);
-        setVehicles(v);
-        setChecks(c);
-      }
-    );
+    Promise.all([
+      getFleets(),
+      getUsers(),
+      getVehicles(),
+      getChecks(),
+      getCompanies(),
+    ]).then(([f, u, v, c, companiesList]) => {
+      setFleets(f);
+      setUsers(u);
+      setVehicles(v);
+      setChecks(c);
+      setCompanies(companiesList);
+    });
   }, []);
 
   if (loading || !user) return null;
@@ -58,8 +65,8 @@ export default function AdminPage() {
         {/* Stats */}
         <div className="grid grid-cols-3 gap-3">
           {[
+            { label: "Companies", value: companies.length, icon: Truck },
             { label: "Vehicles", value: vehicles.length, icon: Truck },
-            { label: "Fleets", value: fleets.length, icon: Truck },
             { label: "Users", value: users.length, icon: Users },
           ].map((stat) => (
             <Card key={stat.label}>
@@ -79,6 +86,32 @@ export default function AdminPage() {
             Add New Vehicle
           </Button>
         </Link>
+
+        <Card>
+          <CardContent className="py-5 space-y-3">
+            <CardTitle>Companies</CardTitle>
+            <p className="text-xs text-gray-500">
+              Tenants. Each company can use its own checkout checklist later.
+              Rad Cab is seeded first with the 30-photo policy.
+            </p>
+            {companies.map((c) => (
+              <div
+                key={c.id}
+                className="flex justify-between items-center py-2 border-b border-gray-100 last:border-0"
+              >
+                <div>
+                  <p className="font-medium">{c.name}</p>
+                  <p className="text-xs text-gray-500">
+                    Checklist: {c.checklistId}
+                  </p>
+                </div>
+                <span className="text-sm text-gray-400">
+                  {vehicles.filter((v) => v.companyId === c.id).length} units
+                </span>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
 
         {/* Fleets */}
         <Card>

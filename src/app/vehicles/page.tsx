@@ -18,7 +18,7 @@ import { canUpdateStatus, canManageKnownIssues, canViewVehicleHistory, canViewFl
 import { buildLastCheckMap, formatLastCheckLine } from "@/lib/vehicle-check-status";
 import { dispatchStatusChangeAlert } from "@/lib/alerts";
 import { Vehicle, Fleet, VehicleStatus, FLEET_TYPE_LABELS, FLEET_TYPES, CheckRecord, STATUS_LABELS, fleetTypeLabel, normalizeFleetType } from "@/lib/types";
-import { formatMileage } from "@/lib/utils";
+import { formatMileage, formatUnitLabel } from "@/lib/utils";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { KnownIssueEditor } from "@/components/known-issue-editor";
@@ -102,7 +102,12 @@ function VehiclesPageContent() {
         <CardContent className="py-4 space-y-3">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <CardTitle>{v.plate}</CardTitle>
+              <CardTitle>
+                {formatUnitLabel(v.unitNumber, v.plate)}
+                {v.unitNumber && v.plate ? (
+                  <span className="text-gray-400 font-medium"> · {v.plate}</span>
+                ) : null}
+              </CardTitle>
               <p className="text-sm text-gray-600">
                 {v.year} {v.make} {v.model}
               </p>
@@ -179,12 +184,19 @@ function VehiclesPageContent() {
             (v.status === "ready" ||
               v.status === "checked_out" ||
               v.status === "needs_work") && (
-              <Link href={`/check-in?vehicleId=${v.id}`}>
-                <Button size="md" className="w-full">
-                  Check In / Out
-                  <ArrowRight className="h-4 w-4 ml-2" />
-                </Button>
-              </Link>
+              <div className="grid grid-cols-2 gap-2">
+                <Link href="/checkout">
+                  <Button size="md" className="w-full">
+                    Checkout CR
+                  </Button>
+                </Link>
+                <Link href={`/check-in?vehicleId=${v.id}`}>
+                  <Button size="md" variant="outline" className="w-full">
+                    Check In / Out
+                    <ArrowRight className="h-4 w-4 ml-2" />
+                  </Button>
+                </Link>
+              </div>
             )}
         </CardContent>
       </Card>

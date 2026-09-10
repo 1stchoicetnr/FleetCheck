@@ -82,7 +82,14 @@ export default function VehicleDetailPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <AppHeader title={vehicle.plate} backHref="/vehicles" />
+      <AppHeader
+        title={
+          vehicle.unitNumber
+            ? `Unit ${vehicle.unitNumber}`
+            : vehicle.plate
+        }
+        backHref="/vehicles"
+      />
       <div className="max-w-lg mx-auto px-4 py-6 space-y-6">
         <Card>
           <CardContent className="py-4 space-y-3">

@@ -24,6 +24,12 @@ export function formatMileage(miles: number): string {
   return miles.toLocaleString("en-US") + " mi";
 }
 
+export function formatUnitLabel(unitNumber?: string, plate?: string): string {
+  if (unitNumber?.trim()) return `Unit ${unitNumber.trim()}`;
+  if (plate?.trim()) return plate.trim();
+  return "Unknown unit";
+}
+
 /** Year Make Model (Plate) — used in Slack alerts */
 export function formatVehicleSlackLabel(vehicle: Vehicle): string {
   return `${vehicle.year} ${vehicle.make} ${vehicle.model} (${vehicle.plate})`;

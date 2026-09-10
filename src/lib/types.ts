@@ -80,6 +80,83 @@ export interface PhotoStep {
   /** exterior = full vehicle (landscape); detail = close-up; interior = cabin */
   category: "exterior" | "detail" | "interior";
   required: boolean;
+  /** Office-leniency / capture tip shown under the instruction */
+  helper?: string;
+}
+
+export type ChecklistId = "radcab_default" | "generic_30";
+
+export interface Company {
+  id: string;
+  name: string;
+  slug: string;
+  /** Which photo checklist this company uses. Others can add their own later. */
+  checklistId: ChecklistId;
+  createdAt: string;
+}
+
+export type CheckoutType = "check_out" | "check_in";
+
+export type CheckoutReviewStatus = "pending" | "pass" | "conditional" | "fail";
+
+export const CHECKOUT_REVIEW_LABELS: Record<CheckoutReviewStatus, string> = {
+  pending: "Pending review",
+  pass: "PASS",
+  conditional: "Conditional",
+  fail: "FAIL",
+};
+
+export const CHECKOUT_REVIEW_COLORS: Record<CheckoutReviewStatus, string> = {
+  pending: "bg-amber-100 text-amber-800",
+  pass: "bg-green-100 text-green-800",
+  conditional: "bg-orange-100 text-orange-800",
+  fail: "bg-red-100 text-red-800",
+};
+
+export interface CheckoutReport {
+  id: string;
+  companyId: string;
+  vehicleId: string;
+  unitNumber: string;
+  year: number;
+  make: string;
+  model: string;
+  odometer: number;
+  driverName: string;
+  dispatcherName: string;
+  type: CheckoutType;
+  photos: VehiclePhoto[];
+  /** Driver finished capture */
+  status: "complete";
+  completedAt: string;
+  reviewStatus: CheckoutReviewStatus;
+  reviewNotes?: string;
+  /** Office notes about NEW damage vs prior reports */
+  newDamageNotes?: string;
+  /** Slots the office wants retaken (Conditional) */
+  retakeAngles?: PhotoAngle[];
+  reviewedAt?: string;
+  reviewedBy?: string;
+  flagged: boolean;
+  synced: boolean;
+  createdAt: string;
+}
+
+/** In-progress checkout report saved locally for offline resume. */
+export interface CheckoutDraft {
+  id: string;
+  companyId: string;
+  vehicleId: string;
+  type: CheckoutType;
+  driverId: string;
+  driverName: string;
+  dispatcherName: string;
+  odometer: string;
+  year: string;
+  make: string;
+  model: string;
+  photos: Partial<Record<PhotoAngle, string>>;
+  updatedAt: string;
 }
 
 export interface User {
@@ -88,18 +165,23 @@ export interface User {
   email: string;
   role: UserRole;
   fleetIds: string[];
+  companyIds: string[];
 }
 
 export interface Fleet {
   id: string;
   name: string;
   type: StoredFleetType;
+  companyId: string;
   createdAt: string;
 }
 
 export interface Vehicle {
   id: string;
   fleetId: string;
+  companyId: string;
+  /** Fleet unit number (e.g. Rad Cab "12"). Falls back to plate in UI. */
+  unitNumber: string;
   plate: string;
   make: string;
   model: string;
@@ -279,7 +361,24 @@ export interface AppSettings {
   id?: string;
   notificationSettings: NotificationSettings;
   companyName: string;
+  /** Light office PIN for checkout-report review (MVP). */
+  officePin?: string;
 }
+
+export const TIRE_HELPER =
+  "Tire tread and wheel-well shots are hard — get as close as you can, keep it well-lit, and hold steady. Close enough is OK.";
+
+export const WHEEL_HELPER =
+  "Wheel-well and rim shots are hard — get close, keep the wheel centered, and hold steady. Close enough is OK.";
+
+export const REGISTRATION_HELPER =
+  "Office mainly needs the expiration date and VIN to be readable. The rest of the document can be imperfect.";
+
+export const ODOMETER_HELPER =
+  "Office mainly needs the mileage to be readable. Fuel and warning lights are a bonus.";
+
+export const INTERIOR_NIGHT_HELPER =
+  "At night, turn the interior lights on before you shoot.";
 
 export const PHOTO_ANGLES: PhotoStep[] = [
   {
@@ -305,6 +404,7 @@ export const PHOTO_ANGLES: PhotoStep[] = [
     icon: "🛞",
     category: "detail",
     required: true,
+    helper: TIRE_HELPER,
   },
   {
     angle: "lf_wheel",
@@ -313,6 +413,7 @@ export const PHOTO_ANGLES: PhotoStep[] = [
     icon: "⭕",
     category: "detail",
     required: true,
+    helper: WHEEL_HELPER,
   },
   {
     angle: "driver_doors",
@@ -337,6 +438,7 @@ export const PHOTO_ANGLES: PhotoStep[] = [
     icon: "🛞",
     category: "detail",
     required: true,
+    helper: TIRE_HELPER,
   },
   {
     angle: "lr_wheel",
@@ -345,6 +447,7 @@ export const PHOTO_ANGLES: PhotoStep[] = [
     icon: "⭕",
     category: "detail",
     required: true,
+    helper: WHEEL_HELPER,
   },
   {
     angle: "lr_corner",
@@ -393,6 +496,7 @@ export const PHOTO_ANGLES: PhotoStep[] = [
     icon: "🛞",
     category: "detail",
     required: true,
+    helper: TIRE_HELPER,
   },
   {
     angle: "rf_wheel",
@@ -401,6 +505,7 @@ export const PHOTO_ANGLES: PhotoStep[] = [
     icon: "⭕",
     category: "detail",
     required: true,
+    helper: WHEEL_HELPER,
   },
   {
     angle: "passenger_doors",
@@ -425,6 +530,7 @@ export const PHOTO_ANGLES: PhotoStep[] = [
     icon: "🛞",
     category: "detail",
     required: true,
+    helper: TIRE_HELPER,
   },
   {
     angle: "rr_wheel",
@@ -433,6 +539,7 @@ export const PHOTO_ANGLES: PhotoStep[] = [
     icon: "⭕",
     category: "detail",
     required: true,
+    helper: WHEEL_HELPER,
   },
   {
     angle: "rr_corner",
@@ -449,6 +556,7 @@ export const PHOTO_ANGLES: PhotoStep[] = [
     icon: "🚪",
     category: "interior",
     required: true,
+    helper: INTERIOR_NIGHT_HELPER,
   },
   {
     angle: "driver_rear_door_in",
@@ -457,6 +565,7 @@ export const PHOTO_ANGLES: PhotoStep[] = [
     icon: "🚪",
     category: "interior",
     required: true,
+    helper: INTERIOR_NIGHT_HELPER,
   },
   {
     angle: "trunk_interior",
@@ -465,6 +574,7 @@ export const PHOTO_ANGLES: PhotoStep[] = [
     icon: "📦",
     category: "interior",
     required: true,
+    helper: INTERIOR_NIGHT_HELPER,
   },
   {
     angle: "passenger_rear_in",
@@ -473,6 +583,7 @@ export const PHOTO_ANGLES: PhotoStep[] = [
     icon: "💺",
     category: "interior",
     required: true,
+    helper: INTERIOR_NIGHT_HELPER,
   },
   {
     angle: "passenger_front_in",
@@ -481,6 +592,7 @@ export const PHOTO_ANGLES: PhotoStep[] = [
     icon: "💺",
     category: "interior",
     required: true,
+    helper: INTERIOR_NIGHT_HELPER,
   },
   {
     angle: "registration",
@@ -489,6 +601,7 @@ export const PHOTO_ANGLES: PhotoStep[] = [
     icon: "📄",
     category: "interior",
     required: true,
+    helper: REGISTRATION_HELPER,
   },
   {
     angle: "engine_oil",
@@ -505,6 +618,7 @@ export const PHOTO_ANGLES: PhotoStep[] = [
     icon: "🔢",
     category: "interior",
     required: true,
+    helper: ODOMETER_HELPER,
   },
   {
     angle: "windshield",
@@ -513,6 +627,7 @@ export const PHOTO_ANGLES: PhotoStep[] = [
     icon: "🪟",
     category: "interior",
     required: true,
+    helper: INTERIOR_NIGHT_HELPER,
   },
   {
     angle: "radio_climate",
@@ -521,6 +636,7 @@ export const PHOTO_ANGLES: PhotoStep[] = [
     icon: "📻",
     category: "interior",
     required: true,
+    helper: INTERIOR_NIGHT_HELPER,
   },
 ];
 

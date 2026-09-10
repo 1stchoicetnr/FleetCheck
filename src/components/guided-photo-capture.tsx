@@ -7,7 +7,7 @@ import { ProgressBar } from "./ui/progress-bar";
 import { CameraCaptureModal } from "./camera-capture-modal";
 import { PhotoExampleCard } from "./photo-example-image";
 import { canUseBrowserCamera } from "@/lib/camera";
-import { PHOTO_ANGLES, PhotoAngle } from "@/lib/types";
+import { PHOTO_ANGLES, PhotoAngle, PhotoStep } from "@/lib/types";
 
 interface GuidedPhotoCaptureProps {
   photos: Partial<Record<PhotoAngle, string>>;
@@ -16,6 +16,8 @@ interface GuidedPhotoCaptureProps {
   onAllComplete: () => void;
   /** Dev: browse all steps without requiring captures */
   testingBrowseMode?: boolean;
+  /** Company checklist. Defaults to the 30-step policy. */
+  steps?: PhotoStep[];
 }
 
 export function GuidedPhotoCapture({
@@ -24,8 +26,9 @@ export function GuidedPhotoCapture({
   onClear,
   onAllComplete,
   testingBrowseMode = false,
+  steps = PHOTO_ANGLES,
 }: GuidedPhotoCaptureProps) {
-  const requiredPhotos = PHOTO_ANGLES.filter((p) => p.required);
+  const requiredPhotos = steps.filter((p) => p.required);
   const acceptedCount = requiredPhotos.filter((p) => photos[p.angle]).length;
   const liveCamera = canUseBrowserCamera();
 
@@ -112,6 +115,11 @@ export function GuidedPhotoCapture({
           <p className="text-base text-gray-300 mt-2 leading-relaxed">
             {current.instruction}
           </p>
+          {current.helper && (
+            <p className="mt-2 text-sm text-amber-200/90 leading-relaxed bg-amber-950/40 border border-amber-700/40 rounded-lg px-3 py-2">
+              {current.helper}
+            </p>
+          )}
           {isExterior && (
             <p className="flex items-center gap-1.5 text-emerald-400/80 text-xs mt-2.5">
               <RotateCw className="h-3.5 w-3.5 flex-shrink-0" />
