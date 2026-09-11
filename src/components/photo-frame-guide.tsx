@@ -158,6 +158,20 @@ function Silhouette({
       />
     );
   }
+  if (kind === "panel" || kind === "detail") {
+    return (
+      <rect
+        x="22"
+        y="28"
+        width="56"
+        height="44"
+        rx="4"
+        fill={FILL}
+        stroke={STROKE}
+        strokeWidth={sw}
+      />
+    );
+  }
   return (
     <path
       d="M16 66 L24 42 Q50 30 76 42 L84 66 Q50 76 16 66 Z"
@@ -190,7 +204,7 @@ export function PhotoFrameGuide({
       shapeRendering="geometricPrecision"
       aria-hidden
     >
-      {!inline && <rect width="100" height="100" fill="rgba(0,0,0,0.28)" />}
+      {!inline && <rect width="100" height="100" fill="rgba(0,0,0,0.12)" />}
       <Silhouette kind={kind} sw={sw} />
     </svg>
   );

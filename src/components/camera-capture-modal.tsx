@@ -757,12 +757,6 @@ export function CameraCaptureModal({
       {phase === "native" && !previewUrl && (
         <>
           <div className="absolute inset-0 bg-[#060a08] z-0" />
-          <PhotoFrameGuide
-            category={photoStep.category}
-            angle={photoStep.angle}
-            mode="fullscreen"
-            className="photo-guide-overlay"
-          />
           <PhotoExampleThumb
             angle={photoStep.angle}
             label={photoStep.label}
@@ -806,8 +800,8 @@ export function CameraCaptureModal({
               Take photo
             </Button>
             <p className="text-center text-white/70 text-xs mt-3 mb-1 px-2 leading-snug">
-              Need a flashlight for a dark shot? Take photo only has your phone’s
-              one-shot flash. Use Live preview for a continuous flashlight.
+              Need a flashlight or the ghost silhouette to line up this angle?
+              Take photo cannot show an overlay. Use Live preview.
             </p>
             <button
               type="button"
