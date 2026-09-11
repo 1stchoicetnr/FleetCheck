@@ -3,39 +3,34 @@
 import { FormEvent, ReactNode, useEffect, useState } from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import { getSettings } from "@/lib/storage";
-import { DEFAULT_OFFICE_PIN } from "@/lib/companies";
-import {
-  isOfficeUnlocked,
-  unlockOffice,
-  verifyOfficePin,
-} from "@/lib/office-auth";
+import { verifyOfficePinRemote } from "@/lib/checkout-api";
+import { isOfficeUnlocked, unlockOffice } from "@/lib/office-auth";
 import { Lock } from "lucide-react";
 
 export function OfficePinGate({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
   const [pin, setPin] = useState("");
-  const [expected, setExpected] = useState(DEFAULT_OFFICE_PIN);
   const [error, setError] = useState("");
+  const [checking, setChecking] = useState(false);
 
   useEffect(() => {
-    getSettings().then((settings) => {
-      setExpected(settings.officePin || DEFAULT_OFFICE_PIN);
-      setUnlocked(isOfficeUnlocked());
-      setReady(true);
-    });
+    setUnlocked(isOfficeUnlocked());
+    setReady(true);
   }, []);
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!verifyOfficePin(pin, expected)) {
+    setChecking(true);
+    setError("");
+    const ok = await verifyOfficePinRemote(pin);
+    setChecking(false);
+    if (!ok) {
       setError("Incorrect PIN. Try again.");
       return;
     }
-    unlockOffice();
+    unlockOffice(pin);
     setUnlocked(true);
-    setError("");
   };
 
   if (!ready) {
@@ -57,7 +52,7 @@ export function OfficePinGate({ children }: { children: ReactNode }) {
             <div>
               <h2 className="text-lg font-bold text-gray-900">Office unlock</h2>
               <p className="text-sm text-gray-500">
-                Enter the office PIN to review checkout reports.
+                Enter the office PIN to review shared checkout reports.
               </p>
             </div>
           </div>
@@ -70,10 +65,10 @@ export function OfficePinGate({ children }: { children: ReactNode }) {
               value={pin}
               onChange={(e) => setPin(e.target.value)}
               error={error}
-              hint="Demo PIN is 1357"
+              hint="Demo PIN is 1357 (or OFFICE_PIN on the server)"
             />
-            <Button type="submit" size="xl" className="w-full">
-              Unlock office
+            <Button type="submit" size="xl" className="w-full" disabled={checking}>
+              {checking ? "Checking…" : "Unlock office"}
             </Button>
           </form>
         </div>

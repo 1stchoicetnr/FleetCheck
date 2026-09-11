@@ -9,17 +9,17 @@ import { OfficePinGate } from "@/components/office-pin-gate";
 import { ReviewStatusBadge } from "@/components/review-status-badge";
 import { useAuth } from "@/hooks/use-auth";
 import { canReviewCheckout } from "@/lib/fleet-config";
+import { isCheckoutFlagged } from "@/lib/storage";
 import {
-  getCheckoutReports,
-  getCompanies,
-  getVehicles,
-  isCheckoutFlagged,
-} from "@/lib/storage";
+  fetchCheckoutReports,
+  fetchCompanies,
+  fetchVehicles,
+  SharedVehicle,
+} from "@/lib/checkout-api";
 import {
   CheckoutReport,
   CheckoutReviewStatus,
   Company,
-  Vehicle,
 } from "@/lib/types";
 import { formatDate, formatMileage, formatUnitLabel } from "@/lib/utils";
 import { Flag, FileSearch } from "lucide-react";
@@ -47,7 +47,8 @@ export default function OfficeReportsPage() {
   const router = useRouter();
   const [reports, setReports] = useState<CheckoutReport[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [vehicles, setVehicles] = useState<SharedVehicle[]>([]);
+  const [loadError, setLoadError] = useState("");
   const [companyId, setCompanyId] = useState("all");
   const [unitId, setUnitId] = useState("all");
   const [status, setStatus] = useState<(typeof STATUS_FILTERS)[number]>("all");
@@ -58,13 +59,20 @@ export default function OfficeReportsPage() {
   }, [user, loading, router]);
 
   useEffect(() => {
-    Promise.all([getCheckoutReports(), getCompanies(), getVehicles()]).then(
-      ([r, c, v]) => {
+    Promise.all([
+      fetchCheckoutReports(),
+      fetchCompanies(),
+      fetchVehicles(),
+    ])
+      .then(([r, c, v]) => {
         setReports(r);
         setCompanies(c);
         setVehicles(v);
-      }
-    );
+        setLoadError("");
+      })
+      .catch((err: Error) => {
+        setLoadError(err.message || "Could not load shared checkout reports.");
+      });
   }, []);
 
   const companyMap = Object.fromEntries(companies.map((c) => [c.id, c]));
@@ -97,6 +105,10 @@ export default function OfficeReportsPage() {
       <AppHeader title="Office — Checkout reports" />
       <OfficePinGate>
         <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
+          {loadError && (
+            <p className="text-sm text-red-600 font-medium">{loadError}</p>
+          )}
+
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="text-xl font-bold text-gray-900">

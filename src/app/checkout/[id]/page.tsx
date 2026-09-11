@@ -12,21 +12,22 @@ import { getChecklistForCompany } from "@/lib/companies";
 import {
   deleteCheckoutDraft,
   getCheckoutDraft,
-  getCompanyById,
-  getVehicleById,
   saveCheckoutDraft,
-  saveCheckoutReport,
-  saveVehicle,
 } from "@/lib/storage";
+import {
+  createCheckoutReport,
+  fetchCompanies,
+  fetchVehicles,
+  SharedVehicle,
+  uploadCheckoutPhoto,
+} from "@/lib/checkout-api";
 import {
   CheckoutDraft,
   CheckoutReport,
   Company,
   PhotoAngle,
-  Vehicle,
-  VehiclePhoto,
 } from "@/lib/types";
-import { formatDate, formatUnitLabel, generateId } from "@/lib/utils";
+import { formatDate, formatUnitLabel } from "@/lib/utils";
 import { PHOTO_EXAMPLE_PATHS } from "@/lib/photo-examples";
 import { Check } from "lucide-react";
 
@@ -37,12 +38,15 @@ export default function CheckoutCapturePage() {
   const draftId = params.id as string;
 
   const [draft, setDraft] = useState<CheckoutDraft | null>(null);
-  const [vehicle, setVehicle] = useState<Vehicle | null>(null);
+  const [vehicle, setVehicle] = useState<SharedVehicle | null>(null);
   const [company, setCompany] = useState<Company | null>(null);
   const [photos, setPhotos] = useState<Partial<Record<PhotoAngle, string>>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState("");
+  const [submitError, setSubmitError] = useState("");
   const [completed, setCompleted] = useState<CheckoutReport | null>(null);
   const [photosReady, setPhotosReady] = useState(false);
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
     if (!loading && !user) router.replace("/");
@@ -58,12 +62,20 @@ export default function CheckoutCapturePage() {
       }
       setDraft(d);
       setPhotos(d.photos);
-      const [v, c] = await Promise.all([
-        getVehicleById(d.vehicleId),
-        getCompanyById(d.companyId),
-      ]);
-      if (v) setVehicle(v);
-      if (c) setCompany(c);
+      try {
+        const [vehicles, companies] = await Promise.all([
+          fetchVehicles(d.companyId),
+          fetchCompanies(),
+        ]);
+        setVehicle(vehicles.find((item) => item.id === d.vehicleId) ?? null);
+        setCompany(companies.find((item) => item.id === d.companyId) ?? null);
+      } catch (err) {
+        setLoadError(
+          err instanceof Error
+            ? err.message
+            : "Could not load this unit from the shared server."
+        );
+      }
     }
     load();
   }, [draftId, router]);
@@ -85,51 +97,63 @@ export default function CheckoutCapturePage() {
   const handleSubmit = useCallback(async () => {
     if (!user || !draft || !vehicle) return;
     setSubmitting(true);
-    const capturedAt = new Date().toISOString();
-    const photoRecords: VehiclePhoto[] = Object.entries(photos)
-      .filter(([, dataUrl]) => dataUrl)
-      .map(([angle, dataUrl]) => ({
-        angle: angle as PhotoAngle,
-        dataUrl: dataUrl!,
-        capturedAt,
-      }));
+    setSubmitError("");
+    setUploadProgress("Saving report…");
+    try {
+      const capturedAt = new Date().toISOString();
+      let report = await createCheckoutReport({
+        companyId: draft.companyId,
+        vehicleId: draft.vehicleId,
+        unitNumber: vehicle.unitNumber,
+        year: Number(draft.year) || vehicle.year,
+        make: draft.make || vehicle.make,
+        model: draft.model || vehicle.model,
+        odometer: Number(draft.odometer),
+        driverName: draft.driverName,
+        dispatcherName: draft.dispatcherName,
+        type: draft.type,
+      });
 
-    const report: CheckoutReport = {
-      id: generateId(),
-      companyId: draft.companyId,
-      vehicleId: draft.vehicleId,
-      unitNumber: vehicle.unitNumber,
-      year: Number(draft.year) || vehicle.year,
-      make: draft.make || vehicle.make,
-      model: draft.model || vehicle.model,
-      odometer: Number(draft.odometer),
-      driverName: draft.driverName,
-      dispatcherName: draft.dispatcherName,
-      type: draft.type,
-      photos: photoRecords,
-      status: "complete",
-      completedAt: capturedAt,
-      reviewStatus: "pending",
-      flagged: false,
-      synced: typeof navigator !== "undefined" ? navigator.onLine : true,
-      createdAt: capturedAt,
-    };
+      const entries = Object.entries(photos).filter(([, dataUrl]) => dataUrl) as [
+        PhotoAngle,
+        string,
+      ][];
+      for (let i = 0; i < entries.length; i += 1) {
+        const [angle, dataUrl] = entries[i];
+        setUploadProgress(`Uploading photos ${i + 1}/${entries.length}…`);
+        report = await uploadCheckoutPhoto(report.id, angle, dataUrl, capturedAt);
+      }
 
-    await saveCheckoutReport(report);
-    await saveVehicle({
-      ...vehicle,
-      lastMileage: report.odometer,
-    });
-    await deleteCheckoutDraft(draft.id);
-    setCompleted(report);
-    setSubmitting(false);
+      await deleteCheckoutDraft(draft.id);
+      setCompleted(report);
+    } catch (err) {
+      setSubmitError(
+        err instanceof Error
+          ? err.message
+          : "Could not save to the shared server. Check your connection and try again."
+      );
+    } finally {
+      setSubmitting(false);
+      setUploadProgress("");
+    }
   }, [user, draft, vehicle, photos]);
 
-  if (loading || !user || !draft || !vehicle) {
+  if (loading || !user || !draft || (!vehicle && !loadError)) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <p className="animate-pulse text-brand-600 font-semibold">
           Loading checkout…
+        </p>
+      </div>
+    );
+  }
+
+  if (loadError || !vehicle) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <AppHeader title="Checkout" backHref="/checkout" />
+        <p className="text-center text-red-600 px-4 py-12">
+          {loadError || "Unit not found on the shared server."}
         </p>
       </div>
     );
@@ -233,6 +257,10 @@ export default function CheckoutCapturePage() {
           </Button>
         )}
 
+        {submitError && (
+          <p className="text-sm text-red-600 font-medium">{submitError}</p>
+        )}
+
         <div className="sticky bottom-0 -mx-4 px-4 pt-3 pb-6 safe-bottom bg-gray-50/95 border-t border-gray-200">
           <Button
             size="xl"
@@ -241,7 +269,7 @@ export default function CheckoutCapturePage() {
             disabled={submitting || !canSubmit}
           >
             {submitting
-              ? "Saving…"
+              ? uploadProgress || "Saving…"
               : allFilled
                 ? "Submit complete report"
                 : canSkipPhotosForTesting()

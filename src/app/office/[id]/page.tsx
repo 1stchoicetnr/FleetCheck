@@ -11,21 +11,22 @@ import { CheckoutPhotoComparison } from "@/components/checkout-photo-comparison"
 import { useAuth } from "@/hooks/use-auth";
 import { canReviewCheckout } from "@/lib/fleet-config";
 import { getChecklistForCompany } from "@/lib/companies";
+import { isCheckoutFlagged } from "@/lib/storage";
 import {
-  getCheckoutReportById,
-  getCompanyById,
-  getPriorCheckoutReports,
-  getVehicleById,
-  isCheckoutFlagged,
-  saveCheckoutReport,
-} from "@/lib/storage";
+  fetchCheckoutReport,
+  fetchCompanies,
+  fetchPriorReports,
+  fetchVehicles,
+  reviewCheckoutReport,
+  SharedVehicle,
+} from "@/lib/checkout-api";
+import { getStoredOfficePin } from "@/lib/office-auth";
 import {
   CheckoutReport,
   CheckoutReviewStatus,
   Company,
   PHOTO_ANGLES,
   PhotoAngle,
-  Vehicle,
 } from "@/lib/types";
 import { formatDate, formatMileage, formatUnitLabel } from "@/lib/utils";
 
@@ -36,8 +37,10 @@ export default function OfficeReportDetailPage() {
   const reportId = params.id as string;
 
   const [report, setReport] = useState<CheckoutReport | null>(null);
+  const [reportReady, setReportReady] = useState(false);
   const [priors, setPriors] = useState<CheckoutReport[]>([]);
-  const [vehicle, setVehicle] = useState<Vehicle | null>(null);
+  const [vehicle, setVehicle] = useState<SharedVehicle | null>(null);
+  const [saveError, setSaveError] = useState("");
   const [company, setCompany] = useState<Company | null>(null);
   const [decision, setDecision] = useState<CheckoutReviewStatus>("pass");
   const [reviewNotes, setReviewNotes] = useState("");
@@ -53,21 +56,34 @@ export default function OfficeReportDetailPage() {
 
   useEffect(() => {
     async function load() {
-      const found = await getCheckoutReportById(reportId);
-      if (!found) return;
-      setReport(found);
-      setDecision(found.reviewStatus === "pending" ? "pass" : found.reviewStatus);
-      setReviewNotes(found.reviewNotes ?? "");
-      setNewDamageNotes(found.newDamageNotes ?? "");
-      setRetakeAngles(found.retakeAngles ?? []);
-      const [v, c, prior] = await Promise.all([
-        getVehicleById(found.vehicleId),
-        getCompanyById(found.companyId),
-        getPriorCheckoutReports(found.vehicleId, found.id, 2),
-      ]);
-      if (v) setVehicle(v);
-      if (c) setCompany(c);
-      setPriors(prior);
+      try {
+        const found = await fetchCheckoutReport(reportId);
+        if (!found) {
+          setReportReady(true);
+          return;
+        }
+        setReport(found);
+        setDecision(found.reviewStatus === "pending" ? "pass" : found.reviewStatus);
+        setReviewNotes(found.reviewNotes ?? "");
+        setNewDamageNotes(found.newDamageNotes ?? "");
+        setRetakeAngles(found.retakeAngles ?? []);
+        const [vehicles, companies, prior] = await Promise.all([
+          fetchVehicles(found.companyId),
+          fetchCompanies(),
+          fetchPriorReports(found.vehicleId, found.id),
+        ]);
+        setVehicle(vehicles.find((item) => item.id === found.vehicleId) ?? null);
+        setCompany(companies.find((item) => item.id === found.companyId) ?? null);
+        setPriors(prior);
+      } catch (err) {
+        setSaveError(
+          err instanceof Error
+            ? err.message
+            : "Could not load this report from the shared server."
+        );
+      } finally {
+        setReportReady(true);
+      }
     }
     load();
   }, [reportId]);
@@ -101,18 +117,38 @@ export default function OfficeReportDetailPage() {
         decision === "fail" ||
         !!newDamageNotes.trim(),
     };
-    await saveCheckoutReport(updated);
-    setReport(updated);
-    setSaving(false);
+    setSaveError("");
+    try {
+      const saved = await reviewCheckoutReport(
+        report.id,
+        {
+          reviewStatus: updated.reviewStatus,
+          reviewNotes: updated.reviewNotes,
+          newDamageNotes: updated.newDamageNotes,
+          retakeAngles: updated.retakeAngles,
+          reviewedBy: user.name,
+        },
+        getStoredOfficePin()
+      );
+      setReport(saved);
+    } catch (err) {
+      setSaveError(
+        err instanceof Error ? err.message : "Could not save review to the shared server."
+      );
+    } finally {
+      setSaving(false);
+    }
   };
 
-  if (loading || !user) return null;
+  if (loading || !user || !reportReady) return null;
 
   if (!report) {
     return (
       <div className="min-h-screen bg-gray-50">
         <AppHeader title="Report" backHref="/office" />
-        <p className="text-center text-gray-500 py-12">Report not found.</p>
+        <p className="text-center text-red-600 py-12">
+          {saveError || "Report not found."}
+        </p>
       </div>
     );
   }
@@ -312,6 +348,10 @@ export default function OfficeReportDetailPage() {
                   className="w-full rounded-xl border-2 border-gray-300 px-3 py-3 text-sm min-h-[80px]"
                 />
               </label>
+
+              {saveError && (
+                <p className="text-sm text-red-600 font-medium">{saveError}</p>
+              )}
 
               <Button
                 size="xl"

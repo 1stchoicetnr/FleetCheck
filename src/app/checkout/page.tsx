@@ -8,14 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { useAuth } from "@/hooks/use-auth";
 import { canStartCheckout } from "@/lib/fleet-config";
-import {
-  checkoutDraftId,
-  getCheckoutDraft,
-  getCompanies,
-  getVehiclesByCompany,
-  saveCheckoutDraft,
-} from "@/lib/storage";
-import { Company, CheckoutType, Vehicle } from "@/lib/types";
+import { checkoutDraftId, getCheckoutDraft, saveCheckoutDraft } from "@/lib/storage";
+import { fetchCompanies, fetchVehicles, SharedVehicle } from "@/lib/checkout-api";
+import { Company, CheckoutType } from "@/lib/types";
 import { defaultCompanyId } from "@/lib/companies";
 import { formatUnitLabel } from "@/lib/utils";
 import { ClipboardCheck } from "lucide-react";
@@ -25,7 +20,8 @@ export default function CheckoutStartPage() {
   const router = useRouter();
 
   const [companies, setCompanies] = useState<Company[]>([]);
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [vehicles, setVehicles] = useState<SharedVehicle[]>([]);
+  const [loadError, setLoadError] = useState("");
   const [companyId, setCompanyId] = useState("");
   const [vehicleId, setVehicleId] = useState("");
   const [type, setType] = useState<CheckoutType>("check_out");
@@ -48,23 +44,32 @@ export default function CheckoutStartPage() {
   }, [user]);
 
   useEffect(() => {
-    getCompanies().then((list) => {
-      setCompanies(list);
-      setCompanyId((prev) => prev || defaultCompanyId(list));
-    });
+    fetchCompanies()
+      .then((list) => {
+        setCompanies(list);
+        setCompanyId((prev) => prev || defaultCompanyId(list));
+        setLoadError("");
+      })
+      .catch((err: Error) => {
+        setLoadError(err.message || "Could not load companies from the shared server.");
+      });
   }, []);
 
   useEffect(() => {
     if (!companyId) return;
-    getVehiclesByCompany(companyId).then((list) => {
-      const sorted = [...list].sort((a, b) =>
-        a.unitNumber.localeCompare(b.unitNumber, undefined, { numeric: true })
-      );
-      setVehicles(sorted);
-      setVehicleId((prev) =>
-        sorted.some((v) => v.id === prev) ? prev : sorted[0]?.id ?? ""
-      );
-    });
+    fetchVehicles(companyId)
+      .then((list) => {
+        const sorted = [...list].sort((a, b) =>
+          a.unitNumber.localeCompare(b.unitNumber, undefined, { numeric: true })
+        );
+        setVehicles(sorted);
+        setVehicleId((prev) =>
+          sorted.some((v) => v.id === prev) ? prev : sorted[0]?.id ?? ""
+        );
+      })
+      .catch((err: Error) => {
+        setLoadError(err.message || "Could not load units from the shared server.");
+      });
   }, [companyId]);
 
   const selected = useMemo(
@@ -248,8 +253,10 @@ export default function CheckoutStartPage() {
                 </div>
               </div>
 
-              {error && (
-                <p className="text-sm text-red-600 font-medium">{error}</p>
+              {(error || loadError) && (
+                <p className="text-sm text-red-600 font-medium">
+                  {error || loadError}
+                </p>
               )}
 
               <Button
