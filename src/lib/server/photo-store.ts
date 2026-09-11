@@ -1,7 +1,7 @@
 import { put } from "@vercel/blob";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
-import { hasBlobToken, useLocalSharedStore } from "./shared-config";
+import { hasBlobToken, isLocalSharedStoreEnabled } from "./shared-config";
 
 const DATA_DIR = path.join(process.cwd(), ".data", "blobs");
 
@@ -46,7 +46,7 @@ export async function persistCheckoutPhoto(
     return blob.url;
   }
 
-  if (useLocalSharedStore()) {
+  if (isLocalSharedStoreEnabled()) {
     const filePath = path.join(DATA_DIR, filename);
     await mkdir(path.dirname(filePath), { recursive: true });
     await writeFile(filePath, buffer);

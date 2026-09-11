@@ -21,12 +21,12 @@ export function getOfficePin(): string {
 }
 
 /** Production / Vercel preview must use Postgres. File store is next-dev only. */
-export function useLocalSharedStore(): boolean {
+export function isLocalSharedStoreEnabled(): boolean {
   return !hasDatabaseUrl() && !isProductionRuntime();
 }
 
 export function sharedBackendMode(): "postgres" | "local-dev" | "unconfigured" {
   if (hasDatabaseUrl()) return "postgres";
-  if (useLocalSharedStore()) return "local-dev";
+  if (isLocalSharedStoreEnabled()) return "local-dev";
   return "unconfigured";
 }

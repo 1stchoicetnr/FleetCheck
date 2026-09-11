@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { readFile } from "fs/promises";
 import path from "path";
-import { useLocalSharedStore } from "@/lib/server/shared-config";
+import { isLocalSharedStoreEnabled } from "@/lib/server/shared-config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,7 +10,7 @@ export async function GET(
   _req: Request,
   { params }: { params: Promise<{ path: string[] }> }
 ) {
-  if (!useLocalSharedStore()) {
+  if (!isLocalSharedStoreEnabled()) {
     return NextResponse.json(
       { error: "Local file fallback is only available in next dev" },
       { status: 404 }
