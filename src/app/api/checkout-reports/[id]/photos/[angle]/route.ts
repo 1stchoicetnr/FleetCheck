@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { getReport, SharedBackendError } from "@/lib/server/checkout-repo";
+import {
+  getReport,
+  patchReportPhotoFlags,
+  SharedBackendError,
+} from "@/lib/server/checkout-repo";
+import { assertOfficePin } from "@/lib/server/office-pin";
 import { PhotoAngle } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -62,6 +67,39 @@ export async function GET(
     const status = err instanceof SharedBackendError ? err.status : 500;
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Failed to load photo" },
+      { status }
+    );
+  }
+}
+
+export async function PATCH(
+  req: Request,
+  { params }: { params: Promise<{ id: string; angle: string }> }
+) {
+  try {
+    assertOfficePin(req);
+    const { id, angle } = await params;
+    const body = (await req.json()) as {
+      flaggedDamage?: boolean;
+      damageNote?: string;
+    };
+    if (typeof body.flaggedDamage !== "boolean") {
+      return NextResponse.json(
+        { error: "flaggedDamage must be true or false" },
+        { status: 400 }
+      );
+    }
+    const report = await patchReportPhotoFlags(id, angle as PhotoAngle, {
+      flaggedDamage: body.flaggedDamage,
+      damageNote: body.damageNote,
+    });
+    return NextResponse.json({ report });
+  } catch (err) {
+    const status =
+      (err as { status?: number }).status ||
+      (err instanceof SharedBackendError ? err.status : 500);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Failed to update photo flag" },
       { status }
     );
   }

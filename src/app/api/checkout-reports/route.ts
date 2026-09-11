@@ -39,6 +39,8 @@ export async function POST(req: Request) {
       driverName?: string;
       dispatcherName?: string;
       type?: CheckoutType;
+      signatureDataUrl?: string;
+      signedAt?: string;
     };
     if (
       !body.companyId ||
@@ -68,6 +70,8 @@ export async function POST(req: Request) {
       driverName: body.driverName,
       dispatcherName: body.dispatcherName,
       type: body.type === "check_in" ? "check_in" : "check_out",
+      signatureDataUrl: body.signatureDataUrl,
+      signedAt: body.signedAt,
     });
     return NextResponse.json({ report }, { status: 201 });
   } catch (err) {

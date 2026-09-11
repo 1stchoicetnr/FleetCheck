@@ -15,6 +15,12 @@ Unlock with the office PIN, list **shared** reports (filter by company, unit, st
 **Archive a unit**  
 Office → **Manage units (archive)** (or Dashboard → **Units**). PIN-gated like other office changes. Archive hides the van from Driver Checkout and from the Office unit picker. Past checkout reports and photos stay in Office. Unarchive puts the van back on the active list.
 
+**DAMAGE flags + signature**  
+After each accepted photo, drivers can mark that angle as **DAMAGE**. Office gallery/compare lists flagged angles first. PDF marks them. Submit requires a finger/stylus **driver signature**, shown on Office detail and PDF page 1.
+
+**Live preview silhouette**  
+Live preview + flashlight shows a per-angle ghost outline. Native **Take photo** cannot overlay a guide.
+
 Demo office PIN: **1357** (override with `OFFICE_PIN`)
 
 ## Shared backend (required for team beta)

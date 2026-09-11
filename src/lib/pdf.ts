@@ -19,6 +19,12 @@ import {
   fitInBox,
   getImageDimensions,
 } from "./utils";
+import {
+  flaggedDamageAngles,
+  isPhotoDamageFlagged,
+  photoAngleLabel,
+  sortAnglesDamageFirst,
+} from "./photo-flags";
 
 export type CheckoutPdfOptions = {
   companyName?: string;
@@ -350,7 +356,8 @@ export async function generateCheckoutReportPDF(
       photo,
     });
   }
-  const present = listed.filter((item) => item.photo?.dataUrl);
+  const ordered = sortAnglesDamageFirst(listed, report.photos);
+  const present = ordered.filter((item) => item.photo?.dataUrl);
 
   let y = 20;
   doc.setFontSize(20);
@@ -431,11 +438,44 @@ export async function generateCheckoutReportPDF(
     addWrapped(`Retake requested: ${labels.join(", ")}`);
   }
   if (report.flagged) addWrapped("Flag queue: yes");
+  const damageAngles = flaggedDamageAngles(report);
+  if (damageAngles.length) {
+    addWrapped(
+      `DAMAGE flagged: ${damageAngles.map(photoAngleLabel).join(", ")}`
+    );
+  }
+
+  if (report.signatureDataUrl) {
+    section("Driver signature");
+    addWrapped(`Signed by ${report.driverName}${report.signedAt ? ` · ${formatDate(report.signedAt)}` : ""}`);
+    try {
+      const { width: sigW, height: sigH } = await getImageDimensions(
+        report.signatureDataUrl
+      );
+      const { width, height } = fitInBox(sigW, sigH, pageWidth - 28, 36);
+      if (y + height > pageHeight - 20) {
+        doc.addPage();
+        y = 20;
+      }
+      doc.addImage(
+        report.signatureDataUrl,
+        pdfImageFormat(report.signatureDataUrl),
+        14,
+        y,
+        width,
+        height
+      );
+      y += height + 6;
+    } catch {
+      addWrapped("[Signature could not be embedded]");
+    }
+  }
 
   section("Photo index");
-  listed.forEach((item, i) => {
+  ordered.forEach((item, i) => {
+    const damage = isPhotoDamageFlagged(item.photo) ? " · DAMAGE" : "";
     addWrapped(
-      `${i + 1}. ${item.label} — ${item.photo?.dataUrl ? "included" : "missing"}`
+      `${i + 1}. ${item.label}${damage} — ${item.photo?.dataUrl ? "included" : "missing"}`
     );
   });
   y += 4;
@@ -450,7 +490,11 @@ export async function generateCheckoutReportPDF(
     y = 16;
     doc.setFontSize(13);
     doc.setFont("helvetica", "bold");
-    doc.text(item.label, 14, y);
+    doc.text(
+      `${item.label}${isPhotoDamageFlagged(item.photo) ? " · DAMAGE" : ""}`,
+      14,
+      y
+    );
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
     doc.text(`Photo ${photoNumber} of ${present.length}`, pageWidth - 14, y, {

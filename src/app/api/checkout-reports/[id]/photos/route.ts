@@ -15,6 +15,8 @@ export async function POST(
       angle?: PhotoAngle;
       dataUrl?: string;
       capturedAt?: string;
+      flaggedDamage?: boolean;
+      damageNote?: string;
     };
     if (!body.angle || !body.dataUrl) {
       return NextResponse.json(
@@ -26,7 +28,11 @@ export async function POST(
       id,
       body.angle,
       body.dataUrl,
-      body.capturedAt
+      body.capturedAt,
+      {
+        flaggedDamage: body.flaggedDamage,
+        damageNote: body.damageNote,
+      }
     );
     return NextResponse.json({ report });
   } catch (err) {

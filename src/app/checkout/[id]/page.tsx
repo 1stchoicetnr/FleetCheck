@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { AppHeader } from "@/components/app-header";
 import { Button } from "@/components/ui/button";
 import { GuidedPhotoCapture } from "@/components/guided-photo-capture";
+import { SignaturePad } from "@/components/signature-pad";
 import { useAuth } from "@/hooks/use-auth";
 import { canStartCheckout } from "@/lib/fleet-config";
 import { canSkipPhotosForTesting } from "@/lib/dev-config";
@@ -46,6 +47,11 @@ export default function CheckoutCapturePage() {
   const [vehicle, setVehicle] = useState<SharedVehicle | null>(null);
   const [company, setCompany] = useState<Company | null>(null);
   const [photos, setPhotos] = useState<Partial<Record<PhotoAngle, string>>>({});
+  const [photoFlags, setPhotoFlags] = useState<
+    NonNullable<CheckoutDraft["photoFlags"]>
+  >({});
+  const [signatureDataUrl, setSignatureDataUrl] = useState("");
+  const [signedAt, setSignedAt] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState("");
   const [submitError, setSubmitError] = useState("");
@@ -67,6 +73,9 @@ export default function CheckoutCapturePage() {
       }
       setDraft(d);
       setPhotos(d.photos);
+      setPhotoFlags(d.photoFlags ?? {});
+      setSignatureDataUrl(d.signatureDataUrl ?? "");
+      setSignedAt(d.signedAt ?? "");
       try {
         const [vehicles, companies] = await Promise.all([
           fetchVehicles(d.companyId, { includeArchived: true }),
@@ -94,19 +103,30 @@ export default function CheckoutCapturePage() {
   useEffect(() => {
     if (!draft) return;
     const timer = setTimeout(() => {
-      void saveCheckoutDraft({ ...draft, photos });
+      void saveCheckoutDraft({
+        ...draft,
+        photos,
+        photoFlags,
+        signatureDataUrl: signatureDataUrl || undefined,
+        signedAt: signedAt || undefined,
+      });
     }, 600);
     return () => clearTimeout(timer);
-  }, [draft, photos]);
+  }, [draft, photos, photoFlags, signatureDataUrl, signedAt]);
 
   const steps = getChecklistForCompany(company);
   const required = steps.filter((s) => s.required);
   const allFilled = required.every((s) => photos[s.angle]);
-  const canSubmit =
+  const photosComplete =
     allFilled || canSkipPhotosForTesting() || photosReady;
+  const canSubmit = photosComplete && Boolean(signatureDataUrl);
 
   const handleSubmit = useCallback(async () => {
     if (!user || !draft || !vehicle) return;
+    if (!signatureDataUrl) {
+      setSubmitError("Sign the report before submitting.");
+      return;
+    }
     setSubmitting(true);
     setSubmitError("");
     setUploadProgress("Saving report…");
@@ -124,6 +144,8 @@ export default function CheckoutCapturePage() {
         driverName: draft.driverName,
         dispatcherName: draft.dispatcherName,
         type: draft.type,
+        signatureDataUrl,
+        signedAt: signedAt || capturedAt,
       });
 
       const entries = Object.entries(photos).filter(([, dataUrl]) => dataUrl) as [
@@ -133,7 +155,10 @@ export default function CheckoutCapturePage() {
       for (let i = 0; i < entries.length; i += 1) {
         const [angle, dataUrl] = entries[i];
         setUploadProgress(`Uploading photos ${i + 1}/${entries.length}…`);
-        report = await uploadCheckoutPhoto(report.id, angle, dataUrl, capturedAt);
+        report = await uploadCheckoutPhoto(report.id, angle, dataUrl, capturedAt, {
+          flaggedDamage: photoFlags[angle]?.flaggedDamage,
+          damageNote: photoFlags[angle]?.damageNote,
+        });
       }
 
       await deleteCheckoutDraft(draft.id);
@@ -148,7 +173,7 @@ export default function CheckoutCapturePage() {
       setSubmitting(false);
       setUploadProgress("");
     }
-  }, [user, draft, vehicle, photos]);
+  }, [user, draft, vehicle, photos, photoFlags, signatureDataUrl, signedAt]);
 
   if (loading || !user || !draft || (!vehicle && !loadError)) {
     return (
@@ -244,10 +269,11 @@ export default function CheckoutCapturePage() {
 
         <GuidedPhotoCapture
           photos={photos}
+          photoFlags={photoFlags}
           steps={steps}
           testingBrowseMode={canSkipPhotosForTesting()}
-          testingFinishLabel="Finish preview → Submit"
-          allCompleteMessage="All photos accepted — submit the report below."
+          testingFinishLabel="Finish preview → Sign"
+          allCompleteMessage="All photos accepted — sign below, then submit."
           onAccept={(angle, url) => {
             setPhotos((prev) => ({ ...prev, [angle]: url }));
           }}
@@ -257,6 +283,17 @@ export default function CheckoutCapturePage() {
               delete next[angle];
               return next;
             });
+            setPhotoFlags((prev) => {
+              const next = { ...prev };
+              delete next[angle];
+              return next;
+            });
+          }}
+          onFlagDamage={(angle, flaggedDamage) => {
+            setPhotoFlags((prev) => ({
+              ...prev,
+              [angle]: { flaggedDamage, damageNote: prev[angle]?.damageNote },
+            }));
           }}
           onAllComplete={() => setPhotosReady(true)}
         />
@@ -280,6 +317,30 @@ export default function CheckoutCapturePage() {
           </Button>
         )}
 
+        {photosComplete && (
+          <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
+            <div>
+              <h3 className="text-base font-bold text-gray-900">
+                Driver signature
+              </h3>
+              <p className="text-sm text-gray-600">
+                Required. Sign with your finger, then submit. Office sees this
+                on the report and PDF.
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                Signing as {draft.driverName}
+              </p>
+            </div>
+            <SignaturePad
+              value={signatureDataUrl || undefined}
+              onSignature={(dataUrl) => {
+                setSignatureDataUrl(dataUrl);
+                setSignedAt(dataUrl ? new Date().toISOString() : "");
+              }}
+            />
+          </div>
+        )}
+
         {submitError && (
           <p className="text-sm text-red-600 font-medium">{submitError}</p>
         )}
@@ -293,11 +354,11 @@ export default function CheckoutCapturePage() {
           >
             {submitting
               ? uploadProgress || "Saving…"
-              : allFilled
-                ? "Submit complete report"
-                : canSkipPhotosForTesting()
-                  ? "Submit (testing — photos optional)"
-                  : `Submit when ${required.filter((s) => photos[s.angle]).length}/${required.length} photos are filled`}
+              : !photosComplete
+                ? `Submit when ${required.filter((s) => photos[s.angle]).length}/${required.length} photos are filled`
+                : !signatureDataUrl
+                  ? "Sign above to submit"
+                  : "Submit complete report"}
           </Button>
         </div>
       </div>

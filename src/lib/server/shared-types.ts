@@ -37,6 +37,8 @@ export interface CheckoutReportInput {
   driverName: string;
   dispatcherName: string;
   type: CheckoutType;
+  signatureDataUrl?: string;
+  signedAt?: string;
 }
 
 export interface UpsertVehicleInput {

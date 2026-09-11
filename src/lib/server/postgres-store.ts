@@ -46,6 +46,8 @@ type ReportRow = {
   flagged: boolean;
   photos: VehiclePhoto[];
   created_at: string;
+  signature_data_url: string | null;
+  signed_at: string | null;
 };
 
 function rowToReport(row: ReportRow): CheckoutReport {
@@ -76,6 +78,8 @@ function rowToReport(row: ReportRow): CheckoutReport {
     flagged: Boolean(row.flagged),
     synced: true,
     createdAt: new Date(row.created_at).toISOString(),
+    signatureDataUrl: row.signature_data_url ?? undefined,
+    signedAt: row.signed_at ? new Date(row.signed_at).toISOString() : undefined,
   };
 }
 
@@ -136,6 +140,8 @@ export async function pgMigrateAndSeed(): Promise<void> {
   await sql`CREATE INDEX IF NOT EXISTS checkout_reports_company_idx ON checkout_reports (company_id)`;
   await sql`CREATE INDEX IF NOT EXISTS checkout_reports_review_idx ON checkout_reports (review_status)`;
   await sql`ALTER TABLE checkout_reports ADD COLUMN IF NOT EXISTS plate TEXT`;
+  await sql`ALTER TABLE checkout_reports ADD COLUMN IF NOT EXISTS signature_data_url TEXT`;
+  await sql`ALTER TABLE checkout_reports ADD COLUMN IF NOT EXISTS signed_at TIMESTAMPTZ`;
   await sql`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ`;
 
   for (const company of SEEDED_COMPANIES) {
@@ -338,7 +344,7 @@ async function upsertReportRow(report: CheckoutReport): Promise<void> {
       id, company_id, vehicle_id, unit_number, plate, year, make, model, odometer,
       driver_name, dispatcher_name, type, status, completed_at, review_status,
       review_notes, new_damage_notes, retake_angles, reviewed_at, reviewed_by,
-      flagged, photos, created_at
+      flagged, photos, created_at, signature_data_url, signed_at
     ) VALUES (
       ${report.id}, ${report.companyId}, ${report.vehicleId}, ${report.unitNumber},
       ${report.plate ?? null},
@@ -347,7 +353,8 @@ async function upsertReportRow(report: CheckoutReport): Promise<void> {
       ${report.completedAt}, ${report.reviewStatus}, ${report.reviewNotes ?? null},
       ${report.newDamageNotes ?? null},       CAST(${JSON.stringify(report.retakeAngles ?? [])} AS jsonb),
       ${report.reviewedAt ?? null}, ${report.reviewedBy ?? null}, ${report.flagged},
-      CAST(${JSON.stringify(report.photos)} AS jsonb), ${report.createdAt}
+      CAST(${JSON.stringify(report.photos)} AS jsonb), ${report.createdAt},
+      ${report.signatureDataUrl ?? null}, ${report.signedAt ?? null}
     )
     ON CONFLICT (id) DO UPDATE SET
       review_status = EXCLUDED.review_status,
@@ -359,7 +366,9 @@ async function upsertReportRow(report: CheckoutReport): Promise<void> {
       flagged = EXCLUDED.flagged,
       photos = EXCLUDED.photos,
       odometer = EXCLUDED.odometer,
-      plate = EXCLUDED.plate
+      plate = EXCLUDED.plate,
+      signature_data_url = EXCLUDED.signature_data_url,
+      signed_at = EXCLUDED.signed_at
   `;
   await sql`
     UPDATE vehicles SET last_mileage = ${report.odometer} WHERE id = ${report.vehicleId}

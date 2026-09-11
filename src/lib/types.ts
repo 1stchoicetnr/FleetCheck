@@ -142,6 +142,9 @@ export interface CheckoutReport {
   flagged: boolean;
   synced: boolean;
   createdAt: string;
+  /** Driver signature image (data URL or Blob URL). */
+  signatureDataUrl?: string;
+  signedAt?: string;
 }
 
 /** In-progress checkout report saved locally for offline resume. */
@@ -158,6 +161,11 @@ export interface CheckoutDraft {
   make: string;
   model: string;
   photos: Partial<Record<PhotoAngle, string>>;
+  photoFlags?: Partial<
+    Record<PhotoAngle, { flaggedDamage: boolean; damageNote?: string }>
+  >;
+  signatureDataUrl?: string;
+  signedAt?: string;
   updatedAt: string;
 }
 
@@ -215,6 +223,9 @@ export interface VehiclePhoto {
   angle: PhotoAngle;
   dataUrl: string;
   capturedAt: string;
+  /** Driver or office marked this angle as new damage. */
+  flaggedDamage?: boolean;
+  damageNote?: string;
 }
 
 export type FuelLevel =

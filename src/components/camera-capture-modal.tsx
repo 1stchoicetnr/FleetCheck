@@ -711,6 +711,7 @@ export function CameraCaptureModal({
         <>
           <PhotoFrameGuide
             category={photoStep.category}
+            angle={photoStep.angle}
             mode="fullscreen"
             className="photo-guide-overlay"
           />
@@ -758,6 +759,7 @@ export function CameraCaptureModal({
           <div className="absolute inset-0 bg-[#060a08] z-0" />
           <PhotoFrameGuide
             category={photoStep.category}
+            angle={photoStep.angle}
             mode="fullscreen"
             className="photo-guide-overlay"
           />
@@ -827,13 +829,18 @@ export function CameraCaptureModal({
       )}
 
       {phase === "live" && (
-        <CameraHeader
-          photoNumber={photoNumber}
-          totalPhotos={totalPhotos}
-          label={photoStep.label}
-          instruction={photoStep.instruction}
-          onClose={handleClose}
-        />
+        <>
+          <CameraHeader
+            photoNumber={photoNumber}
+            totalPhotos={totalPhotos}
+            label={photoStep.label}
+            instruction={photoStep.instruction}
+            onClose={handleClose}
+          />
+          <p className="absolute left-3 right-3 z-20 top-[max(4.6rem,calc(env(safe-area-inset-top)+3.4rem))] text-center text-[11px] font-medium text-emerald-200/90 drop-shadow pointer-events-none">
+            Line this angle up with the ghost outline
+          </p>
+        </>
       )}
 
       {phase === "preview" && (

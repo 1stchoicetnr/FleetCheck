@@ -22,6 +22,7 @@ import {
   fetchCompanies,
   fetchPriorReports,
   fetchVehicles,
+  flagCheckoutPhoto,
   reviewCheckoutReport,
   SharedVehicle,
 } from "@/lib/checkout-api";
@@ -40,6 +41,10 @@ import {
 } from "@/lib/pdf";
 import { formatDate, formatMileage, formatUnitLabel } from "@/lib/utils";
 import { isVehicleArchived } from "@/lib/vehicle-archive";
+import {
+  isPhotoDamageFlagged,
+  sortAnglesDamageFirst,
+} from "@/lib/photo-flags";
 import { Download } from "lucide-react";
 
 export default function OfficeReportDetailPage() {
@@ -63,6 +68,7 @@ export default function OfficeReportDetailPage() {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState("");
+  const [flaggingAngle, setFlaggingAngle] = useState<PhotoAngle | null>(null);
 
   useEffect(() => {
     if (!loading && !user) router.replace("/");
@@ -108,16 +114,47 @@ export default function OfficeReportDetailPage() {
     () => Object.fromEntries(report?.photos.map((p) => [p.angle, p]) ?? []),
     [report]
   );
+  const gallerySteps = useMemo(
+    () => sortAnglesDamageFirst(steps, report?.photos ?? []),
+    [steps, report]
+  );
   const galleryPhotos = useMemo<LightboxPhoto[]>(
     () =>
-      steps.flatMap((step) => {
+      gallerySteps.flatMap((step) => {
         const photo = photoMap[step.angle];
         return photo?.dataUrl
-          ? [{ id: step.angle, src: photo.dataUrl, label: step.label }]
+          ? [{
+              id: step.angle,
+              src: photo.dataUrl,
+              label: `${step.label}${
+                isPhotoDamageFlagged(photo) ? " · DAMAGE" : ""
+              }`,
+            }]
           : [];
       }),
-    [photoMap, steps]
+    [photoMap, gallerySteps]
   );
+
+  const handleFlagPhoto = async (angle: PhotoAngle, flaggedDamage: boolean) => {
+    if (!report) return;
+    setFlaggingAngle(angle);
+    setSaveError("");
+    try {
+      const saved = await flagCheckoutPhoto(
+        report.id,
+        angle,
+        flaggedDamage,
+        getStoredOfficePin()
+      );
+      setReport(saved);
+    } catch (err) {
+      setSaveError(
+        err instanceof Error ? err.message : "Could not update the damage flag."
+      );
+    } finally {
+      setFlaggingAngle(null);
+    }
+  };
 
   const toggleRetake = (angle: PhotoAngle) => {
     setRetakeAngles((prev) =>
@@ -243,6 +280,20 @@ export default function OfficeReportDetailPage() {
                   ? ` · Reviewed ${formatDate(report.reviewedAt)} by ${report.reviewedBy}`
                   : ""}
               </p>
+              {report.signatureDataUrl && (
+                <div className="rounded-xl border border-gray-200 bg-white p-2">
+                  <p className="text-xs font-semibold text-gray-500 mb-1">
+                    Driver signature
+                    {report.signedAt ? ` · ${formatDate(report.signedAt)}` : ""}
+                  </p>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={report.signatureDataUrl}
+                    alt={`Signature of ${report.driverName}`}
+                    className="h-16 w-full object-contain bg-white"
+                  />
+                </div>
+              )}
               {vehicle && isVehicleArchived(vehicle) && (
                 <p className="text-sm text-gray-700 bg-gray-100 rounded-lg px-2 py-1">
                   This unit is archived / out of service. History is kept —
@@ -305,18 +356,21 @@ export default function OfficeReportDetailPage() {
 
           {tab === "gallery" ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {steps.map((step) => {
+              {gallerySteps.map((step) => {
                 const photo = photoMap[step.angle];
+                const damaged = isPhotoDamageFlagged(photo);
                 return (
                   <div
                     key={step.angle}
-                    className="rounded-xl border border-gray-200 bg-white overflow-hidden"
+                    className={`rounded-xl border bg-white overflow-hidden ${
+                      damaged ? "border-red-400 ring-2 ring-red-200" : "border-gray-200"
+                    }`}
                   >
                     <div className="aspect-video bg-gray-100">
                       {photo?.dataUrl ? (
                         <OfficePhotoThumb
                           src={photo.dataUrl}
-                          label={step.label}
+                          label={`${step.label}${damaged ? " · DAMAGE" : ""}`}
                           onOpen={() => {
                             const next = galleryPhotos.findIndex(
                               (item) => item.id === step.angle
@@ -330,9 +384,30 @@ export default function OfficeReportDetailPage() {
                         </div>
                       )}
                     </div>
-                    <p className="px-2 py-1.5 text-xs font-semibold text-gray-700">
-                      {step.label}
-                    </p>
+                    <div className="px-2 py-1.5 space-y-1">
+                      <p className="text-xs font-semibold text-gray-700">
+                        {step.label}
+                        {damaged ? " · DAMAGE" : ""}
+                      </p>
+                      {photo?.dataUrl && (
+                        <button
+                          type="button"
+                          disabled={flaggingAngle === step.angle}
+                          onClick={() => handleFlagPhoto(step.angle, !damaged)}
+                          className={`w-full min-h-[36px] rounded-lg text-[11px] font-semibold ${
+                            damaged
+                              ? "bg-red-100 text-red-800"
+                              : "bg-gray-100 text-gray-700"
+                          }`}
+                        >
+                          {flaggingAngle === step.angle
+                            ? "Saving…"
+                            : damaged
+                              ? "Clear DAMAGE"
+                              : "Flag DAMAGE"}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 );
               })}

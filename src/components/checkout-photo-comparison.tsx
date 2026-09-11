@@ -8,6 +8,7 @@ import {
 } from "@/components/photo-lightbox";
 import { CheckoutReport, PHOTO_ANGLES, PhotoAngle } from "@/lib/types";
 import { formatDate } from "@/lib/utils";
+import { isPhotoDamageFlagged, sortAnglesDamageFirst } from "@/lib/photo-flags";
 
 interface CheckoutPhotoComparisonProps {
   current: CheckoutReport;
@@ -30,8 +31,9 @@ export function CheckoutPhotoComparison({
   const currentMap = useMemo(() => photoMap(current), [current]);
   const priorMap = useMemo(() => photoMap(prior), [prior]);
 
-  const angles = PHOTO_ANGLES.filter(
-    (a) => currentMap[a.angle] || priorMap[a.angle]
+  const angles = sortAnglesDamageFirst(
+    PHOTO_ANGLES.filter((a) => currentMap[a.angle] || priorMap[a.angle]),
+    current.photos
   );
 
   const lightboxPhotos = useMemo<LightboxPhoto[]>(() => {
@@ -98,15 +100,25 @@ export function CheckoutPhotoComparison({
       <div className="space-y-5">
         {angles.map((a) => {
           const flagged = highlightAngles.includes(a.angle);
+          const damaged = isPhotoDamageFlagged(
+            current.photos.find((p) => p.angle === a.angle)
+          );
           const currentSrc = currentMap[a.angle];
           const priorSrc = priorMap[a.angle];
           return (
             <div
               key={a.angle}
-              className={flagged ? "rounded-xl ring-2 ring-orange-400 p-2" : ""}
+              className={
+                damaged
+                  ? "rounded-xl ring-2 ring-red-400 p-2"
+                  : flagged
+                    ? "rounded-xl ring-2 ring-orange-400 p-2"
+                    : ""
+              }
             >
               <p className="text-sm font-semibold text-gray-800 mb-2">
                 {a.label}
+                {damaged ? " · DAMAGE" : ""}
                 {flagged ? " · retake requested" : ""}
               </p>
               <div className="grid grid-cols-2 gap-2">

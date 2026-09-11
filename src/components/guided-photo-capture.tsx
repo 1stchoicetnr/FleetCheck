@@ -19,8 +19,12 @@ import { PHOTO_ANGLES, PhotoAngle, PhotoStep } from "@/lib/types";
 
 interface GuidedPhotoCaptureProps {
   photos: Partial<Record<PhotoAngle, string>>;
+  photoFlags?: Partial<
+    Record<PhotoAngle, { flaggedDamage: boolean; damageNote?: string }>
+  >;
   onAccept: (angle: PhotoAngle, dataUrl: string) => void;
   onClear: (angle: PhotoAngle) => void;
+  onFlagDamage?: (angle: PhotoAngle, flaggedDamage: boolean) => void;
   onAllComplete: () => void;
   /** Dev: browse all steps without requiring captures */
   testingBrowseMode?: boolean;
@@ -32,8 +36,10 @@ interface GuidedPhotoCaptureProps {
 
 export function GuidedPhotoCapture({
   photos,
+  photoFlags,
   onAccept,
   onClear,
+  onFlagDamage,
   onAllComplete,
   testingBrowseMode = false,
   steps = PHOTO_ANGLES,
@@ -177,7 +183,32 @@ export function GuidedPhotoCapture({
                 <Check className="h-4 w-4" />
                 Accepted
               </div>
+              {photoFlags?.[current.angle]?.flaggedDamage && (
+                <div className="absolute top-3 right-3 bg-red-600 text-white rounded-full px-3 py-1.5 text-sm font-semibold shadow">
+                  DAMAGE
+                </div>
+              )}
             </div>
+            {onFlagDamage && (
+              <button
+                type="button"
+                onClick={() =>
+                  onFlagDamage(
+                    current.angle,
+                    !photoFlags?.[current.angle]?.flaggedDamage
+                  )
+                }
+                className={`w-full min-h-[48px] rounded-xl border-2 text-sm font-semibold ${
+                  photoFlags?.[current.angle]?.flaggedDamage
+                    ? "border-red-500 bg-red-950/40 text-red-100"
+                    : "border-gray-600 bg-gray-800 text-gray-200"
+                }`}
+              >
+                {photoFlags?.[current.angle]?.flaggedDamage
+                  ? "DAMAGE flagged — tap to clear"
+                  : "Mark this angle as DAMAGE / new damage"}
+              </button>
+            )}
             <Button
               variant="outline"
               size="lg"
@@ -238,6 +269,10 @@ export function GuidedPhotoCapture({
               <Video className="h-4 w-4" />
               Live preview + flashlight
             </button>
+            <p className="text-center text-xs text-amber-200/80 leading-snug px-1">
+              Live preview shows a ghost silhouette to line up this angle. Take
+              photo (native camera) cannot show an overlay.
+            </p>
             <button
               type="button"
               onClick={openGallery}
@@ -266,6 +301,7 @@ export function GuidedPhotoCapture({
         <div className="flex gap-1 overflow-x-auto pb-1 flex-1">
           {requiredPhotos.map((p, i) => {
             const done = !!photos[p.angle];
+            const damaged = !!photoFlags?.[p.angle]?.flaggedDamage;
             const isCurrent = i === currentIndex;
             const canView =
               testingBrowseMode || done || i === firstIncompleteIndex;
@@ -277,7 +313,9 @@ export function GuidedPhotoCapture({
                 onClick={() => canView && setViewIndex(i)}
                 title={p.label}
                 className={`flex-shrink-0 min-w-[32px] h-8 px-1.5 rounded-md text-[10px] font-bold transition-colors ${
-                  done
+                  damaged
+                    ? "bg-red-600 text-white"
+                    : done
                     ? "bg-emerald-600 text-white"
                     : isCurrent
                     ? "bg-brand-600 text-white ring-2 ring-brand-300"

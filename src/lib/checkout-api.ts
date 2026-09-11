@@ -123,6 +123,8 @@ export async function createCheckoutReport(input: {
   driverName: string;
   dispatcherName: string;
   type: CheckoutType;
+  signatureDataUrl?: string;
+  signedAt?: string;
 }): Promise<CheckoutReport> {
   const data = await api<{ report: CheckoutReport }>("/api/checkout-reports", {
     method: "POST",
@@ -135,13 +137,38 @@ export async function uploadCheckoutPhoto(
   reportId: string,
   angle: PhotoAngle,
   dataUrl: string,
-  capturedAt?: string
+  capturedAt?: string,
+  flags?: { flaggedDamage?: boolean; damageNote?: string }
 ): Promise<CheckoutReport> {
   const data = await api<{ report: CheckoutReport }>(
     `/api/checkout-reports/${reportId}/photos`,
     {
       method: "POST",
-      body: JSON.stringify({ angle, dataUrl, capturedAt }),
+      body: JSON.stringify({
+        angle,
+        dataUrl,
+        capturedAt,
+        flaggedDamage: flags?.flaggedDamage,
+        damageNote: flags?.damageNote,
+      }),
+    }
+  );
+  return data.report;
+}
+
+export async function flagCheckoutPhoto(
+  reportId: string,
+  angle: PhotoAngle,
+  flaggedDamage: boolean,
+  officePin: string,
+  damageNote?: string
+): Promise<CheckoutReport> {
+  const data = await api<{ report: CheckoutReport }>(
+    `/api/checkout-reports/${reportId}/photos/${angle}`,
+    {
+      method: "PATCH",
+      headers: { "x-office-pin": officePin },
+      body: JSON.stringify({ flaggedDamage, damageNote }),
     }
   );
   return data.report;

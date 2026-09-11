@@ -5,6 +5,7 @@ import {
   PhotoAngle,
   VehiclePhoto,
 } from "@/lib/types";
+import { reportHasPhotoDamage } from "@/lib/photo-flags";
 import {
   VEHICLE_ARCHIVED_MESSAGE,
   isVehicleArchived,
@@ -165,6 +166,9 @@ export async function createReport(
     (input.plate
       ? await findVehicleByPlate(input.companyId, input.plate)
       : undefined);
+  if (!input.signatureDataUrl?.trim()) {
+    throw new SharedBackendError("Driver signature is required", 400);
+  }
   if (vehicle && isVehicleArchived(vehicle)) {
     throw new SharedBackendError(VEHICLE_ARCHIVED_MESSAGE, 409);
   }
@@ -192,6 +196,8 @@ export async function createReport(
     flagged: false,
     synced: true,
     createdAt: now,
+    signatureDataUrl: input.signatureDataUrl,
+    signedAt: input.signedAt,
   };
   const saved =
     mode === "postgres" ? await pgPutReport(report) : await localPutReport(report);
@@ -203,7 +209,8 @@ export async function addReportPhoto(
   reportId: string,
   angle: PhotoAngle,
   dataUrl: string,
-  capturedAt?: string
+  capturedAt?: string,
+  flags?: { flaggedDamage?: boolean; damageNote?: string }
 ): Promise<CheckoutReport> {
   const mode = assertConfigured();
   const existing =
@@ -216,10 +223,54 @@ export async function addReportPhoto(
     angle,
     dataUrl: url,
     capturedAt: capturedAt || new Date().toISOString(),
+    flaggedDamage: flags?.flaggedDamage || undefined,
+    damageNote: flags?.damageNote?.trim() || undefined,
   };
   const photos = existing.photos.filter((p) => p.angle !== angle);
   photos.push(photo);
-  const updated = { ...existing, photos };
+  const updated: CheckoutReport = {
+    ...existing,
+    photos,
+    flagged: existing.flagged || reportHasPhotoDamage({ photos }),
+  };
+  return mode === "postgres" ? pgPutReport(updated) : localPutReport(updated);
+}
+
+export async function patchReportPhotoFlags(
+  reportId: string,
+  angle: PhotoAngle,
+  flags: { flaggedDamage: boolean; damageNote?: string }
+): Promise<CheckoutReport> {
+  const mode = assertConfigured();
+  const existing =
+    mode === "postgres" ? await pgGetReport(reportId) : await localGetReport(reportId);
+  if (!existing) {
+    throw new SharedBackendError("Checkout report not found", 404);
+  }
+  const photo = existing.photos.find((p) => p.angle === angle);
+  if (!photo) {
+    throw new SharedBackendError("Photo not found", 404);
+  }
+  const photos = existing.photos.map((p) =>
+    p.angle === angle
+      ? {
+          ...p,
+          flaggedDamage: flags.flaggedDamage || undefined,
+          damageNote: flags.flaggedDamage
+            ? flags.damageNote?.trim() || p.damageNote
+            : undefined,
+        }
+      : p
+  );
+  const updated: CheckoutReport = {
+    ...existing,
+    photos,
+    flagged:
+      existing.reviewStatus === "conditional" ||
+      existing.reviewStatus === "fail" ||
+      !!(existing.newDamageNotes && existing.newDamageNotes.trim()) ||
+      reportHasPhotoDamage({ photos }),
+  };
   return mode === "postgres" ? pgPutReport(updated) : localPutReport(updated);
 }
 
@@ -245,7 +296,8 @@ export async function reviewReport(
     flagged:
       input.reviewStatus === "conditional" ||
       input.reviewStatus === "fail" ||
-      !!(input.newDamageNotes && input.newDamageNotes.trim()),
+      !!(input.newDamageNotes && input.newDamageNotes.trim()) ||
+      reportHasPhotoDamage(existing),
   };
   if (mode === "postgres") return pgPutReport(updated);
   const saved = await localPatchReport(reportId, updated);
