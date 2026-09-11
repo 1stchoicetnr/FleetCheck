@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
-import { canViewFleetOverview } from "@/lib/fleet-config";
+import { canStartCheckout, canViewFleetOverview } from "@/lib/fleet-config";
 import { AppHeader } from "@/components/app-header";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { FleetStatusStats } from "@/components/fleet-status-stats";
@@ -39,14 +39,16 @@ export default function DashboardPage() {
 
   const role = user.role;
 
+  const checkoutLink = {
+    href: "/checkout",
+    icon: <ClipboardCheck className="h-7 w-7" />,
+    label: "Checkout Report",
+    desc: "Start a vehicle handoff — unit, odometer, photos",
+    color: "bg-emerald-100 text-emerald-700",
+  };
+
   const driverLinks = [
-    {
-      href: "/checkout",
-      icon: <ClipboardCheck className="h-7 w-7" />,
-      label: "Checkout Report",
-      desc: "Handoff photos — company, unit, odometer",
-      color: "bg-emerald-100 text-emerald-700",
-    },
+    checkoutLink,
     {
       href: "/check-in",
       icon: <Car className="h-7 w-7" />,
@@ -105,6 +107,7 @@ export default function DashboardPage() {
 
   const managementLinks = [
     officeLink,
+    checkoutLink,
     {
       href: "/reports",
       icon: <BarChart3 className="h-7 w-7" />,
@@ -183,6 +186,29 @@ export default function DashboardPage() {
           <p className="text-gray-500 text-sm">What would you like to do?</p>
         </div>
 
+        {canStartCheckout(role) && (
+          <Link href="/checkout" className="block">
+            <div className="rounded-2xl bg-brand-600 text-white p-5 shadow-md active:scale-[0.98] transition-transform">
+              <div className="flex items-center gap-4">
+                <div className="rounded-xl bg-white/20 p-3">
+                  <ClipboardCheck className="h-8 w-8" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xl font-bold leading-tight">
+                    Checkout Report
+                  </p>
+                  <p className="text-brand-100 text-sm mt-1">
+                    Start a vehicle handoff — company, unit, photos
+                  </p>
+                </div>
+                <span className="text-sm font-semibold bg-white text-brand-700 rounded-full px-3 py-1.5 shrink-0">
+                  Start
+                </span>
+              </div>
+            </div>
+          </Link>
+        )}
+
         {showFleetStats && (
           <div className="space-y-2">
             <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
@@ -193,7 +219,9 @@ export default function DashboardPage() {
         )}
 
         <div className="grid gap-3">
-          {links.map((link) => (
+          {links
+            .filter((link) => link.href !== "/checkout")
+            .map((link) => (
             <Link key={link.label} href={link.href}>
               <Card className="hover:shadow-md transition-shadow active:scale-[0.98]">
                 <CardContent className="flex items-center gap-4 py-4">

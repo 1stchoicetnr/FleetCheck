@@ -71,7 +71,11 @@ export function canPerformCheckIn(role: string): boolean {
 }
 
 export function canStartCheckout(role: string): boolean {
-  return role === "driver" || role === "super_admin";
+  return (
+    role === "driver" ||
+    role === "super_admin" ||
+    role === "management"
+  );
 }
 
 export function canReviewCheckout(role: string): boolean {
