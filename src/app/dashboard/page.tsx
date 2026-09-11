@@ -16,6 +16,7 @@ import {
   FileText,
   Bell,
   ShieldCheck,
+  Archive,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -64,8 +65,17 @@ export default function DashboardPage() {
     color: "bg-indigo-100 text-indigo-700",
   };
 
+  const unitsLink = {
+    href: "/office/units",
+    icon: <Archive className="h-7 w-7" />,
+    label: "Units",
+    desc: "Archive vans that are no longer in service",
+    color: "bg-slate-100 text-slate-700",
+  };
+
   const techLinks = [
     officeLink,
+    unitsLink,
     {
       href: "/vehicles",
       icon: <Wrench className="h-7 w-7" />,
@@ -98,6 +108,7 @@ export default function DashboardPage() {
 
   const managementLinks = [
     officeLink,
+    unitsLink,
     checkoutLink,
     {
       href: "/vehicles",

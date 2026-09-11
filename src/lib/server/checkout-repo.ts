@@ -6,6 +6,10 @@ import {
   VehiclePhoto,
 } from "@/lib/types";
 import {
+  VEHICLE_ARCHIVED_MESSAGE,
+  isVehicleArchived,
+} from "@/lib/vehicle-archive";
+import {
   localFindVehicleByPlate,
   localGetReport,
   localGetVehicle,
@@ -14,6 +18,7 @@ import {
   localListVehicles,
   localPatchReport,
   localPutReport,
+  localSetVehicleArchived,
   localUpsertVehicle,
 } from "./local-store";
 import { persistCheckoutPhoto } from "./photo-store";
@@ -26,12 +31,14 @@ import {
   pgListReports,
   pgListVehicles,
   pgPutReport,
+  pgSetVehicleArchived,
   pgUpsertVehicle,
 } from "./postgres-store";
 import { sharedBackendMode } from "./shared-config";
 import {
   CheckoutReportInput,
   CheckoutReviewInput,
+  ListVehiclesOptions,
   SharedVehicle,
   UpsertVehicleInput,
 } from "./shared-types";
@@ -66,12 +73,15 @@ export async function listCompanies(): Promise<Company[]> {
   });
 }
 
-export async function listVehicles(companyId?: string): Promise<SharedVehicle[]> {
+export async function listVehicles(
+  companyId?: string,
+  options?: ListVehiclesOptions
+): Promise<SharedVehicle[]> {
   const mode = assertConfigured();
   const vehicles =
     mode === "postgres"
-      ? await pgListVehicles(companyId)
-      : await localListVehicles(companyId);
+      ? await pgListVehicles(companyId, options)
+      : await localListVehicles(companyId, options);
   return [...vehicles].sort((a, b) =>
     a.unitNumber.localeCompare(b.unitNumber, undefined, { numeric: true })
   );
@@ -102,7 +112,26 @@ export async function upsertVehicle(
   if (Number.isNaN(Number(input.year))) {
     throw new SharedBackendError("Year must be a number", 400);
   }
+  const existing = await findVehicleByPlate(input.companyId, input.plate);
+  if (existing && isVehicleArchived(existing)) {
+    throw new SharedBackendError(VEHICLE_ARCHIVED_MESSAGE, 409);
+  }
   return mode === "postgres" ? pgUpsertVehicle(input) : localUpsertVehicle(input);
+}
+
+export async function setVehicleArchived(
+  id: string,
+  archived: boolean
+): Promise<SharedVehicle> {
+  const mode = assertConfigured();
+  const vehicle =
+    mode === "postgres"
+      ? await pgSetVehicleArchived(id, archived)
+      : await localSetVehicleArchived(id, archived);
+  if (!vehicle) {
+    throw new SharedBackendError("Unit not found", 404);
+  }
+  return vehicle;
 }
 
 export async function listReports(): Promise<CheckoutReport[]> {
@@ -136,6 +165,9 @@ export async function createReport(
     (input.plate
       ? await findVehicleByPlate(input.companyId, input.plate)
       : undefined);
+  if (vehicle && isVehicleArchived(vehicle)) {
+    throw new SharedBackendError(VEHICLE_ARCHIVED_MESSAGE, 409);
+  }
   if (!vehicle) {
     vehicle = await upsertVehicle({
       companyId: input.companyId,

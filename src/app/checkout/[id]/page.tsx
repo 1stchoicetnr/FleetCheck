@@ -69,10 +69,16 @@ export default function CheckoutCapturePage() {
       setPhotos(d.photos);
       try {
         const [vehicles, companies] = await Promise.all([
-          fetchVehicles(d.companyId),
+          fetchVehicles(d.companyId, { includeArchived: true }),
           fetchCompanies(),
         ]);
-        setVehicle(vehicles.find((item) => item.id === d.vehicleId) ?? null);
+        const found = vehicles.find((item) => item.id === d.vehicleId) ?? null;
+        setVehicle(found);
+        if (found?.archivedAt) {
+          setLoadError(
+            "This unit is archived / out of service. Ask Office to unarchive it before submitting a new checkout."
+          );
+        }
         setCompany(companies.find((item) => item.id === d.companyId) ?? null);
       } catch (err) {
         setLoadError(

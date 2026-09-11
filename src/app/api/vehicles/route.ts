@@ -5,6 +5,7 @@ import {
   SharedBackendError,
   upsertVehicle,
 } from "@/lib/server/checkout-repo";
+import { parseIncludeArchived } from "@/lib/vehicle-archive";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,7 +21,10 @@ export async function GET(req: NextRequest) {
         { headers: { "Cache-Control": "no-store" } }
       );
     }
-    const vehicles = await listVehicles(companyId);
+    const includeArchived = parseIncludeArchived(
+      req.nextUrl.searchParams.get("includeArchived")
+    );
+    const vehicles = await listVehicles(companyId, { includeArchived });
     return NextResponse.json(
       { vehicles },
       { headers: { "Cache-Control": "no-store" } }

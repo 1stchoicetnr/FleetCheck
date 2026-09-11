@@ -14,7 +14,7 @@ import {
   sharedSeedReports,
   sharedSeedVehicles,
 } from "./seed-shared";
-import { SharedVehicle, UpsertVehicleInput } from "./shared-types";
+import { ListVehiclesOptions, SharedVehicle, UpsertVehicleInput } from "./shared-types";
 
 function sqlClient() {
   const url = getDatabaseUrl();
@@ -136,6 +136,7 @@ export async function pgMigrateAndSeed(): Promise<void> {
   await sql`CREATE INDEX IF NOT EXISTS checkout_reports_company_idx ON checkout_reports (company_id)`;
   await sql`CREATE INDEX IF NOT EXISTS checkout_reports_review_idx ON checkout_reports (review_status)`;
   await sql`ALTER TABLE checkout_reports ADD COLUMN IF NOT EXISTS plate TEXT`;
+  await sql`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ`;
 
   for (const company of SEEDED_COMPANIES) {
     await sql`
@@ -190,14 +191,28 @@ export async function pgListCompanies(): Promise<Company[]> {
   }));
 }
 
-export async function pgListVehicles(companyId?: string): Promise<SharedVehicle[]> {
+export async function pgListVehicles(
+  companyId?: string,
+  options?: ListVehiclesOptions
+): Promise<SharedVehicle[]> {
   await pgMigrateAndSeed();
   const sql = sqlClient();
+  const includeArchived = Boolean(options?.includeArchived);
   const rows = companyId
-    ? await sql`
-        SELECT * FROM vehicles WHERE company_id = ${companyId} ORDER BY unit_number
-      `
-    : await sql`SELECT * FROM vehicles ORDER BY unit_number`;
+    ? includeArchived
+      ? await sql`
+          SELECT * FROM vehicles WHERE company_id = ${companyId} ORDER BY unit_number
+        `
+      : await sql`
+          SELECT * FROM vehicles
+          WHERE company_id = ${companyId} AND archived_at IS NULL
+          ORDER BY unit_number
+        `
+    : includeArchived
+      ? await sql`SELECT * FROM vehicles ORDER BY unit_number`
+      : await sql`
+          SELECT * FROM vehicles WHERE archived_at IS NULL ORDER BY unit_number
+        `;
   return rows.map((row) => mapVehicleRow(row));
 }
 
@@ -211,6 +226,9 @@ function mapVehicleRow(row: Record<string, unknown>): SharedVehicle {
     model: String(row.model),
     year: Number(row.year),
     lastMileage: row.last_mileage == null ? undefined : Number(row.last_mileage),
+    archivedAt: row.archived_at
+      ? new Date(String(row.archived_at)).toISOString()
+      : undefined,
     createdAt: new Date(String(row.created_at)).toISOString(),
   };
 }
@@ -258,6 +276,7 @@ export async function pgUpsertVehicle(
     model: input.model.trim(),
     year: Number(input.year),
     lastMileage: existing?.lastMileage,
+    archivedAt: existing?.archivedAt,
     createdAt: existing?.createdAt ?? now,
   };
   const sql = sqlClient();
@@ -276,6 +295,22 @@ export async function pgUpsertVehicle(
       year = EXCLUDED.year
   `;
   return vehicle;
+}
+
+export async function pgSetVehicleArchived(
+  id: string,
+  archived: boolean
+): Promise<SharedVehicle | undefined> {
+  await pgMigrateAndSeed();
+  const existing = await pgGetVehicle(id);
+  if (!existing) return undefined;
+  const sql = sqlClient();
+  const archivedAt = archived ? new Date().toISOString() : null;
+  await sql`UPDATE vehicles SET archived_at = ${archivedAt} WHERE id = ${id}`;
+  return {
+    ...existing,
+    archivedAt: archivedAt ?? undefined,
+  };
 }
 
 export async function pgListReports(): Promise<CheckoutReport[]> {

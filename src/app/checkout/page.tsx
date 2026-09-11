@@ -242,7 +242,7 @@ export default function CheckoutStartPage() {
                   />
                   <div>
                     <label className="block text-base font-semibold text-gray-900 mb-1.5">
-                      Unit #
+                      Unit # (active vans)
                     </label>
                     <select
                       value={vehicleId}
@@ -259,6 +259,10 @@ export default function CheckoutStartPage() {
                         </option>
                       ))}
                     </select>
+                    <p className="text-xs text-gray-500 mt-1.5">
+                      Only active units. Archived / out-of-service vans are
+                      hidden until Office unarchives them.
+                    </p>
                   </div>
                 </>
               )}

@@ -16,7 +16,13 @@ export interface SharedVehicle {
   model: string;
   year: number;
   lastMileage?: number;
+  /** ISO timestamp when Office archived the unit. Absent = active. */
+  archivedAt?: string;
   createdAt: string;
+}
+
+export interface ListVehiclesOptions {
+  includeArchived?: boolean;
 }
 
 export interface CheckoutReportInput {

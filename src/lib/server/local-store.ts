@@ -8,7 +8,12 @@ import {
   sharedSeedReports,
   sharedSeedVehicles,
 } from "./seed-shared";
-import { SharedStore, SharedVehicle, UpsertVehicleInput } from "./shared-types";
+import {
+  ListVehiclesOptions,
+  SharedStore,
+  SharedVehicle,
+  UpsertVehicleInput,
+} from "./shared-types";
 
 const STORE_PATH = path.join(process.cwd(), ".data", "shared.json");
 
@@ -81,11 +86,16 @@ export async function localListCompanies() {
   return store.companies;
 }
 
-export async function localListVehicles(companyId?: string): Promise<SharedVehicle[]> {
+export async function localListVehicles(
+  companyId?: string,
+  options?: ListVehiclesOptions
+): Promise<SharedVehicle[]> {
   const store = await localEnsureSeed();
-  return companyId
-    ? store.vehicles.filter((v) => v.companyId === companyId)
-    : store.vehicles;
+  return store.vehicles.filter((v) => {
+    if (companyId && v.companyId !== companyId) return false;
+    if (!options?.includeArchived && v.archivedAt) return false;
+    return true;
+  });
 }
 
 export async function localGetVehicle(id: string): Promise<SharedVehicle | undefined> {
@@ -128,6 +138,7 @@ export async function localUpsertVehicle(
       model: input.model.trim(),
       year: Number(input.year),
       lastMileage: existing?.lastMileage,
+      archivedAt: existing?.archivedAt,
       createdAt: existing?.createdAt ?? now,
     };
     if (existing) {
@@ -138,6 +149,24 @@ export async function localUpsertVehicle(
     }
     await writeStore(store);
     return vehicle;
+  });
+}
+
+export async function localSetVehicleArchived(
+  id: string,
+  archived: boolean
+): Promise<SharedVehicle | undefined> {
+  return enqueueWrite(async () => {
+    const store = await loadAndSeedUnlocked();
+    const idx = store.vehicles.findIndex((v) => v.id === id);
+    if (idx < 0) return undefined;
+    store.vehicles[idx] = {
+      ...store.vehicles[idx],
+      archivedAt: archived ? new Date().toISOString() : undefined,
+    };
+    if (!archived) delete store.vehicles[idx].archivedAt;
+    await writeStore(store);
+    return store.vehicles[idx];
   });
 }
 

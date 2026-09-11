@@ -12,6 +12,9 @@ The older **Check In / Out** shift flow (mileage, fuel, signature, Slack PDF) is
 **Office (tablet/desktop or phone)**  
 Unlock with the office PIN, list **shared** reports (filter by company, unit, status), open the gallery + metadata, compare side-by-side against the last 1–2 reports for the **same unit**, then mark **PASS**, **Conditional** (retake list), or **FAIL**.
 
+**Archive a unit**  
+Office → **Manage units (archive)** (or Dashboard → **Units**). PIN-gated like other office changes. Archive hides the van from Driver Checkout and from the Office unit picker. Past checkout reports and photos stay in Office. Unarchive puts the van back on the active list.
+
 Demo office PIN: **1357** (override with `OFFICE_PIN`)
 
 ## Shared backend (required for team beta)
@@ -108,7 +111,7 @@ On mobile: open in Chrome/Safari → **Add to Home Screen**
 
 ```
 src/app/checkout         Driver checkout report
-src/app/office           Office review + flag queue
+src/app/office           Office review + flag queue + unit archive
 src/app/api/             Shared CR / companies / vehicles / Blob
 src/lib/server           Postgres + local-dev store
 src/lib/storage          IndexedDB (shift check-in only)

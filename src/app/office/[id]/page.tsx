@@ -39,6 +39,7 @@ import {
   generateCheckoutReportPDF,
 } from "@/lib/pdf";
 import { formatDate, formatMileage, formatUnitLabel } from "@/lib/utils";
+import { isVehicleArchived } from "@/lib/vehicle-archive";
 import { Download } from "lucide-react";
 
 export default function OfficeReportDetailPage() {
@@ -82,7 +83,7 @@ export default function OfficeReportDetailPage() {
         setNewDamageNotes(found.newDamageNotes ?? "");
         setRetakeAngles(found.retakeAngles ?? []);
         const [vehicles, companies, prior] = await Promise.all([
-          fetchVehicles(found.companyId),
+          fetchVehicles(found.companyId, { includeArchived: true }),
           fetchCompanies(),
           fetchPriorReports(found.vehicleId, found.id),
         ]);
@@ -221,7 +222,14 @@ export default function OfficeReportDetailPage() {
                     {report.type === "check_out" ? "Check out" : "Check in"}
                   </p>
                 </div>
-                <ReviewStatusBadge status={report.reviewStatus} />
+                <div className="flex flex-col items-end gap-1">
+                  <ReviewStatusBadge status={report.reviewStatus} />
+                  {vehicle && isVehicleArchived(vehicle) && (
+                    <span className="text-[11px] font-semibold text-gray-600">
+                      Archived unit
+                    </span>
+                  )}
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-2 text-sm text-gray-700">
                 <p>Odometer: {formatMileage(report.odometer)}</p>
@@ -235,6 +243,12 @@ export default function OfficeReportDetailPage() {
                   ? ` · Reviewed ${formatDate(report.reviewedAt)} by ${report.reviewedBy}`
                   : ""}
               </p>
+              {vehicle && isVehicleArchived(vehicle) && (
+                <p className="text-sm text-gray-700 bg-gray-100 rounded-lg px-2 py-1">
+                  This unit is archived / out of service. History is kept —
+                  drivers no longer see it in Checkout.
+                </p>
+              )}
               {isCheckoutFlagged(report) && (
                 <p className="text-sm font-semibold text-red-700">
                   In the flag queue

@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { AppHeader } from "@/components/app-header";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
@@ -22,6 +22,7 @@ import {
   Company,
 } from "@/lib/types";
 import { formatDate, formatMileage, formatUnitLabel } from "@/lib/utils";
+import { isVehicleArchived } from "@/lib/vehicle-archive";
 import { Flag, FileSearch } from "lucide-react";
 
 const STATUS_FILTERS: Array<CheckoutReviewStatus | "all" | "flagged"> = [
@@ -42,15 +43,17 @@ function filterLabel(value: (typeof STATUS_FILTERS)[number]): string {
   return "FAIL";
 }
 
-export default function OfficeReportsPage() {
+function OfficeReportsPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [reports, setReports] = useState<CheckoutReport[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [vehicles, setVehicles] = useState<SharedVehicle[]>([]);
   const [loadError, setLoadError] = useState("");
   const [companyId, setCompanyId] = useState("all");
   const [unitId, setUnitId] = useState("all");
+  const [showArchivedUnits, setShowArchivedUnits] = useState(false);
   const [status, setStatus] = useState<(typeof STATUS_FILTERS)[number]>("all");
 
   useEffect(() => {
@@ -62,7 +65,7 @@ export default function OfficeReportsPage() {
     Promise.all([
       fetchCheckoutReports(),
       fetchCompanies(),
-      fetchVehicles(),
+      fetchVehicles(undefined, { includeArchived: true }),
     ])
       .then(([r, c, v]) => {
         setReports(r);
@@ -88,21 +91,53 @@ export default function OfficeReportsPage() {
     };
   }, [loadOffice]);
 
+  useEffect(() => {
+    const requestedUnit = searchParams.get("unitId");
+    if (!requestedUnit || vehicles.length === 0) return;
+    const vehicle = vehicles.find((v) => v.id === requestedUnit);
+    if (!vehicle) {
+      setUnitId(requestedUnit);
+      setShowArchivedUnits(true);
+      return;
+    }
+    setCompanyId(vehicle.companyId);
+    setUnitId(vehicle.id);
+    if (isVehicleArchived(vehicle)) setShowArchivedUnits(true);
+  }, [searchParams, vehicles]);
+
   const companyMap = Object.fromEntries(companies.map((c) => [c.id, c]));
   const vehicleMap = Object.fromEntries(vehicles.map((v) => [v.id, v]));
+  const archivedIds = useMemo(
+    () => new Set(vehicles.filter(isVehicleArchived).map((v) => v.id)),
+    [vehicles]
+  );
 
   const unitsForFilter = useMemo(() => {
     const byId = new Map<
       string,
-      { id: string; unitNumber: string; plate: string; companyId: string }
+      {
+        id: string;
+        unitNumber: string;
+        plate: string;
+        companyId: string;
+        archivedAt?: string;
+      }
     >();
     for (const v of vehicles) {
       if (companyId !== "all" && v.companyId !== companyId) continue;
+      if (!showArchivedUnits && isVehicleArchived(v) && v.id !== unitId) continue;
       byId.set(v.id, v);
     }
     for (const report of reports) {
       if (companyId !== "all" && report.companyId !== companyId) continue;
       if (byId.has(report.vehicleId)) continue;
+      if (
+        !showArchivedUnits &&
+        archivedIds.has(report.vehicleId) &&
+        report.vehicleId !== unitId
+      ) {
+        continue;
+      }
       byId.set(report.vehicleId, {
         id: report.vehicleId,
         unitNumber: report.unitNumber,
@@ -113,7 +148,7 @@ export default function OfficeReportsPage() {
     return [...byId.values()].sort((a, b) =>
       a.unitNumber.localeCompare(b.unitNumber, undefined, { numeric: true })
     );
-  }, [vehicles, reports, companyId]);
+  }, [vehicles, reports, companyId, showArchivedUnits, archivedIds, unitId]);
 
   const filtered = reports.filter((report) => {
     if (companyId !== "all" && report.companyId !== companyId) return false;
@@ -145,13 +180,21 @@ export default function OfficeReportsPage() {
                 {filtered.length} shown · {flagCount} flagged · live Neon list
                 (refresh if a new CR just landed)
               </p>
-              <button
-                type="button"
-                onClick={loadOffice}
-                className="text-xs font-semibold text-brand-700 underline underline-offset-2 mt-1"
-              >
-                Refresh from server
-              </button>
+              <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1">
+                <button
+                  type="button"
+                  onClick={loadOffice}
+                  className="text-xs font-semibold text-brand-700 underline underline-offset-2"
+                >
+                  Refresh from server
+                </button>
+                <Link
+                  href="/office/units"
+                  className="text-xs font-semibold text-brand-700 underline underline-offset-2"
+                >
+                  Manage units (archive)
+                </Link>
+              </div>
             </div>
             {flagCount > 0 && (
               <button
@@ -190,6 +233,7 @@ export default function OfficeReportsPage() {
               {unitsForFilter.map((v) => (
                 <option key={v.id} value={v.id}>
                   {formatUnitLabel(v.unitNumber, v.plate)}
+                  {isVehicleArchived(v) ? " (archived)" : ""}
                 </option>
               ))}
             </select>
@@ -207,6 +251,21 @@ export default function OfficeReportsPage() {
               ))}
             </select>
           </div>
+
+          <label className="flex items-center gap-2 text-sm text-gray-600">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-gray-300"
+              checked={showArchivedUnits}
+              onChange={(e) => {
+                const next = e.target.checked;
+                setShowArchivedUnits(next);
+                if (!next && archivedIds.has(unitId)) setUnitId("all");
+              }}
+            />
+            Include archived units in the unit filter. Past reports still show
+            under All units.
+          </label>
 
           {filtered.length === 0 ? (
             <div className="text-center py-12">
@@ -245,6 +304,11 @@ export default function OfficeReportsPage() {
                               Flagged
                             </span>
                           )}
+                          {vehicle && isVehicleArchived(vehicle) && (
+                            <span className="text-[11px] font-semibold text-gray-600">
+                              Archived unit
+                            </span>
+                          )}
                         </div>
                       </div>
                       <p className="text-sm text-gray-600">
@@ -273,5 +337,19 @@ export default function OfficeReportsPage() {
         </div>
       </OfficePinGate>
     </div>
+  );
+}
+
+export default function OfficeReportsPageWithSearch() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="animate-pulse text-brand-600">Loading...</div>
+        </div>
+      }
+    >
+      <OfficeReportsPage />
+    </Suspense>
   );
 }

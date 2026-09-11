@@ -15,6 +15,7 @@ export interface SharedVehicle {
   model: string;
   year: number;
   lastMileage?: number;
+  archivedAt?: string;
   createdAt: string;
 }
 
@@ -42,10 +43,31 @@ export async function fetchCompanies(): Promise<Company[]> {
   return data.companies;
 }
 
-export async function fetchVehicles(companyId?: string): Promise<SharedVehicle[]> {
-  const qs = companyId ? `?companyId=${encodeURIComponent(companyId)}` : "";
-  const data = await api<{ vehicles: SharedVehicle[] }>(`/api/vehicles${qs}`);
+export async function fetchVehicles(
+  companyId?: string,
+  options?: { includeArchived?: boolean }
+): Promise<SharedVehicle[]> {
+  const params = new URLSearchParams();
+  if (companyId) params.set("companyId", companyId);
+  if (options?.includeArchived) params.set("includeArchived", "1");
+  const qs = params.toString();
+  const data = await api<{ vehicles: SharedVehicle[] }>(
+    `/api/vehicles${qs ? `?${qs}` : ""}`
+  );
   return data.vehicles;
+}
+
+export async function setVehicleArchived(
+  id: string,
+  archived: boolean,
+  officePin: string
+): Promise<SharedVehicle> {
+  const data = await api<{ vehicle: SharedVehicle }>(`/api/vehicles/${id}`, {
+    method: "PATCH",
+    headers: { "x-office-pin": officePin },
+    body: JSON.stringify({ archived }),
+  });
+  return data.vehicle;
 }
 
 export async function upsertSharedVehicle(input: {
