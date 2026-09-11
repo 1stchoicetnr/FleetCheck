@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Camera, AlertTriangle, RotateCw, Check } from "lucide-react";
+import { X, Camera, AlertTriangle, RotateCw, Check, SwitchCamera } from "lucide-react";
 import { Button } from "./ui/button";
 import { PhotoFrameGuide } from "./photo-frame-guide";
 import { PhotoExampleThumb } from "./photo-example-image";
@@ -10,7 +10,13 @@ import { PhotoStep } from "@/lib/types";
 import { compressImage } from "@/lib/utils";
 import { checkPhotoQuality, sampleVideoLowLight } from "@/lib/photo-quality";
 import { useDeviceOrientation } from "@/hooks/use-orientation";
-import { canUseBrowserCamera } from "@/lib/camera";
+import {
+  CameraFacing,
+  canUseBrowserCamera,
+  getSessionCameraFacing,
+  openCameraStream,
+  setSessionCameraFacing,
+} from "@/lib/camera";
 
 type Phase = "live" | "preview" | "fallback";
 
@@ -50,13 +56,34 @@ async function exitNativeFullscreen(): Promise<void> {
   }
 }
 
-function getVideoConstraints(facingMode: string, landscape: boolean) {
-  return {
-    facingMode: { ideal: facingMode },
-    width: { ideal: landscape ? 1920 : 1080 },
-    height: { ideal: landscape ? 1080 : 1920 },
-    aspectRatio: { ideal: landscape ? 16 / 9 : 9 / 16 },
-  };
+function FlipCameraButton({
+  facingMode,
+  onFlip,
+  compact = false,
+}: {
+  facingMode: CameraFacing;
+  onFlip: () => void;
+  compact?: boolean;
+}) {
+  const label =
+    facingMode === "environment" ? "Flip to front camera" : "Flip to rear camera";
+  return (
+    <button
+      type="button"
+      onClick={onFlip}
+      aria-label={label}
+      className={
+        compact
+          ? "flex flex-col items-center justify-center gap-1 min-h-[52px] min-w-[52px] px-1 text-white drop-shadow"
+          : "inline-flex items-center justify-center gap-2 min-h-[48px] px-4 rounded-full bg-black/60 text-white border border-white/35 backdrop-blur-sm font-semibold text-sm active:scale-[0.98]"
+      }
+    >
+      <SwitchCamera className={compact ? "h-7 w-7" : "h-5 w-5"} />
+      <span className={compact ? "text-[11px] font-semibold leading-tight text-center" : ""}>
+        Flip Camera
+      </span>
+    </button>
+  );
 }
 
 function PreviewActions({
@@ -199,9 +226,8 @@ export function CameraCaptureModal({
 
   const { isLandscape, version: orientationVersion } = useDeviceOrientation();
 
-  const useRearCamera = photoStep.category !== "interior";
-  const facingMode = useRearCamera ? "environment" : "user";
-  const captureAttr = useRearCamera ? "environment" : "user";
+  const [facingMode, setFacingMode] = useState<CameraFacing>("environment");
+  const captureAttr = facingMode;
   const showLandscapeTip = photoStep.category === "exterior";
   const liveCameraAvailable = canUseBrowserCamera();
 
@@ -294,10 +320,7 @@ export function CameraCaptureModal({
     const landscape = window.innerWidth > window.innerHeight;
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: getVideoConstraints(facingMode, landscape),
-        audio: false,
-      });
+      const stream = await openCameraStream(getSessionCameraFacing(), landscape);
       streamRef.current = stream;
       setPhase("live");
 
@@ -310,7 +333,7 @@ export function CameraCaptureModal({
     } catch {
       setPhase("fallback");
     }
-  }, [facingMode, liveCameraAvailable, stopStream, syncLiveLayout]);
+  }, [liveCameraAvailable, stopStream, syncLiveLayout]);
 
   useEffect(() => {
     if (!open) {
@@ -324,12 +347,23 @@ export function CameraCaptureModal({
       setLiveLowLight(false);
       return;
     }
+    setFacingMode(getSessionCameraFacing());
     setPreviewUrl(null);
     setAutoAccepting(false);
     setLiveLowLight(false);
     startCamera();
     return stopStream;
   }, [open, photoStep.angle, startCamera, stopStream]);
+
+  const flipCamera = () => {
+    const next: CameraFacing =
+      getSessionCameraFacing() === "environment" ? "user" : "environment";
+    setSessionCameraFacing(next);
+    setFacingMode(next);
+    if (open && phase === "live") {
+      void startCamera();
+    }
+  };
 
   useEffect(() => {
     if (!open || phase !== "live") return;
@@ -421,7 +455,11 @@ export function CameraCaptureModal({
   if (!open || !mounted) return null;
 
   const content = (
-    <div ref={viewportRef} className="camera-viewport">
+    <div
+      ref={viewportRef}
+      className="camera-viewport"
+      data-camera-facing={facingMode}
+    >
       {phase === "live" && (
         <>
           <video
@@ -598,8 +636,8 @@ export function CameraCaptureModal({
         <div
           className={`absolute z-20 ${
             isLandscape
-              ? "right-0 top-0 bottom-0 flex flex-col items-center justify-center gap-3 px-3 w-[5.5rem] bg-gradient-to-l from-black/80 via-black/45 to-transparent pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
-              : "bottom-0 left-0 right-0 flex flex-col items-center bg-gradient-to-t from-black/85 via-black/50 to-transparent pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-10 px-4"
+              ? "right-0 top-0 bottom-0 flex flex-col items-center justify-center gap-3 px-2 w-[6.25rem] bg-gradient-to-l from-black/80 via-black/45 to-transparent pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
+              : "bottom-0 left-0 right-0 flex flex-col items-center gap-3 bg-gradient-to-t from-black/85 via-black/50 to-transparent pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-10 px-4"
           }`}
         >
           {!isLandscape && (
@@ -617,6 +655,15 @@ export function CameraCaptureModal({
                   : "Step back — fit the whole vehicle inside the green rectangle"}
               </p>
             </>
+          )}
+          {isLandscape ? (
+            <FlipCameraButton
+              facingMode={facingMode}
+              onFlip={flipCamera}
+              compact
+            />
+          ) : (
+            <FlipCameraButton facingMode={facingMode} onFlip={flipCamera} />
           )}
           <button
             type="button"
