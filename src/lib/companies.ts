@@ -53,6 +53,7 @@ export function companyIdForFleetType(type: string): string {
 }
 
 const CHECKLISTS: Record<ChecklistId, PhotoStep[]> = {
+  // Same clockwise walkaround as PHOTO_ANGLES (docs → exterior → cabin → engine).
   radcab_default: PHOTO_ANGLES,
   generic_30: PHOTO_ANGLES,
 };

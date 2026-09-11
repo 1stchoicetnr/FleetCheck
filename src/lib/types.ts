@@ -380,7 +380,61 @@ export const ODOMETER_HELPER =
 export const INTERIOR_NIGHT_HELPER =
   "At night, turn the interior lights on before you shoot.";
 
+/**
+ * Default ~30-slot checkout walkaround (Rad Cab + generic_30).
+ *
+ * Physical path a driver walks — do not scatter corners / wheels:
+ *   1–4   Docs from the driver seat: odometer, registration, windshield, radio
+ *   5–8   Start at LF corner; shoot fender + tire + wheel as you stand there
+ *   9     Straight-on front, then walk clockwise
+ *   10–13 RF corner cluster (corner, fender, tire, wheel)
+ *   14    Passenger doors (RAD CAB logo / full panels)
+ *   15–18 RR cluster (quarter, tire, wheel, corner)
+ *   19    Straight-on rear
+ *   20–23 LR cluster (corner, quarter, tire, wheel)
+ *   24    Driver-side doors — back at the start side
+ *   25–29 Interiors: driver door in → rear seats → trunk → passenger
+ *   30    Engine bay last (oil)
+ *
+ * Example JPGs stay keyed by `angle` in photo-examples.ts (old filenames are fine).
+ */
 export const PHOTO_ANGLES: PhotoStep[] = [
+  {
+    angle: "odometer_fuel",
+    label: "Odometer & Fuel",
+    instruction: "Capture mileage, fuel level, and any warning lights on the dash.",
+    icon: "🔢",
+    category: "interior",
+    required: true,
+    helper: ODOMETER_HELPER,
+  },
+  {
+    angle: "registration",
+    label: "Registration & Insurance",
+    instruction: "Clear photo of the registration and insurance documents.",
+    icon: "📄",
+    category: "interior",
+    required: true,
+    helper: REGISTRATION_HELPER,
+  },
+  {
+    angle: "windshield",
+    label: "Windshield",
+    instruction: "From the driver seat — show windshield condition.",
+    icon: "🪟",
+    category: "interior",
+    required: true,
+    helper: INTERIOR_NIGHT_HELPER,
+  },
+  {
+    angle: "radio_climate",
+    label: "Radio & Climate",
+    instruction: "Photograph the radio and climate control panel.",
+    icon: "📻",
+    category: "interior",
+    required: true,
+    helper: INTERIOR_NIGHT_HELPER,
+  },
   {
     angle: "lf_corner",
     label: "Front 3/4 Left",
@@ -414,56 +468,6 @@ export const PHOTO_ANGLES: PhotoStep[] = [
     category: "detail",
     required: true,
     helper: WHEEL_HELPER,
-  },
-  {
-    angle: "driver_doors",
-    label: "Driver Side Doors",
-    instruction: "Capture both driver-side doors — full door panels visible.",
-    icon: "⬅️",
-    category: "exterior",
-    required: true,
-  },
-  {
-    angle: "lr_quarter_panel",
-    label: "LR Quarter Panel",
-    instruction: "Show the left-rear quarter panel condition.",
-    icon: "📐",
-    category: "detail",
-    required: true,
-  },
-  {
-    angle: "lr_tire",
-    label: "LR Tire",
-    instruction: "Show the condition of the left-rear tire.",
-    icon: "🛞",
-    category: "detail",
-    required: true,
-    helper: TIRE_HELPER,
-  },
-  {
-    angle: "lr_wheel",
-    label: "LR Wheel",
-    instruction: "Show the condition of the left-rear wheel and rim.",
-    icon: "⭕",
-    category: "detail",
-    required: true,
-    helper: WHEEL_HELPER,
-  },
-  {
-    angle: "lr_corner",
-    label: "Rear 3/4 Left",
-    instruction: "Show the whole left-rear (LR) of the vehicle.",
-    icon: "↙️",
-    category: "exterior",
-    required: true,
-  },
-  {
-    angle: "rear",
-    label: "Rear",
-    instruction: "Straight-on rear view — show the full rear of the vehicle.",
-    icon: "⬇️",
-    category: "exterior",
-    required: true,
   },
   {
     angle: "front",
@@ -550,6 +554,56 @@ export const PHOTO_ANGLES: PhotoStep[] = [
     required: true,
   },
   {
+    angle: "rear",
+    label: "Rear",
+    instruction: "Straight-on rear view — show the full rear of the vehicle.",
+    icon: "⬇️",
+    category: "exterior",
+    required: true,
+  },
+  {
+    angle: "lr_corner",
+    label: "Rear 3/4 Left",
+    instruction: "Show the whole left-rear (LR) of the vehicle.",
+    icon: "↙️",
+    category: "exterior",
+    required: true,
+  },
+  {
+    angle: "lr_quarter_panel",
+    label: "LR Quarter Panel",
+    instruction: "Show the left-rear quarter panel condition.",
+    icon: "📐",
+    category: "detail",
+    required: true,
+  },
+  {
+    angle: "lr_tire",
+    label: "LR Tire",
+    instruction: "Show the condition of the left-rear tire.",
+    icon: "🛞",
+    category: "detail",
+    required: true,
+    helper: TIRE_HELPER,
+  },
+  {
+    angle: "lr_wheel",
+    label: "LR Wheel",
+    instruction: "Show the condition of the left-rear wheel and rim.",
+    icon: "⭕",
+    category: "detail",
+    required: true,
+    helper: WHEEL_HELPER,
+  },
+  {
+    angle: "driver_doors",
+    label: "Driver Side Doors",
+    instruction: "Capture both driver-side doors — full door panels visible.",
+    icon: "⬅️",
+    category: "exterior",
+    required: true,
+  },
+  {
     angle: "driver_door_in",
     label: "Driver Door — Interior",
     instruction: "Open the driver door and photograph facing in.",
@@ -595,48 +649,12 @@ export const PHOTO_ANGLES: PhotoStep[] = [
     helper: INTERIOR_NIGHT_HELPER,
   },
   {
-    angle: "registration",
-    label: "Registration & Insurance",
-    instruction: "Clear photo of the registration and insurance documents.",
-    icon: "📄",
-    category: "interior",
-    required: true,
-    helper: REGISTRATION_HELPER,
-  },
-  {
     angle: "engine_oil",
     label: "Engine Oil Level",
     instruction: "Show the dipstick with the engine oil level visible.",
     icon: "🛢️",
     category: "detail",
     required: true,
-  },
-  {
-    angle: "odometer_fuel",
-    label: "Odometer & Fuel",
-    instruction: "Capture mileage, fuel level, and any warning lights on the dash.",
-    icon: "🔢",
-    category: "interior",
-    required: true,
-    helper: ODOMETER_HELPER,
-  },
-  {
-    angle: "windshield",
-    label: "Windshield",
-    instruction: "From the driver seat — show windshield condition.",
-    icon: "🪟",
-    category: "interior",
-    required: true,
-    helper: INTERIOR_NIGHT_HELPER,
-  },
-  {
-    angle: "radio_climate",
-    label: "Radio & Climate",
-    instruction: "Photograph the radio and climate control panel.",
-    icon: "📻",
-    category: "interior",
-    required: true,
-    helper: INTERIOR_NIGHT_HELPER,
   },
 ];
 

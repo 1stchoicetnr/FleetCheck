@@ -72,11 +72,20 @@ Open [http://localhost:3000](http://localhost:3000)
 
 ## Policy notes (Rad Cab default checklist)
 
-- ~30 mandatory photos; example angle photos live in `public/photo-examples/`.
+Walkaround order (30 required slots — same list for Rad Cab and other companies):
+
+1. **Docs from the driver seat** — odometer/fuel, registration (date + VIN), windshield, radio/climate
+2. **Clockwise exterior from the LF corner** — LF cluster (corner, fender, tire, wheel) → front → RF cluster → passenger doors → RR cluster → rear → LR cluster → driver-side doors
+3. **Wheels/tires as you pass each corner** (not a separate later block)
+4. **Interior** — driver door in, driver rear, trunk/cargo, passenger rear, passenger front
+5. **Engine bay last** — oil dipstick
+
+- Example angle photos live in `public/photo-examples/` (paths keyed by angle, not step number).
 - Tire tread / wheel-well: hard shots — close enough and well-lit is OK.
 - Registration: office mainly needs date + VIN readable.
 - Dash / odometer: office mainly needs mileage readable.
 - Night interiors: turn the lights on.
+- Camera always opens on the **rear / environment** lens; use **Flip Camera** if you need the front.
 
 ## PWA
 
