@@ -85,8 +85,9 @@ Walkaround order (30 required slots — same list for Rad Cab and other companie
 - Registration: office mainly needs date + VIN readable.
 - Dash / odometer: office mainly needs mileage readable.
 - Night interiors: turn the lights on.
-- Camera always opens on the **rear / environment** lens; use **Flip Camera** if you need the front.
-- **Flashlight** on the live camera (Android Chrome / browsers that expose `torch`). Hidden as unavailable on iOS Safari — use the Camera app flash there.
+- **Take photo** opens the phone’s native rear camera. Live preview is optional. Choose from library is a backup.
+- Live preview stays on the **rear / environment** lens; Flip Camera and Flashlight (Android) are there if you need them.
+- Photos are compressed on the phone (max edge 1920px, JPEG ~0.75) before upload.
 
 ## PWA
 

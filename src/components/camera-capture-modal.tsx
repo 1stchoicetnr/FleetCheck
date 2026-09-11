@@ -16,22 +16,24 @@ import { Button } from "./ui/button";
 import { PhotoFrameGuide } from "./photo-frame-guide";
 import { PhotoExampleThumb } from "./photo-example-image";
 import { PhotoStep } from "@/lib/types";
-import { compressImage } from "@/lib/utils";
+import { compressUploadPhoto, fileToDataUrl } from "@/lib/utils";
 import { checkPhotoQuality, sampleVideoLowLight } from "@/lib/photo-quality";
 import { useDeviceOrientation } from "@/hooks/use-orientation";
 import {
   CameraFacing,
   applyDesiredTorch,
   canUseBrowserCamera,
+  describeGetUserMediaError,
   getSessionCameraFacing,
   getStreamVideoTrack,
   openCameraStream,
   setSessionCameraFacing,
   setTrackTorch,
   trackSupportsTorch,
+  waitForVideoFrame,
 } from "@/lib/camera";
 
-type Phase = "live" | "preview" | "fallback";
+type Phase = "native" | "live" | "preview";
 
 const LIVE_MEDIA_STYLE: React.CSSProperties = {
   width: "100vw",
@@ -281,6 +283,7 @@ export function CameraCaptureModal({
   const videoRef = useRef<HTMLVideoElement>(null);
   const previewRef = useRef<HTMLImageElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const prevLandscapeRef = useRef<boolean | null>(null);
   /** Session torch intent — survives orientation / stream restarts until close or toggle-off. */
@@ -289,7 +292,8 @@ export function CameraCaptureModal({
   const startCameraRef = useRef<() => Promise<void>>(async () => {});
 
   const [mounted, setMounted] = useState(false);
-  const [phase, setPhase] = useState<Phase>("live");
+  const [phase, setPhase] = useState<Phase>("native");
+  const [liveError, setLiveError] = useState("");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [qualityPassed, setQualityPassed] = useState(true);
   const [qualityMessages, setQualityMessages] = useState<string[]>([]);
@@ -304,9 +308,7 @@ export function CameraCaptureModal({
   const [facingMode, setFacingMode] = useState<CameraFacing>("environment");
   const [torchOn, setTorchOn] = useState(false);
   const [torchSupported, setTorchSupported] = useState(false);
-  const captureAttr = facingMode;
   const showLandscapeTip = photoStep.category === "exterior";
-  const liveCameraAvailable = canUseBrowserCamera();
 
   useEffect(() => setMounted(true), []);
 
@@ -392,34 +394,28 @@ export function CameraCaptureModal({
     }, 400);
   }, []);
 
-  const showPreview = async (dataUrl: string) => {
-    const compressed = await compressImage(dataUrl, 1600, 0.82);
+  const finishCapture = async (dataUrl: string) => {
+    const compressed = await compressUploadPhoto(dataUrl);
     setPreviewUrl(compressed);
     setPhase("preview");
     stopStream();
+    setAutoAccepting(true);
+    setQualityPassed(true);
     setCheckingQuality(true);
-    setQualityMessages([]);
-    setQualityWarnings([]);
     const result = await checkPhotoQuality(compressed, photoStep.category);
-    setQualityPassed(result.passed);
-    setQualityMessages(result.messages);
-    setQualityWarnings(result.warnings);
+    setQualityWarnings(result.passed ? result.warnings : result.messages);
     setCheckingQuality(false);
     requestAnimationFrame(syncPreviewLayout);
-
-    if (result.passed) {
-      setAutoAccepting(true);
-      setTimeout(() => {
-        onAccept(compressed);
-      }, 750);
-    }
+    window.setTimeout(() => onAccept(compressed), 450);
   };
 
   const startCamera = useCallback(async () => {
     stopStream();
+    setLiveError("");
 
-    if (!liveCameraAvailable) {
-      setPhase("fallback");
+    if (!canUseBrowserCamera()) {
+      setLiveError(describeGetUserMediaError(undefined));
+      setPhase("native");
       return;
     }
 
@@ -444,31 +440,34 @@ export function CameraCaptureModal({
       });
 
       await restoreTorchOnStream(stream);
-    } catch {
-      setPhase("fallback");
+    } catch (err) {
+      setLiveError(describeGetUserMediaError(err));
+      setPhase("native");
       setTorchSupported(false);
       setTorchOn(false);
     }
-  }, [liveCameraAvailable, restoreTorchOnStream, stopStream, syncLiveLayout]);
+  }, [restoreTorchOnStream, stopStream, syncLiveLayout]);
 
   startCameraRef.current = startCamera;
 
   useEffect(() => {
     if (!open) {
       stopStream({ resetTorch: true });
-      setPhase("live");
+      setPhase("native");
       setPreviewUrl(null);
       setQualityPassed(true);
       setQualityMessages([]);
       setQualityWarnings([]);
       setAutoAccepting(false);
       setLiveLowLight(false);
+      setLiveError("");
       return;
     }
     setFacingMode(getSessionCameraFacing());
     setPreviewUrl(null);
     setAutoAccepting(false);
     setLiveLowLight(false);
+    setLiveError("");
     startCamera();
     return stopStream;
   }, [open, photoStep.angle, startCamera, stopStream]);
@@ -542,32 +541,36 @@ export function CameraCaptureModal({
     const video = videoRef.current;
     if (!video || capturing) return;
     setCapturing(true);
+    setLiveError("");
     try {
+      const ready = await waitForVideoFrame(video);
+      if (!ready) {
+        setLiveError("Couldn't capture a frame. Use Take photo instead.");
+        return;
+      }
       const canvas = document.createElement("canvas");
-      canvas.width = video.videoWidth || 1280;
-      canvas.height = video.videoHeight || 720;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
       const ctx = canvas.getContext("2d")!;
       if (facingMode === "user") {
         ctx.translate(canvas.width, 0);
         ctx.scale(-1, 1);
       }
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      await showPreview(canvas.toDataURL("image/jpeg", 0.92));
+      await finishCapture(canvas.toDataURL("image/jpeg", 0.92));
     } finally {
       setCapturing(false);
     }
   };
 
-  const handleNativeFile = async (file: File) => {
+  const handlePickedFile = async (file: File) => {
     setCapturing(true);
+    setLiveError("");
     try {
-      const reader = new FileReader();
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-      await showPreview(dataUrl);
+      const dataUrl = await fileToDataUrl(file);
+      await finishCapture(dataUrl);
+    } catch {
+      setLiveError("Couldn't read that photo. Try Take photo again.");
     } finally {
       setCapturing(false);
     }
@@ -579,12 +582,8 @@ export function CameraCaptureModal({
     setQualityMessages([]);
     setQualityWarnings([]);
     setAutoAccepting(false);
-    if (liveCameraAvailable) {
-      setPhase("live");
-      startCamera();
-    } else {
-      setPhase("fallback");
-    }
+    setPhase("native");
+    fileInputRef.current?.click();
   };
 
   useEffect(() => {
@@ -618,6 +617,7 @@ export function CameraCaptureModal({
       ref={viewportRef}
       className="camera-viewport"
       data-camera-facing={facingMode}
+      data-capture-phase={phase}
       data-torch-supported={torchSupported ? "true" : "false"}
       data-torch-on={torchOn ? "true" : "false"}
     >
@@ -662,13 +662,22 @@ export function CameraCaptureModal({
           />
           {checkingQuality && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10">
-              <p className="text-white text-lg font-medium">Checking photo quality...</p>
+              <p className="text-white text-lg font-medium">Saving photo…</p>
             </div>
           )}
         </>
       )}
 
-      {phase === "fallback" && !previewUrl && (
+      {phase === "live" && liveError && (
+        <div className="absolute left-3 right-3 z-30 top-[max(5.5rem,env(safe-area-inset-top))]">
+          <div className="flex items-start gap-2 mx-auto max-w-sm bg-red-950/90 backdrop-blur-sm rounded-xl px-4 py-2.5 border border-red-500/40">
+            <AlertTriangle className="h-4 w-4 text-red-300 flex-shrink-0 mt-0.5" />
+            <p className="text-red-50 text-sm leading-snug">{liveError}</p>
+          </div>
+        </div>
+      )}
+
+      {phase === "native" && !previewUrl && (
         <>
           <div className="absolute inset-0 bg-[#060a08] z-0" />
           <PhotoFrameGuide
@@ -701,12 +710,14 @@ export function CameraCaptureModal({
           )}
 
           <div className="absolute bottom-0 left-0 right-0 z-30 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-8 px-4 bg-gradient-to-t from-black/95 via-black/70 to-transparent">
+            {liveError && (
+              <p className="text-center text-red-200 text-sm font-medium mb-3 px-2">
+                {liveError}
+              </p>
+            )}
             <p className="text-center text-emerald-400/50 text-xs mb-3">
-              Match the green rectangle, then tap below
+              Match the example, then take the photo
             </p>
-            <div className="flex justify-center mb-3">
-              <FlipCameraButton facingMode={facingMode} onFlip={flipCamera} />
-            </div>
             <Button
               size="xl"
               className="w-full max-w-lg mx-auto h-16 text-lg bg-brand-600 shadow-lg"
@@ -714,22 +725,22 @@ export function CameraCaptureModal({
               disabled={capturing}
             >
               <Camera className="h-6 w-6 mr-2" />
-              Open Camera App
+              Take photo
             </Button>
-            {liveCameraAvailable && (
-              <button
-                type="button"
-                onClick={startCamera}
-                className="block mx-auto mt-4 text-brand-300 text-sm underline"
-              >
-                Try live camera
-              </button>
-            )}
-            {!liveCameraAvailable && (
-              <p className="text-center text-white/35 text-xs mt-3">
-                Live preview requires HTTPS — native camera works on Wi‑Fi
-              </p>
-            )}
+            <button
+              type="button"
+              onClick={() => void startCamera()}
+              className="block mx-auto mt-4 text-brand-200 text-sm underline"
+            >
+              Live preview
+            </button>
+            <button
+              type="button"
+              onClick={() => galleryInputRef.current?.click()}
+              className="block mx-auto mt-3 text-white/45 text-sm underline"
+            >
+              Choose from library
+            </button>
           </div>
         </>
       )}
@@ -780,10 +791,8 @@ export function CameraCaptureModal({
       )}
 
       {phase === "preview" &&
-        qualityPassed &&
         qualityWarnings.length > 0 &&
-        !checkingQuality &&
-        !autoAccepting && (
+        !checkingQuality && (
           <div className="absolute top-[max(4.5rem,env(safe-area-inset-top))] left-3 right-3 z-20 bg-amber-950/85 text-amber-100 rounded-xl px-4 py-3 flex items-start gap-3 shadow-xl border border-amber-500/25">
             <AlertTriangle className="h-5 w-5 flex-shrink-0 mt-0.5 text-amber-400" />
             <div>
@@ -853,6 +862,13 @@ export function CameraCaptureModal({
               Capture
             </p>
           )}
+          <button
+            type="button"
+            onClick={openNativeCamera}
+            className="text-white/70 text-xs underline mt-1"
+          >
+            Use phone camera instead
+          </button>
         </div>
       )}
 
@@ -880,11 +896,22 @@ export function CameraCaptureModal({
         ref={fileInputRef}
         type="file"
         accept="image/*"
-        capture={captureAttr}
+        capture="environment"
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0];
-          if (file) handleNativeFile(file);
+          if (file) void handlePickedFile(file);
+          e.target.value = "";
+        }}
+      />
+      <input
+        ref={galleryInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) void handlePickedFile(file);
           e.target.value = "";
         }}
       />

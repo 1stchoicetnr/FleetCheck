@@ -44,6 +44,23 @@ export async function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
+/** Longest edge and JPEG quality for checkout / check-in uploads. */
+export const PHOTO_UPLOAD_MAX_EDGE = 1920;
+export const PHOTO_UPLOAD_JPEG_QUALITY = 0.75;
+
+export async function compressUploadPhoto(dataUrl: string): Promise<string> {
+  return compressImage(
+    dataUrl,
+    PHOTO_UPLOAD_MAX_EDGE,
+    PHOTO_UPLOAD_JPEG_QUALITY
+  );
+}
+
+export async function compressImageFile(file: File): Promise<string> {
+  const dataUrl = await fileToDataUrl(file);
+  return compressUploadPhoto(dataUrl);
+}
+
 export function getImageDimensions(
   dataUrl: string
 ): Promise<{ width: number; height: number }> {
@@ -75,8 +92,8 @@ export function fitInBox(
 
 export function compressImage(
   dataUrl: string,
-  maxDimension = 1600,
-  quality = 0.7
+  maxDimension = PHOTO_UPLOAD_MAX_EDGE,
+  quality = PHOTO_UPLOAD_JPEG_QUALITY
 ): Promise<string> {
   return new Promise((resolve) => {
     const img = new Image();
@@ -95,6 +112,7 @@ export function compressImage(
       ctx.drawImage(img, 0, 0, width, height);
       resolve(canvas.toDataURL("image/jpeg", quality));
     };
+    img.onerror = () => resolve(dataUrl);
     img.src = dataUrl;
   });
 }

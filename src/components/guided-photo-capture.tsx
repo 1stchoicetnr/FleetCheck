@@ -1,12 +1,20 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Camera, Check, ChevronLeft, ChevronRight, RotateCw, Smartphone } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import {
+  Camera,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Image as ImageIcon,
+  RotateCw,
+  Video,
+} from "lucide-react";
 import { Button } from "./ui/button";
 import { ProgressBar } from "./ui/progress-bar";
 import { CameraCaptureModal } from "./camera-capture-modal";
 import { PhotoExampleCard } from "./photo-example-image";
-import { canUseBrowserCamera } from "@/lib/camera";
+import { compressImageFile } from "@/lib/utils";
 import { PHOTO_ANGLES, PhotoAngle, PhotoStep } from "@/lib/types";
 
 interface GuidedPhotoCaptureProps {
@@ -34,7 +42,8 @@ export function GuidedPhotoCapture({
 }: GuidedPhotoCaptureProps) {
   const requiredPhotos = steps.filter((p) => p.required);
   const acceptedCount = requiredPhotos.filter((p) => photos[p.angle]).length;
-  const liveCamera = canUseBrowserCamera();
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
 
   const firstIncompleteIndex = useMemo(() => {
     const idx = requiredPhotos.findIndex((p) => !photos[p.angle]);
@@ -43,6 +52,8 @@ export function GuidedPhotoCapture({
 
   const [viewIndex, setViewIndex] = useState(0);
   const [cameraOpen, setCameraOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [pickError, setPickError] = useState("");
 
   const currentIndex = testingBrowseMode
     ? viewIndex
@@ -57,16 +68,27 @@ export function GuidedPhotoCapture({
     if (!current) return;
     onAccept(current.angle, dataUrl);
     setCameraOpen(false);
+    setPickError("");
 
     if (isLastStep) {
       setTimeout(() => onAllComplete(), 400);
     } else if (!testingBrowseMode) {
-      setTimeout(() => {
-        setViewIndex(currentIndex + 1);
-        setCameraOpen(true);
-      }, 350);
+      setTimeout(() => setViewIndex(currentIndex + 1), 200);
     } else {
       setTimeout(() => setViewIndex(currentIndex + 1), 300);
+    }
+  };
+
+  const handlePickedFile = async (file: File) => {
+    setBusy(true);
+    setPickError("");
+    try {
+      const compressed = await compressImageFile(file);
+      handleAccept(compressed);
+    } catch {
+      setPickError("Couldn't use that photo. Try Take photo again.");
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -78,7 +100,17 @@ export function GuidedPhotoCapture({
     }
   };
 
-  const openCamera = () => {
+  const openNativeCamera = () => {
+    if (!current || value || busy) return;
+    cameraInputRef.current?.click();
+  };
+
+  const openGallery = () => {
+    if (!current || value || busy) return;
+    galleryInputRef.current?.click();
+  };
+
+  const openLivePreview = () => {
     if (!current || value) return;
     setCameraOpen(true);
   };
@@ -86,7 +118,7 @@ export function GuidedPhotoCapture({
   const retakeAccepted = () => {
     if (!current) return;
     onClear(current.angle);
-    setCameraOpen(true);
+    setPickError("");
   };
 
   if (!current) return null;
@@ -169,46 +201,48 @@ export function GuidedPhotoCapture({
               category={current.category}
             />
             <p className="text-center text-xs text-gray-500">
-              {testingBrowseMode
-                ? "Example above — open camera only if you want to test capture"
-                : "Open the camera to see the green rectangle guide while you shoot"}
+              Match the example, then take the photo with your phone camera
             </p>
 
-            {!testingBrowseMode && (
-              <>
-                <button
-                  type="button"
-                  onClick={openCamera}
-                  className="w-full h-16 rounded-2xl bg-brand-600 hover:bg-brand-500 active:scale-[0.98] transition-all shadow-lg flex items-center justify-center gap-3 text-white font-bold text-lg"
-                >
-                  <Camera className="h-7 w-7" />
-                  {liveCamera ? "Open Camera" : "Open Camera App"}
-                </button>
-                {!liveCamera && (
-                  <p className="text-center text-gray-500 text-xs flex items-center justify-center gap-1.5">
-                    <Smartphone className="h-3.5 w-3.5" />
-                    Uses your phone&apos;s native camera on Wi‑Fi
-                  </p>
-                )}
-              </>
+            {pickError && (
+              <p className="text-center text-sm text-red-300 font-medium">
+                {pickError}
+              </p>
             )}
 
             {testingBrowseMode && (
-              <div className="space-y-2">
-                <Button size="lg" className="w-full" onClick={advanceWithoutPhoto}>
-                  {isLastStep ? testingFinishLabel : "Next step (no photo)"}
-                  <ChevronRight className="h-5 w-5 ml-1" />
-                </Button>
-                <button
-                  type="button"
-                  onClick={openCamera}
-                  className="w-full h-12 rounded-xl border border-gray-600 text-gray-300 text-sm font-medium hover:bg-gray-800 transition-colors flex items-center justify-center gap-2"
-                >
-                  <Camera className="h-4 w-4" />
-                  Try camera anyway
-                </button>
-              </div>
+              <Button size="lg" className="w-full" onClick={advanceWithoutPhoto}>
+                {isLastStep ? testingFinishLabel : "Next step (no photo)"}
+                <ChevronRight className="h-5 w-5 ml-1" />
+              </Button>
             )}
+
+            <button
+              type="button"
+              onClick={openNativeCamera}
+              disabled={busy}
+              className="w-full h-16 rounded-2xl bg-brand-600 hover:bg-brand-500 active:scale-[0.98] transition-all shadow-lg flex items-center justify-center gap-3 text-white font-bold text-lg disabled:opacity-60"
+            >
+              <Camera className="h-7 w-7" />
+              {busy ? "Saving photo…" : "Take photo"}
+            </button>
+            <button
+              type="button"
+              onClick={openLivePreview}
+              className="w-full h-12 rounded-xl border border-gray-600 text-gray-200 text-sm font-medium hover:bg-gray-800 transition-colors flex items-center justify-center gap-2"
+            >
+              <Video className="h-4 w-4" />
+              Live preview
+            </button>
+            <button
+              type="button"
+              onClick={openGallery}
+              disabled={busy}
+              className="w-full text-gray-400 text-sm underline py-1 flex items-center justify-center gap-1.5"
+            >
+              <ImageIcon className="h-3.5 w-3.5" />
+              Choose from library
+            </button>
           </div>
         )}
       </div>
@@ -271,6 +305,30 @@ export function GuidedPhotoCapture({
           {allCompleteMessage}
         </p>
       )}
+
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) void handlePickedFile(file);
+          e.target.value = "";
+        }}
+      />
+      <input
+        ref={galleryInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) void handlePickedFile(file);
+          e.target.value = "";
+        }}
+      />
 
       <CameraCaptureModal
         open={cameraOpen}

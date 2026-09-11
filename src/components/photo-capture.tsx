@@ -3,7 +3,7 @@
 import { useRef } from "react";
 import { Camera, Check, RotateCcw } from "lucide-react";
 import { Button } from "./ui/button";
-import { compressImage } from "@/lib/utils";
+import { compressImageFile } from "@/lib/utils";
 
 interface PhotoCaptureProps {
   label: string;
@@ -16,12 +16,8 @@ export function PhotoCapture({ label, hint, value, onCapture }: PhotoCaptureProp
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = async (file: File) => {
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const compressed = await compressImage(reader.result as string);
-      onCapture(compressed);
-    };
-    reader.readAsDataURL(file);
+    const compressed = await compressImageFile(file);
+    onCapture(compressed);
   };
 
   return (

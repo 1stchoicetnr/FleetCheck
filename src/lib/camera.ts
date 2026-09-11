@@ -84,6 +84,37 @@ export function trackSupportsTorch(track: MediaStreamTrack | null): boolean {
   }
 }
 
+export async function waitForVideoFrame(
+  video: HTMLVideoElement,
+  timeoutMs = 2500
+): Promise<boolean> {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+      return true;
+    }
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+  }
+  return video.videoWidth > 0 && video.videoHeight > 0;
+}
+
+export function describeGetUserMediaError(err: unknown): string {
+  const name = err instanceof DOMException ? err.name : "";
+  if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+    return "Camera permission denied. Use Take photo to open your phone camera.";
+  }
+  if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+    return "No camera found. Use Take photo instead.";
+  }
+  if (name === "NotReadableError" || name === "TrackStartError") {
+    return "Camera is in use by another app. Close it, or use Take photo.";
+  }
+  if (typeof window !== "undefined" && !canUseBrowserCamera()) {
+    return "Live preview needs HTTPS. Use Take photo instead.";
+  }
+  return "Live preview couldn't start. Use Take photo instead.";
+}
+
 /** Re-apply session torch after a stream restart (orientation, flip, track ended). */
 export async function applyDesiredTorch(
   track: MediaStreamTrack | null,
