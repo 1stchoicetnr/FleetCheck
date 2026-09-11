@@ -543,6 +543,9 @@ export function CameraCaptureModal({
             <p className="text-center text-emerald-400/50 text-xs mb-3">
               Match the green rectangle, then tap below
             </p>
+            <div className="flex justify-center mb-3">
+              <FlipCameraButton facingMode={facingMode} onFlip={flipCamera} />
+            </div>
             <Button
               size="xl"
               className="w-full max-w-lg mx-auto h-16 text-lg bg-brand-600 shadow-lg"
