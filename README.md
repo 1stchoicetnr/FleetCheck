@@ -7,7 +7,7 @@ A professional, mobile-first internal web app for vehicle documentation, damage 
 **Driver (phone)**  
 Start a Checkout Report: pick company → unit # → confirm year/make/model → enter odometer, driver, and dispatcher. Then walk the guided photo checklist (one slot at a time, camera, retake, progress). Submit when every required slot is filled. The report is saved **Complete** with a timestamp on the **shared server** so office can see it on another phone.
 
-The older **Check In / Out** shift flow (mileage, fuel, signature, known issues) still uses this browser’s IndexedDB only.
+The older **Check In / Out** shift flow (mileage, fuel, signature, Slack PDF) is **retired on this preview**. Those reports never wrote to Neon, so they never appeared in Office. `/check-in` now redirects to Checkout Report.
 
 **Office (tablet/desktop or phone)**  
 Unlock with the office PIN, list **shared** reports (filter by company, unit, status), open the gallery + metadata, compare side-by-side against the last 1–2 reports for the **same unit**, then mark **PASS**, **Conditional** (retake list), or **FAIL**.
@@ -48,7 +48,8 @@ Or locally: `npm run dev`, then Chrome + a Chrome Incognito window against `http
 
 Architecture is `companies (tenants) → units/vehicles → checkout reports`.
 
-- **Rad Cab** is seeded on the **server** as the first company (Units 12, 18, 23) with two prior PASS reports on Unit 12 and one pending on Unit 18.
+- **Rad Cab** is seeded on the **server** as the first company (Units 12, 18, 23, and plate CXB9373) with two prior PASS reports on Unit 12 and one pending on Unit 18.
+- Dispatchers can **add any plate / unit** on the Checkout start screen. That van is saved to Neon so Office can list it even if it was never pre-seeded.
 - Also seeded: **1st Choice Recovery**, **Pinkie Tow**, **Other fleets**.
 - Do not add RDN / 1st Choice billing in this app.
 
@@ -65,10 +66,13 @@ Open [http://localhost:3000](http://localhost:3000)
 
 | Button | Role | Lands on |
 |--------|------|----------|
+| **Start Checkout Report** | Driver | Checkout Report start (use this) |
 | Driver | Driver | Checkout Report start |
 | Office | Management | Office review (PIN 1357) |
 | Tech | Tech | Dashboard (office + maintenance) |
 | Super Admin | Super Admin | Full access |
+
+`/check-in` redirects to `/checkout`. Office lists **every** Neon checkout report — not only seeded units 12/18/23.
 
 ## Policy notes (Rad Cab default checklist)
 

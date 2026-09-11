@@ -2,8 +2,9 @@ import { mkdir, readFile, writeFile } from "fs/promises";
 import path from "path";
 import { SEEDED_COMPANIES } from "@/lib/companies";
 import { CheckoutReport } from "@/lib/types";
+import { normalizePlate } from "@/lib/utils";
 import { sharedSeedReports, sharedSeedVehicles } from "./seed-shared";
-import { SharedStore, SharedVehicle } from "./shared-types";
+import { SharedStore, SharedVehicle, UpsertVehicleInput } from "./shared-types";
 
 const STORE_PATH = path.join(process.cwd(), ".data", "shared.json");
 
@@ -39,9 +40,18 @@ async function loadAndSeedUnlocked(): Promise<SharedStore> {
     store.companies = SEEDED_COMPANIES;
     changed = true;
   }
+  const seedVehicles = sharedSeedVehicles();
   if (store.vehicles.length === 0) {
-    store.vehicles = sharedSeedVehicles();
+    store.vehicles = seedVehicles;
     changed = true;
+  } else {
+    const have = new Set(store.vehicles.map((v) => v.id));
+    for (const vehicle of seedVehicles) {
+      if (!have.has(vehicle.id)) {
+        store.vehicles.push(vehicle);
+        changed = true;
+      }
+    }
   }
   if (store.reports.length === 0) {
     store.reports = sharedSeedReports();
@@ -70,6 +80,54 @@ export async function localListVehicles(companyId?: string): Promise<SharedVehic
 export async function localGetVehicle(id: string): Promise<SharedVehicle | undefined> {
   const store = await localEnsureSeed();
   return store.vehicles.find((v) => v.id === id);
+}
+
+export async function localFindVehicleByPlate(
+  companyId: string,
+  plate: string
+): Promise<SharedVehicle | undefined> {
+  const store = await localEnsureSeed();
+  const wanted = normalizePlate(plate);
+  return store.vehicles.find(
+    (v) =>
+      v.companyId === companyId &&
+      (normalizePlate(v.plate) === wanted || normalizePlate(v.unitNumber) === wanted)
+  );
+}
+
+export async function localUpsertVehicle(
+  input: UpsertVehicleInput
+): Promise<SharedVehicle> {
+  return enqueueWrite(async () => {
+    const store = await loadAndSeedUnlocked();
+    const plate = normalizePlate(input.plate);
+    const existing = store.vehicles.find(
+      (v) =>
+        v.companyId === input.companyId &&
+        (normalizePlate(v.plate) === plate ||
+          normalizePlate(v.unitNumber) === plate)
+    );
+    const now = new Date().toISOString();
+    const vehicle: SharedVehicle = {
+      id: existing?.id ?? `vehicle-${input.companyId}-${plate.toLowerCase()}`,
+      companyId: input.companyId,
+      unitNumber: (input.unitNumber || existing?.unitNumber || plate).trim(),
+      plate,
+      make: input.make.trim(),
+      model: input.model.trim(),
+      year: Number(input.year),
+      lastMileage: existing?.lastMileage,
+      createdAt: existing?.createdAt ?? now,
+    };
+    if (existing) {
+      const idx = store.vehicles.findIndex((v) => v.id === existing.id);
+      store.vehicles[idx] = vehicle;
+    } else {
+      store.vehicles.push(vehicle);
+    }
+    await writeStore(store);
+    return vehicle;
+  });
 }
 
 export async function localListReports(): Promise<CheckoutReport[]> {

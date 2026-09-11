@@ -7,9 +7,10 @@ import {
   PhotoAngle,
   VehiclePhoto,
 } from "@/lib/types";
+import { normalizePlate } from "@/lib/utils";
 import { getDatabaseUrl } from "./shared-config";
 import { sharedSeedReports, sharedSeedVehicles } from "./seed-shared";
-import { SharedVehicle } from "./shared-types";
+import { SharedVehicle, UpsertVehicleInput } from "./shared-types";
 
 function sqlClient() {
   const url = getDatabaseUrl();
@@ -22,6 +23,7 @@ type ReportRow = {
   company_id: string;
   vehicle_id: string;
   unit_number: string;
+  plate: string | null;
   year: number;
   make: string;
   model: string;
@@ -48,6 +50,7 @@ function rowToReport(row: ReportRow): CheckoutReport {
     companyId: row.company_id,
     vehicleId: row.vehicle_id,
     unitNumber: row.unit_number,
+    plate: row.plate ?? undefined,
     year: Number(row.year),
     make: row.make,
     model: row.model,
@@ -128,27 +131,25 @@ export async function pgMigrateAndSeed(): Promise<void> {
   await sql`CREATE INDEX IF NOT EXISTS checkout_reports_vehicle_idx ON checkout_reports (vehicle_id)`;
   await sql`CREATE INDEX IF NOT EXISTS checkout_reports_company_idx ON checkout_reports (company_id)`;
   await sql`CREATE INDEX IF NOT EXISTS checkout_reports_review_idx ON checkout_reports (review_status)`;
+  await sql`ALTER TABLE checkout_reports ADD COLUMN IF NOT EXISTS plate TEXT`;
 
-  const companies = await sql`SELECT id FROM companies LIMIT 1`;
-  if (companies.length === 0) {
-    for (const company of SEEDED_COMPANIES) {
-      await sql`
-        INSERT INTO companies (id, name, slug, checklist_id, created_at)
-        VALUES (${company.id}, ${company.name}, ${company.slug}, ${company.checklistId}, ${company.createdAt})
-        ON CONFLICT (id) DO NOTHING
-      `;
-    }
-    for (const vehicle of sharedSeedVehicles()) {
-      await sql`
-        INSERT INTO vehicles (id, company_id, unit_number, plate, make, model, year, last_mileage, created_at)
-        VALUES (
-          ${vehicle.id}, ${vehicle.companyId}, ${vehicle.unitNumber}, ${vehicle.plate},
-          ${vehicle.make}, ${vehicle.model}, ${vehicle.year}, ${vehicle.lastMileage ?? null},
-          ${vehicle.createdAt}
-        )
-        ON CONFLICT (id) DO NOTHING
-      `;
-    }
+  for (const company of SEEDED_COMPANIES) {
+    await sql`
+      INSERT INTO companies (id, name, slug, checklist_id, created_at)
+      VALUES (${company.id}, ${company.name}, ${company.slug}, ${company.checklistId}, ${company.createdAt})
+      ON CONFLICT (id) DO NOTHING
+    `;
+  }
+  for (const vehicle of sharedSeedVehicles()) {
+    await sql`
+      INSERT INTO vehicles (id, company_id, unit_number, plate, make, model, year, last_mileage, created_at)
+      VALUES (
+        ${vehicle.id}, ${vehicle.companyId}, ${vehicle.unitNumber}, ${vehicle.plate},
+        ${vehicle.make}, ${vehicle.model}, ${vehicle.year}, ${vehicle.lastMileage ?? null},
+        ${vehicle.createdAt}
+      )
+      ON CONFLICT (id) DO NOTHING
+    `;
   }
 
   migrated = true;
@@ -184,25 +185,10 @@ export async function pgListVehicles(companyId?: string): Promise<SharedVehicle[
         SELECT * FROM vehicles WHERE company_id = ${companyId} ORDER BY unit_number
       `
     : await sql`SELECT * FROM vehicles ORDER BY unit_number`;
-  return rows.map((row) => ({
-    id: String(row.id),
-    companyId: String(row.company_id),
-    unitNumber: String(row.unit_number),
-    plate: String(row.plate),
-    make: String(row.make),
-    model: String(row.model),
-    year: Number(row.year),
-    lastMileage: row.last_mileage == null ? undefined : Number(row.last_mileage),
-    createdAt: new Date(String(row.created_at)).toISOString(),
-  }));
+  return rows.map((row) => mapVehicleRow(row));
 }
 
-export async function pgGetVehicle(id: string): Promise<SharedVehicle | undefined> {
-  await pgMigrateAndSeed();
-  const sql = sqlClient();
-  const rows = await sql`SELECT * FROM vehicles WHERE id = ${id} LIMIT 1`;
-  const row = rows[0];
-  if (!row) return undefined;
+function mapVehicleRow(row: Record<string, unknown>): SharedVehicle {
   return {
     id: String(row.id),
     companyId: String(row.company_id),
@@ -214,6 +200,69 @@ export async function pgGetVehicle(id: string): Promise<SharedVehicle | undefine
     lastMileage: row.last_mileage == null ? undefined : Number(row.last_mileage),
     createdAt: new Date(String(row.created_at)).toISOString(),
   };
+}
+
+export async function pgGetVehicle(id: string): Promise<SharedVehicle | undefined> {
+  await pgMigrateAndSeed();
+  const sql = sqlClient();
+  const rows = await sql`SELECT * FROM vehicles WHERE id = ${id} LIMIT 1`;
+  const row = rows[0];
+  if (!row) return undefined;
+  return mapVehicleRow(row);
+}
+
+export async function pgFindVehicleByPlate(
+  companyId: string,
+  plate: string
+): Promise<SharedVehicle | undefined> {
+  await pgMigrateAndSeed();
+  const sql = sqlClient();
+  const wanted = normalizePlate(plate);
+  const rows = await sql`
+    SELECT * FROM vehicles WHERE company_id = ${companyId}
+  `;
+  const row = rows.find(
+    (item) =>
+      normalizePlate(String(item.plate)) === wanted ||
+      normalizePlate(String(item.unit_number)) === wanted
+  );
+  return row ? mapVehicleRow(row) : undefined;
+}
+
+export async function pgUpsertVehicle(
+  input: UpsertVehicleInput
+): Promise<SharedVehicle> {
+  await pgMigrateAndSeed();
+  const plate = normalizePlate(input.plate);
+  const existing = await pgFindVehicleByPlate(input.companyId, plate);
+  const now = new Date().toISOString();
+  const vehicle: SharedVehicle = {
+    id: existing?.id ?? `vehicle-${input.companyId}-${plate.toLowerCase()}`,
+    companyId: input.companyId,
+    unitNumber: (input.unitNumber || existing?.unitNumber || plate).trim(),
+    plate,
+    make: input.make.trim(),
+    model: input.model.trim(),
+    year: Number(input.year),
+    lastMileage: existing?.lastMileage,
+    createdAt: existing?.createdAt ?? now,
+  };
+  const sql = sqlClient();
+  await sql`
+    INSERT INTO vehicles (id, company_id, unit_number, plate, make, model, year, last_mileage, created_at)
+    VALUES (
+      ${vehicle.id}, ${vehicle.companyId}, ${vehicle.unitNumber}, ${vehicle.plate},
+      ${vehicle.make}, ${vehicle.model}, ${vehicle.year}, ${vehicle.lastMileage ?? null},
+      ${vehicle.createdAt}
+    )
+    ON CONFLICT (id) DO UPDATE SET
+      unit_number = EXCLUDED.unit_number,
+      plate = EXCLUDED.plate,
+      make = EXCLUDED.make,
+      model = EXCLUDED.model,
+      year = EXCLUDED.year
+  `;
+  return vehicle;
 }
 
 export async function pgListReports(): Promise<CheckoutReport[]> {
@@ -238,12 +287,13 @@ async function upsertReportRow(report: CheckoutReport): Promise<void> {
   const sql = sqlClient();
   await sql`
     INSERT INTO checkout_reports (
-      id, company_id, vehicle_id, unit_number, year, make, model, odometer,
+      id, company_id, vehicle_id, unit_number, plate, year, make, model, odometer,
       driver_name, dispatcher_name, type, status, completed_at, review_status,
       review_notes, new_damage_notes, retake_angles, reviewed_at, reviewed_by,
       flagged, photos, created_at
     ) VALUES (
       ${report.id}, ${report.companyId}, ${report.vehicleId}, ${report.unitNumber},
+      ${report.plate ?? null},
       ${report.year}, ${report.make}, ${report.model}, ${report.odometer},
       ${report.driverName}, ${report.dispatcherName}, ${report.type}, ${report.status},
       ${report.completedAt}, ${report.reviewStatus}, ${report.reviewNotes ?? null},
@@ -260,7 +310,8 @@ async function upsertReportRow(report: CheckoutReport): Promise<void> {
       reviewed_by = EXCLUDED.reviewed_by,
       flagged = EXCLUDED.flagged,
       photos = EXCLUDED.photos,
-      odometer = EXCLUDED.odometer
+      odometer = EXCLUDED.odometer,
+      plate = EXCLUDED.plate
   `;
   await sql`
     UPDATE vehicles SET last_mileage = ${report.odometer} WHERE id = ${report.vehicleId}

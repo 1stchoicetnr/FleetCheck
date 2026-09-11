@@ -340,6 +340,19 @@ async function ensureRadCabUnits(db: IDBPDatabase<FleetCheckDB>): Promise<void> 
       qrCode: "FC-RC0018",
       createdAt: now,
     },
+    {
+      id: "vehicle-radcab-cxb9373",
+      fleetId: taxiFleet.id,
+      companyId: RAD_CAB_COMPANY_ID,
+      unitNumber: "CXB9373",
+      plate: "CXB9373",
+      make: "Dodge",
+      model: "Grand Caravan",
+      year: 2011,
+      status: "ready",
+      qrCode: "FC-CXB9373",
+      createdAt: now,
+    },
   ];
 
   for (const unit of units) {

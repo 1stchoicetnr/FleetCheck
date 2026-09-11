@@ -31,6 +31,7 @@ export async function POST(req: Request) {
       companyId?: string;
       vehicleId?: string;
       unitNumber?: string;
+      plate?: string;
       year?: number;
       make?: string;
       model?: string;
@@ -59,6 +60,7 @@ export async function POST(req: Request) {
       companyId: body.companyId,
       vehicleId: body.vehicleId,
       unitNumber: body.unitNumber,
+      plate: body.plate,
       year: Number(body.year),
       make: body.make,
       model: body.model,

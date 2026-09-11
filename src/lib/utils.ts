@@ -24,9 +24,22 @@ export function formatMileage(miles: number): string {
   return miles.toLocaleString("en-US") + " mi";
 }
 
+export function normalizePlate(plate: string): string {
+  return plate.replace(/[\s-]/g, "").toUpperCase();
+}
+
 export function formatUnitLabel(unitNumber?: string, plate?: string): string {
-  if (unitNumber?.trim()) return `Unit ${unitNumber.trim()}`;
-  if (plate?.trim()) return plate.trim();
+  const unit = unitNumber?.trim();
+  const p = plate?.trim();
+  if (
+    unit &&
+    p &&
+    normalizePlate(unit) !== normalizePlate(p)
+  ) {
+    return `Unit ${unit} · ${p}`;
+  }
+  if (unit) return `Unit ${unit}`;
+  if (p) return p;
   return "Unknown unit";
 }
 

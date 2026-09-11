@@ -79,14 +79,28 @@ export default function OfficeReportsPage() {
   const vehicleMap = Object.fromEntries(vehicles.map((v) => [v.id, v]));
 
   const unitsForFilter = useMemo(() => {
-    const list =
-      companyId === "all"
-        ? vehicles
-        : vehicles.filter((v) => v.companyId === companyId);
-    return [...list].sort((a, b) =>
+    const byId = new Map<
+      string,
+      { id: string; unitNumber: string; plate: string; companyId: string }
+    >();
+    for (const v of vehicles) {
+      if (companyId !== "all" && v.companyId !== companyId) continue;
+      byId.set(v.id, v);
+    }
+    for (const report of reports) {
+      if (companyId !== "all" && report.companyId !== companyId) continue;
+      if (byId.has(report.vehicleId)) continue;
+      byId.set(report.vehicleId, {
+        id: report.vehicleId,
+        unitNumber: report.unitNumber,
+        plate: report.plate ?? "",
+        companyId: report.companyId,
+      });
+    }
+    return [...byId.values()].sort((a, b) =>
       a.unitNumber.localeCompare(b.unitNumber, undefined, { numeric: true })
     );
-  }, [vehicles, companyId]);
+  }, [vehicles, reports, companyId]);
 
   const filtered = reports.filter((report) => {
     if (companyId !== "all" && report.companyId !== companyId) return false;
@@ -115,7 +129,8 @@ export default function OfficeReportsPage() {
                 Checkout reports
               </h2>
               <p className="text-sm text-gray-500">
-                {filtered.length} shown · {flagCount} flagged
+                {filtered.length} shown · {flagCount} flagged · all Neon CRs,
+                including plates that were not pre-seeded
               </p>
             </div>
             {flagCount > 0 && (
@@ -192,7 +207,7 @@ export default function OfficeReportsPage() {
                           <CardTitle className="text-base">
                             {formatUnitLabel(
                               report.unitNumber,
-                              vehicle?.plate
+                              report.plate ?? vehicle?.plate
                             )}{" "}
                             · {report.year} {report.make} {report.model}
                           </CardTitle>

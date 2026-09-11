@@ -9,10 +9,15 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useAuth } from "@/hooks/use-auth";
 import { canStartCheckout } from "@/lib/fleet-config";
 import { checkoutDraftId, getCheckoutDraft, saveCheckoutDraft } from "@/lib/storage";
-import { fetchCompanies, fetchVehicles, SharedVehicle } from "@/lib/checkout-api";
+import {
+  fetchCompanies,
+  fetchVehicles,
+  SharedVehicle,
+  upsertSharedVehicle,
+} from "@/lib/checkout-api";
 import { Company, CheckoutType } from "@/lib/types";
 import { defaultCompanyId } from "@/lib/companies";
-import { formatUnitLabel } from "@/lib/utils";
+import { formatUnitLabel, normalizePlate } from "@/lib/utils";
 import { ClipboardCheck } from "lucide-react";
 
 export default function CheckoutStartPage() {
@@ -24,6 +29,10 @@ export default function CheckoutStartPage() {
   const [loadError, setLoadError] = useState("");
   const [companyId, setCompanyId] = useState("");
   const [vehicleId, setVehicleId] = useState("");
+  const [unitQuery, setUnitQuery] = useState("");
+  const [addingUnit, setAddingUnit] = useState(false);
+  const [newPlate, setNewPlate] = useState("");
+  const [newUnitNumber, setNewUnitNumber] = useState("");
   const [type, setType] = useState<CheckoutType>("check_out");
   const [year, setYear] = useState("");
   const [make, setMake] = useState("");
@@ -72,24 +81,39 @@ export default function CheckoutStartPage() {
       });
   }, [companyId]);
 
+  const filteredVehicles = useMemo(() => {
+    const q = unitQuery.trim().toLowerCase();
+    if (!q) return vehicles;
+    return vehicles.filter((v) => {
+      const hay = `${v.unitNumber} ${v.plate} ${v.year} ${v.make} ${v.model}`.toLowerCase();
+      return hay.includes(q) || normalizePlate(v.plate).includes(normalizePlate(q));
+    });
+  }, [vehicles, unitQuery]);
+
   const selected = useMemo(
     () => vehicles.find((v) => v.id === vehicleId),
     [vehicles, vehicleId]
   );
 
   useEffect(() => {
-    if (!selected) return;
+    if (addingUnit) return;
+    if (filteredVehicles.some((v) => v.id === vehicleId)) return;
+    setVehicleId(filteredVehicles[0]?.id ?? "");
+  }, [addingUnit, filteredVehicles, vehicleId]);
+
+  useEffect(() => {
+    if (addingUnit || !selected) return;
     setYear(String(selected.year));
     setMake(selected.make);
     setModel(selected.model);
     if (selected.lastMileage != null) {
       setOdometer(String(selected.lastMileage));
     }
-  }, [selected]);
+  }, [selected, addingUnit]);
 
   const handleStart = async (e: FormEvent) => {
     e.preventDefault();
-    if (!user || !selected) return;
+    if (!user) return;
     if (!odometer.trim() || isNaN(Number(odometer))) {
       setError("Enter the odometer reading.");
       return;
@@ -108,24 +132,65 @@ export default function CheckoutStartPage() {
     }
 
     setStarting(true);
-    const id = checkoutDraftId(companyId, selected.id, type, user.id);
-    const existing = await getCheckoutDraft(id);
-    await saveCheckoutDraft({
-      id,
-      companyId,
-      vehicleId: selected.id,
-      type,
-      driverId: user.id,
-      driverName: driverName.trim(),
-      dispatcherName: dispatcherName.trim(),
-      odometer: odometer.trim(),
-      year: year.trim(),
-      make: make.trim(),
-      model: model.trim(),
-      photos: existing?.photos ?? {},
-      updatedAt: new Date().toISOString(),
-    });
-    router.push(`/checkout/${id}`);
+    setError("");
+    try {
+      let vehicle = selected;
+      if (addingUnit) {
+        if (!newPlate.trim()) {
+          setError("Enter the license plate for this unit.");
+          setStarting(false);
+          return;
+        }
+        vehicle = await upsertSharedVehicle({
+          companyId,
+          unitNumber: newUnitNumber.trim() || newPlate.trim(),
+          plate: newPlate.trim(),
+          make: make.trim(),
+          model: model.trim(),
+          year: Number(year),
+        });
+        setVehicles((prev) => {
+          const next = prev.some((v) => v.id === vehicle!.id)
+            ? prev.map((v) => (v.id === vehicle!.id ? vehicle! : v))
+            : [...prev, vehicle!];
+          return next.sort((a, b) =>
+            a.unitNumber.localeCompare(b.unitNumber, undefined, { numeric: true })
+          );
+        });
+        setVehicleId(vehicle.id);
+      }
+      if (!vehicle) {
+        setError("Pick a unit or add this plate first.");
+        setStarting(false);
+        return;
+      }
+
+      const id = checkoutDraftId(companyId, vehicle.id, type, user.id);
+      const existing = await getCheckoutDraft(id);
+      await saveCheckoutDraft({
+        id,
+        companyId,
+        vehicleId: vehicle.id,
+        type,
+        driverId: user.id,
+        driverName: driverName.trim(),
+        dispatcherName: dispatcherName.trim(),
+        odometer: odometer.trim(),
+        year: year.trim(),
+        make: make.trim(),
+        model: model.trim(),
+        photos: existing?.photos ?? {},
+        updatedAt: new Date().toISOString(),
+      });
+      router.push(`/checkout/${id}`);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Could not save this unit to the shared server."
+      );
+      setStarting(false);
+    }
   };
 
   if (loading || !user) return null;
@@ -142,7 +207,8 @@ export default function CheckoutStartPage() {
             Start a vehicle checkout
           </h2>
           <p className="text-sm text-gray-600">
-            Fill in the handoff details, then take the guided photo checklist.
+            This is the only report Office can see. Fill in the handoff, then
+            take the guided photo checklist.
           </p>
         </div>
 
@@ -166,26 +232,70 @@ export default function CheckoutStartPage() {
                 </select>
               </div>
 
-              <div>
-                <label className="block text-base font-semibold text-gray-900 mb-1.5">
-                  Unit #
-                </label>
-                <select
-                  value={vehicleId}
-                  onChange={(e) => setVehicleId(e.target.value)}
-                  className="w-full rounded-xl border-2 border-gray-300 px-4 py-4 text-lg min-h-[56px] bg-white"
-                >
-                  {vehicles.length === 0 && (
-                    <option value="">No units for this company</option>
-                  )}
-                  {vehicles.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {formatUnitLabel(v.unitNumber, v.plate)} — {v.year}{" "}
-                      {v.make} {v.model}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {!addingUnit && (
+                <>
+                  <Input
+                    label="Search unit or plate"
+                    value={unitQuery}
+                    onChange={(e) => setUnitQuery(e.target.value.toUpperCase())}
+                    placeholder="e.g. 12 or CXB9373"
+                  />
+                  <div>
+                    <label className="block text-base font-semibold text-gray-900 mb-1.5">
+                      Unit #
+                    </label>
+                    <select
+                      value={vehicleId}
+                      onChange={(e) => setVehicleId(e.target.value)}
+                      className="w-full rounded-xl border-2 border-gray-300 px-4 py-4 text-lg min-h-[56px] bg-white"
+                    >
+                      {filteredVehicles.length === 0 && (
+                        <option value="">No units match — add the plate below</option>
+                      )}
+                      {filteredVehicles.map((v) => (
+                        <option key={v.id} value={v.id}>
+                          {formatUnitLabel(v.unitNumber, v.plate)} — {v.year}{" "}
+                          {v.make} {v.model}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  setAddingUnit((prev) => !prev);
+                  setError("");
+                }}
+                className="text-sm font-semibold text-brand-700 underline underline-offset-2"
+              >
+                {addingUnit
+                  ? "Cancel — pick an existing unit"
+                  : "Plate not listed? Add unit / plate"}
+              </button>
+
+              {addingUnit && (
+                <div className="rounded-xl border-2 border-dashed border-brand-200 bg-brand-50/60 p-3 space-y-3">
+                  <p className="text-sm text-gray-700">
+                    Adds this van to the shared list so Office can see it —
+                    including plates that were never pre-seeded.
+                  </p>
+                  <Input
+                    label="License plate"
+                    value={newPlate}
+                    onChange={(e) => setNewPlate(e.target.value.toUpperCase())}
+                    placeholder="e.g. CXB9373"
+                  />
+                  <Input
+                    label="Unit # (optional)"
+                    value={newUnitNumber}
+                    onChange={(e) => setNewUnitNumber(e.target.value)}
+                    hint="Leave blank to use the plate as the unit number"
+                  />
+                </div>
+              )}
 
               <div className="grid grid-cols-3 gap-2">
                 <Input
@@ -263,7 +373,7 @@ export default function CheckoutStartPage() {
                 type="submit"
                 size="xl"
                 className="w-full"
-                disabled={starting || !vehicleId}
+                disabled={starting || (!addingUnit && !vehicleId)}
               >
                 {starting ? "Starting…" : "Start photo checklist"}
               </Button>

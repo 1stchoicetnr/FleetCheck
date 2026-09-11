@@ -12,6 +12,7 @@ import { SharedVehicle } from "./shared-types";
 export const RAD_CAB_UNIT_12_ID = "vehicle-radcab-12";
 export const RAD_CAB_UNIT_18_ID = "vehicle-radcab-18";
 export const RAD_CAB_UNIT_23_ID = "vehicle-radcab-23";
+export const RAD_CAB_UNIT_CXB9373_ID = "vehicle-radcab-cxb9373";
 export const FIRST_CHOICE_UNIT_T1_ID = "vehicle-1st-t1";
 
 function examplePhotos(capturedAt: string): VehiclePhoto[] {
@@ -60,6 +61,16 @@ export function sharedSeedVehicles(): SharedVehicle[] {
       model: "Camry",
       year: 2022,
       lastMileage: 45230,
+      createdAt: now,
+    },
+    {
+      id: RAD_CAB_UNIT_CXB9373_ID,
+      companyId: RAD_CAB_COMPANY_ID,
+      unitNumber: "CXB9373",
+      plate: "CXB9373",
+      make: "Dodge",
+      model: "Grand Caravan",
+      year: 2011,
       createdAt: now,
     },
     {

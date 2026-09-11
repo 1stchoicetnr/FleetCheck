@@ -20,7 +20,6 @@ import { dispatchStatusChangeAlert } from "@/lib/alerts";
 import { Vehicle, Fleet, VehicleStatus, FLEET_TYPE_LABELS, FLEET_TYPES, CheckRecord, STATUS_LABELS, fleetTypeLabel, normalizeFleetType } from "@/lib/types";
 import { formatMileage, formatUnitLabel } from "@/lib/utils";
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
 import { KnownIssueEditor } from "@/components/known-issue-editor";
 import { OilChangeStatusBadge } from "@/components/oil-change-status";
 import { OilChangeEditor } from "@/components/oil-change-editor";
@@ -184,19 +183,11 @@ function VehiclesPageContent() {
             (v.status === "ready" ||
               v.status === "checked_out" ||
               v.status === "needs_work") && (
-              <div className="grid grid-cols-2 gap-2">
-                <Link href="/checkout">
-                  <Button size="md" className="w-full">
-                    Checkout CR
-                  </Button>
-                </Link>
-                <Link href={`/check-in?vehicleId=${v.id}`}>
-                  <Button size="md" variant="outline" className="w-full">
-                    Check In / Out
-                    <ArrowRight className="h-4 w-4 ml-2" />
-                  </Button>
-                </Link>
-              </div>
+              <Link href="/checkout">
+                <Button size="md" className="w-full">
+                  Checkout Report
+                </Button>
+              </Link>
             )}
         </CardContent>
       </Card>

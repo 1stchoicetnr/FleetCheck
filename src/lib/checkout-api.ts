@@ -48,6 +48,21 @@ export async function fetchVehicles(companyId?: string): Promise<SharedVehicle[]
   return data.vehicles;
 }
 
+export async function upsertSharedVehicle(input: {
+  companyId: string;
+  unitNumber?: string;
+  plate: string;
+  make: string;
+  model: string;
+  year: number;
+}): Promise<SharedVehicle> {
+  const data = await api<{ vehicle: SharedVehicle }>("/api/vehicles", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return data.vehicle;
+}
+
 export async function fetchCheckoutReports(): Promise<CheckoutReport[]> {
   const data = await api<{ reports: CheckoutReport[] }>("/api/checkout-reports");
   return data.reports;
@@ -78,6 +93,7 @@ export async function createCheckoutReport(input: {
   companyId: string;
   vehicleId: string;
   unitNumber: string;
+  plate?: string;
   year: number;
   make: string;
   model: string;

@@ -8,11 +8,9 @@ import { AppHeader } from "@/components/app-header";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { FleetStatusStats } from "@/components/fleet-status-stats";
 import {
-  Car,
   ClipboardCheck,
   ClipboardList,
   Settings,
-  BarChart3,
   Wrench,
   Plus,
   FileText,
@@ -49,13 +47,6 @@ export default function DashboardPage() {
 
   const driverLinks = [
     checkoutLink,
-    {
-      href: "/check-in",
-      icon: <Car className="h-7 w-7" />,
-      label: "Check In / Out",
-      desc: "Shift start/end, mileage, signature",
-      color: "bg-green-100 text-green-700",
-    },
     {
       href: "/vehicles",
       icon: <ClipboardList className="h-7 w-7" />,
@@ -108,13 +99,6 @@ export default function DashboardPage() {
   const managementLinks = [
     officeLink,
     checkoutLink,
-    {
-      href: "/reports",
-      icon: <BarChart3 className="h-7 w-7" />,
-      label: "Reports",
-      desc: "View all check records",
-      color: "bg-blue-100 text-blue-700",
-    },
     {
       href: "/vehicles",
       icon: <ClipboardList className="h-7 w-7" />,
@@ -198,7 +182,7 @@ export default function DashboardPage() {
                     Checkout Report
                   </p>
                   <p className="text-brand-100 text-sm mt-1">
-                    Start a vehicle handoff — company, unit, photos
+                    The only handoff Office can see — company, unit or plate, photos
                   </p>
                 </div>
                 <span className="text-sm font-semibold bg-white text-brand-700 rounded-full px-3 py-1.5 shrink-0">

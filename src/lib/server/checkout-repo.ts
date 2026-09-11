@@ -1,4 +1,4 @@
-import { generateId } from "@/lib/utils";
+import { generateId, normalizePlate } from "@/lib/utils";
 import {
   CheckoutReport,
   Company,
@@ -6,6 +6,7 @@ import {
   VehiclePhoto,
 } from "@/lib/types";
 import {
+  localFindVehicleByPlate,
   localGetReport,
   localGetVehicle,
   localListCompanies,
@@ -13,21 +14,25 @@ import {
   localListVehicles,
   localPatchReport,
   localPutReport,
+  localUpsertVehicle,
 } from "./local-store";
 import { persistCheckoutPhoto } from "./photo-store";
 import {
+  pgFindVehicleByPlate,
   pgGetReport,
   pgGetVehicle,
   pgListCompanies,
   pgListReports,
   pgListVehicles,
   pgPutReport,
+  pgUpsertVehicle,
 } from "./postgres-store";
 import { sharedBackendMode } from "./shared-config";
 import {
   CheckoutReportInput,
   CheckoutReviewInput,
   SharedVehicle,
+  UpsertVehicleInput,
 } from "./shared-types";
 
 export class SharedBackendError extends Error {
@@ -76,6 +81,29 @@ export async function getVehicle(id: string): Promise<SharedVehicle | undefined>
   return mode === "postgres" ? pgGetVehicle(id) : localGetVehicle(id);
 }
 
+export async function findVehicleByPlate(
+  companyId: string,
+  plate: string
+): Promise<SharedVehicle | undefined> {
+  const mode = assertConfigured();
+  return mode === "postgres"
+    ? pgFindVehicleByPlate(companyId, plate)
+    : localFindVehicleByPlate(companyId, plate);
+}
+
+export async function upsertVehicle(
+  input: UpsertVehicleInput
+): Promise<SharedVehicle> {
+  const mode = assertConfigured();
+  if (!input.companyId || !input.plate.trim() || !input.make.trim() || !input.model.trim()) {
+    throw new SharedBackendError("Plate, make, and model are required", 400);
+  }
+  if (Number.isNaN(Number(input.year))) {
+    throw new SharedBackendError("Year must be a number", 400);
+  }
+  return mode === "postgres" ? pgUpsertVehicle(input) : localUpsertVehicle(input);
+}
+
 export async function listReports(): Promise<CheckoutReport[]> {
   const mode = assertConfigured();
   return mode === "postgres" ? pgListReports() : localListReports();
@@ -102,9 +130,28 @@ export async function createReport(
 ): Promise<CheckoutReport> {
   const mode = assertConfigured();
   const now = new Date().toISOString();
+  let vehicle =
+    (await getVehicle(input.vehicleId)) ||
+    (input.plate
+      ? await findVehicleByPlate(input.companyId, input.plate)
+      : undefined);
+  if (!vehicle) {
+    vehicle = await upsertVehicle({
+      companyId: input.companyId,
+      unitNumber: input.unitNumber,
+      plate: input.plate || input.unitNumber,
+      make: input.make,
+      model: input.model,
+      year: input.year,
+    });
+  }
+  const plate = normalizePlate(input.plate || vehicle.plate || input.unitNumber);
   const report: CheckoutReport = {
     id: generateId(),
     ...input,
+    vehicleId: vehicle.id,
+    unitNumber: input.unitNumber || vehicle.unitNumber,
+    plate,
     photos: [],
     status: "complete",
     completedAt: now,

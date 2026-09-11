@@ -118,6 +118,8 @@ export interface CheckoutReport {
   companyId: string;
   vehicleId: string;
   unitNumber: string;
+  /** License plate copied onto the report so Office can show it without a seed row. */
+  plate?: string;
   year: number;
   make: string;
   model: string;

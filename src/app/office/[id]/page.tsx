@@ -156,7 +156,7 @@ export default function OfficeReportDetailPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <AppHeader
-        title={`${formatUnitLabel(report.unitNumber, vehicle?.plate)} review`}
+        title={`${formatUnitLabel(report.unitNumber, report.plate ?? vehicle?.plate)} review`}
         backHref="/office"
       />
       <OfficePinGate>
@@ -166,7 +166,7 @@ export default function OfficeReportDetailPage() {
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <CardTitle>
-                    {formatUnitLabel(report.unitNumber)} — {report.year}{" "}
+                    {formatUnitLabel(report.unitNumber, report.plate ?? vehicle?.plate)} — {report.year}{" "}
                     {report.make} {report.model}
                   </CardTitle>
                   <p className="text-sm text-gray-500">

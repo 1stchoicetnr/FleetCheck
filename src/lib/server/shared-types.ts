@@ -23,6 +23,7 @@ export interface CheckoutReportInput {
   companyId: string;
   vehicleId: string;
   unitNumber: string;
+  plate?: string;
   year: number;
   make: string;
   model: string;
@@ -30,6 +31,15 @@ export interface CheckoutReportInput {
   driverName: string;
   dispatcherName: string;
   type: CheckoutType;
+}
+
+export interface UpsertVehicleInput {
+  companyId: string;
+  unitNumber?: string;
+  plate: string;
+  make: string;
+  model: string;
+  year: number;
 }
 
 export interface CheckoutReviewInput {

@@ -105,6 +105,7 @@ export default function CheckoutCapturePage() {
         companyId: draft.companyId,
         vehicleId: draft.vehicleId,
         unitNumber: vehicle.unitNumber,
+        plate: vehicle.plate,
         year: Number(draft.year) || vehicle.year,
         make: draft.make || vehicle.make,
         model: draft.model || vehicle.model,
@@ -171,7 +172,7 @@ export default function CheckoutCapturePage() {
             Checkout report complete
           </h2>
           <p className="text-gray-600">
-            {formatUnitLabel(completed.unitNumber)} — {completed.year}{" "}
+            {formatUnitLabel(completed.unitNumber, completed.plate)} — {completed.year}{" "}
             {completed.make} {completed.model}
           </p>
           <p className="text-sm text-gray-500">
