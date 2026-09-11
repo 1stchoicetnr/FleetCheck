@@ -21,6 +21,7 @@ import { checkPhotoQuality, sampleVideoLowLight } from "@/lib/photo-quality";
 import { useDeviceOrientation } from "@/hooks/use-orientation";
 import {
   CameraFacing,
+  applyDesiredTorch,
   canUseBrowserCamera,
   getSessionCameraFacing,
   getStreamVideoTrack,
@@ -282,6 +283,10 @@ export function CameraCaptureModal({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const prevLandscapeRef = useRef<boolean | null>(null);
+  /** Session torch intent — survives orientation / stream restarts until close or toggle-off. */
+  const torchDesiredRef = useRef(false);
+  const torchRetryRef = useRef<number | null>(null);
+  const startCameraRef = useRef<() => Promise<void>>(async () => {});
 
   const [mounted, setMounted] = useState(false);
   const [phase, setPhase] = useState<Phase>("live");
@@ -352,14 +357,39 @@ export function CameraCaptureModal({
     if (phase === "preview") syncPreviewLayout();
   }, [open, phase, orientationVersion, syncLiveLayout, syncPreviewLayout]);
 
-  const stopStream = useCallback(() => {
+  const stopStream = useCallback((opts?: { resetTorch?: boolean }) => {
+    if (torchRetryRef.current != null) {
+      window.clearTimeout(torchRetryRef.current);
+      torchRetryRef.current = null;
+    }
     const track = getStreamVideoTrack(streamRef.current);
     if (track) void setTrackTorch(track, false);
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
-    setTorchOn(false);
-    setTorchSupported(false);
+    if (opts?.resetTorch) {
+      torchDesiredRef.current = false;
+      setTorchOn(false);
+      setTorchSupported(false);
+    }
+  }, []);
+
+  const restoreTorchOnStream = useCallback(async (stream: MediaStream) => {
+    const apply = async () => {
+      if (streamRef.current !== stream) return;
+      const result = await applyDesiredTorch(
+        getStreamVideoTrack(stream),
+        torchDesiredRef.current
+      );
+      if (streamRef.current !== stream) return;
+      setTorchSupported(result.supported);
+      setTorchOn(result.on);
+    };
+    await apply();
+    if (torchRetryRef.current != null) window.clearTimeout(torchRetryRef.current);
+    torchRetryRef.current = window.setTimeout(() => {
+      void apply();
+    }, 400);
   }, []);
 
   const showPreview = async (dataUrl: string) => {
@@ -399,7 +429,6 @@ export function CameraCaptureModal({
       const stream = await openCameraStream(getSessionCameraFacing(), landscape);
       streamRef.current = stream;
       setPhase("live");
-      setTorchOn(false);
 
       const video = videoRef.current;
       if (video) {
@@ -407,22 +436,26 @@ export function CameraCaptureModal({
         await video.play();
         syncLiveLayout();
       }
-      const applySupport = () =>
-        setTorchSupported(trackSupportsTorch(getStreamVideoTrack(stream)));
-      applySupport();
-      window.setTimeout(() => {
-        if (streamRef.current === stream) applySupport();
-      }, 400);
+
+      const track = getStreamVideoTrack(stream);
+      track?.addEventListener("ended", () => {
+        if (streamRef.current !== stream) return;
+        void startCameraRef.current();
+      });
+
+      await restoreTorchOnStream(stream);
     } catch {
       setPhase("fallback");
       setTorchSupported(false);
       setTorchOn(false);
     }
-  }, [liveCameraAvailable, stopStream, syncLiveLayout]);
+  }, [liveCameraAvailable, restoreTorchOnStream, stopStream, syncLiveLayout]);
+
+  startCameraRef.current = startCamera;
 
   useEffect(() => {
     if (!open) {
-      stopStream();
+      stopStream({ resetTorch: true });
       setPhase("live");
       setPreviewUrl(null);
       setQualityPassed(true);
@@ -443,9 +476,6 @@ export function CameraCaptureModal({
   const flipCamera = () => {
     const next: CameraFacing =
       getSessionCameraFacing() === "environment" ? "user" : "environment";
-    const track = getStreamVideoTrack(streamRef.current);
-    if (track) void setTrackTorch(track, false);
-    setTorchOn(false);
     setSessionCameraFacing(next);
     setFacingMode(next);
     if (open && phase === "live") {
@@ -455,13 +485,16 @@ export function CameraCaptureModal({
 
   const toggleTorch = async () => {
     const track = getStreamVideoTrack(streamRef.current);
-    if (!track || !torchSupported) return;
-    const next = !torchOn;
+    if (!track || !trackSupportsTorch(track)) return;
+    const next = !torchDesiredRef.current;
+    torchDesiredRef.current = next;
     const ok = await setTrackTorch(track, next);
     if (ok) {
       setTorchOn(next);
+      setTorchSupported(true);
       return;
     }
+    torchDesiredRef.current = false;
     setTorchOn(false);
     setTorchSupported(false);
   };
@@ -476,9 +509,34 @@ export function CameraCaptureModal({
       prevLandscapeRef.current !== isLandscape
     ) {
       startCamera();
+    } else if (torchDesiredRef.current && streamRef.current) {
+      void restoreTorchOnStream(streamRef.current);
     }
     prevLandscapeRef.current = isLandscape;
-  }, [open, phase, isLandscape, orientationVersion, startCamera, syncLiveLayout]);
+  }, [
+    open,
+    phase,
+    isLandscape,
+    orientationVersion,
+    startCamera,
+    syncLiveLayout,
+    restoreTorchOnStream,
+  ]);
+
+  useEffect(() => {
+    if (!open || phase !== "live") return;
+    const reapply = () => {
+      const stream = streamRef.current;
+      if (!stream || !torchDesiredRef.current) return;
+      void restoreTorchOnStream(stream);
+    };
+    window.addEventListener("orientationchange", reapply);
+    window.addEventListener("resize", reapply);
+    return () => {
+      window.removeEventListener("orientationchange", reapply);
+      window.removeEventListener("resize", reapply);
+    };
+  }, [open, phase, restoreTorchOnStream]);
 
   const capturePhoto = async () => {
     const video = videoRef.current;

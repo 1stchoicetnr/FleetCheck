@@ -84,6 +84,21 @@ export function trackSupportsTorch(track: MediaStreamTrack | null): boolean {
   }
 }
 
+/** Re-apply session torch after a stream restart (orientation, flip, track ended). */
+export async function applyDesiredTorch(
+  track: MediaStreamTrack | null,
+  desired: boolean
+): Promise<{ supported: boolean; on: boolean }> {
+  const supported = trackSupportsTorch(track);
+  if (!desired) {
+    if (supported) await setTrackTorch(track, false);
+    return { supported, on: false };
+  }
+  if (!supported) return { supported: false, on: false };
+  const ok = await setTrackTorch(track, true);
+  return { supported: true, on: ok };
+}
+
 export async function setTrackTorch(
   track: MediaStreamTrack | null,
   on: boolean
