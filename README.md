@@ -86,6 +86,7 @@ Walkaround order (30 required slots — same list for Rad Cab and other companie
 - Dash / odometer: office mainly needs mileage readable.
 - Night interiors: turn the lights on.
 - Camera always opens on the **rear / environment** lens; use **Flip Camera** if you need the front.
+- **Flashlight** on the live camera (Android Chrome / browsers that expose `torch`). Hidden as unavailable on iOS Safari — use the Camera app flash there.
 
 ## PWA
 

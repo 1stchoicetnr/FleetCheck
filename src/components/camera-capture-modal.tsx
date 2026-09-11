@@ -2,7 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Camera, AlertTriangle, RotateCw, Check, SwitchCamera } from "lucide-react";
+import {
+  X,
+  Camera,
+  AlertTriangle,
+  RotateCw,
+  Check,
+  SwitchCamera,
+  Flashlight,
+  FlashlightOff,
+} from "lucide-react";
 import { Button } from "./ui/button";
 import { PhotoFrameGuide } from "./photo-frame-guide";
 import { PhotoExampleThumb } from "./photo-example-image";
@@ -14,8 +23,11 @@ import {
   CameraFacing,
   canUseBrowserCamera,
   getSessionCameraFacing,
+  getStreamVideoTrack,
   openCameraStream,
   setSessionCameraFacing,
+  setTrackTorch,
+  trackSupportsTorch,
 } from "@/lib/camera";
 
 type Phase = "live" | "preview" | "fallback";
@@ -83,6 +95,64 @@ function FlipCameraButton({
         Flip Camera
       </span>
     </button>
+  );
+}
+
+function FlashlightButton({
+  on,
+  supported,
+  onToggle,
+  compact = false,
+}: {
+  on: boolean;
+  supported: boolean;
+  onToggle: () => void;
+  compact?: boolean;
+}) {
+  const Icon = on ? Flashlight : FlashlightOff;
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <button
+        type="button"
+        onClick={onToggle}
+        disabled={!supported}
+        aria-pressed={on}
+        aria-label={
+          supported
+            ? on
+              ? "Turn flashlight off"
+              : "Turn flashlight on"
+            : "Flashlight not available"
+        }
+        className={
+          compact
+            ? `flex flex-col items-center justify-center gap-1 min-h-[52px] min-w-[52px] px-1 drop-shadow ${
+                supported
+                  ? on
+                    ? "text-amber-300"
+                    : "text-white"
+                  : "text-white/40"
+              }`
+            : `inline-flex items-center justify-center gap-2 min-h-[48px] px-4 rounded-full border backdrop-blur-sm font-semibold text-sm active:scale-[0.98] ${
+                supported
+                  ? on
+                    ? "bg-amber-400 text-black border-amber-200"
+                    : "bg-black/60 text-white border-white/35"
+                  : "bg-black/40 text-white/45 border-white/15 cursor-not-allowed"
+              }`
+        }
+      >
+        <Icon className={compact ? "h-7 w-7" : "h-5 w-5"} />
+        <span className={compact ? "text-[11px] font-semibold leading-tight text-center" : ""}>
+          Flashlight
+        </span>
+      </button>
+      {!supported && (
+        <p className="text-[11px] text-white/55 text-center max-w-[11rem] leading-tight px-1">
+          {compact ? "Not available" : "Flashlight not available on this phone"}
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -227,6 +297,8 @@ export function CameraCaptureModal({
   const { isLandscape, version: orientationVersion } = useDeviceOrientation();
 
   const [facingMode, setFacingMode] = useState<CameraFacing>("environment");
+  const [torchOn, setTorchOn] = useState(false);
+  const [torchSupported, setTorchSupported] = useState(false);
   const captureAttr = facingMode;
   const showLandscapeTip = photoStep.category === "exterior";
   const liveCameraAvailable = canUseBrowserCamera();
@@ -281,9 +353,13 @@ export function CameraCaptureModal({
   }, [open, phase, orientationVersion, syncLiveLayout, syncPreviewLayout]);
 
   const stopStream = useCallback(() => {
+    const track = getStreamVideoTrack(streamRef.current);
+    if (track) void setTrackTorch(track, false);
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
+    setTorchOn(false);
+    setTorchSupported(false);
   }, []);
 
   const showPreview = async (dataUrl: string) => {
@@ -323,6 +399,7 @@ export function CameraCaptureModal({
       const stream = await openCameraStream(getSessionCameraFacing(), landscape);
       streamRef.current = stream;
       setPhase("live");
+      setTorchOn(false);
 
       const video = videoRef.current;
       if (video) {
@@ -330,8 +407,16 @@ export function CameraCaptureModal({
         await video.play();
         syncLiveLayout();
       }
+      const applySupport = () =>
+        setTorchSupported(trackSupportsTorch(getStreamVideoTrack(stream)));
+      applySupport();
+      window.setTimeout(() => {
+        if (streamRef.current === stream) applySupport();
+      }, 400);
     } catch {
       setPhase("fallback");
+      setTorchSupported(false);
+      setTorchOn(false);
     }
   }, [liveCameraAvailable, stopStream, syncLiveLayout]);
 
@@ -358,11 +443,27 @@ export function CameraCaptureModal({
   const flipCamera = () => {
     const next: CameraFacing =
       getSessionCameraFacing() === "environment" ? "user" : "environment";
+    const track = getStreamVideoTrack(streamRef.current);
+    if (track) void setTrackTorch(track, false);
+    setTorchOn(false);
     setSessionCameraFacing(next);
     setFacingMode(next);
     if (open && phase === "live") {
       void startCamera();
     }
+  };
+
+  const toggleTorch = async () => {
+    const track = getStreamVideoTrack(streamRef.current);
+    if (!track || !torchSupported) return;
+    const next = !torchOn;
+    const ok = await setTrackTorch(track, next);
+    if (ok) {
+      setTorchOn(next);
+      return;
+    }
+    setTorchOn(false);
+    setTorchSupported(false);
   };
 
   useEffect(() => {
@@ -459,6 +560,8 @@ export function CameraCaptureModal({
       ref={viewportRef}
       className="camera-viewport"
       data-camera-facing={facingMode}
+      data-torch-supported={torchSupported ? "true" : "false"}
+      data-torch-on={torchOn ? "true" : "false"}
     >
       {phase === "live" && (
         <>
@@ -659,15 +762,25 @@ export function CameraCaptureModal({
               </p>
             </>
           )}
-          {isLandscape ? (
+          <div
+            className={
+              isLandscape
+                ? "flex flex-col items-center gap-3"
+                : "flex flex-wrap items-start justify-center gap-2"
+            }
+          >
             <FlipCameraButton
               facingMode={facingMode}
               onFlip={flipCamera}
-              compact
+              compact={isLandscape}
             />
-          ) : (
-            <FlipCameraButton facingMode={facingMode} onFlip={flipCamera} />
-          )}
+            <FlashlightButton
+              on={torchOn}
+              supported={torchSupported}
+              onToggle={() => void toggleTorch()}
+              compact={isLandscape}
+            />
+          </div>
           <button
             type="button"
             onClick={capturePhoto}
