@@ -27,7 +27,11 @@ import {
   Company,
   PhotoAngle,
 } from "@/lib/types";
-import { generateCheckoutReportPDF, downloadPDF } from "@/lib/pdf";
+import {
+  checkoutReportPdfFilename,
+  downloadPDF,
+  generateCheckoutReportPDF,
+} from "@/lib/pdf";
 import { formatDate, formatUnitLabel } from "@/lib/utils";
 import { PHOTO_EXAMPLE_PATHS } from "@/lib/photo-examples";
 import { Check } from "lucide-react";
@@ -186,10 +190,7 @@ export default function CheckoutCapturePage() {
               className="w-full"
               onClick={async () => {
                 const blob = await generateCheckoutReportPDF(completed);
-                downloadPDF(
-                  blob,
-                  `fleetcheck-${completed.plate || completed.unitNumber}-${Date.now()}.pdf`
-                );
+                downloadPDF(blob, checkoutReportPdfFilename(completed));
               }}
             >
               Download PDF for Slack

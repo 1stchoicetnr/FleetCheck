@@ -33,7 +33,13 @@ import {
   PHOTO_ANGLES,
   PhotoAngle,
 } from "@/lib/types";
+import {
+  checkoutReportPdfFilename,
+  downloadPDF,
+  generateCheckoutReportPDF,
+} from "@/lib/pdf";
 import { formatDate, formatMileage, formatUnitLabel } from "@/lib/utils";
+import { Download } from "lucide-react";
 
 export default function OfficeReportDetailPage() {
   const params = useParams();
@@ -54,6 +60,8 @@ export default function OfficeReportDetailPage() {
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState<"gallery" | "compare">("gallery");
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState("");
 
   useEffect(() => {
     if (!loading && !user) router.replace("/");
@@ -114,6 +122,29 @@ export default function OfficeReportDetailPage() {
     setRetakeAngles((prev) =>
       prev.includes(angle) ? prev.filter((a) => a !== angle) : [...prev, angle]
     );
+  };
+
+  const handleDownload = async () => {
+    if (!report) return;
+    setDownloading(true);
+    setDownloadError("");
+    try {
+      const blob = await generateCheckoutReportPDF(report, {
+        companyName: company?.name,
+        plate: report.plate ?? vehicle?.plate,
+        steps,
+      });
+      downloadPDF(
+        blob,
+        checkoutReportPdfFilename(report, report.plate ?? vehicle?.plate)
+      );
+    } catch (err) {
+      setDownloadError(
+        err instanceof Error ? err.message : "Could not build the report PDF."
+      );
+    } finally {
+      setDownloading(false);
+    }
   };
 
   const handleSave = async () => {
@@ -214,6 +245,26 @@ export default function OfficeReportDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          <div className="space-y-2">
+            <Button
+              size="xl"
+              className="w-full"
+              onClick={handleDownload}
+              disabled={downloading}
+            >
+              <Download className="h-5 w-5 mr-2" />
+              {downloading ? "Preparing PDF…" : "Download report (PDF)"}
+            </Button>
+            <p className="text-xs text-gray-500 text-center">
+              Inspection form and all photos — one file for Slack / #radcabcr.
+            </p>
+            {downloadError && (
+              <p className="text-sm text-red-600 font-medium text-center">
+                {downloadError}
+              </p>
+            )}
+          </div>
 
           <div className="flex gap-2">
             <Button
