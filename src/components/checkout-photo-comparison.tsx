@@ -1,6 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import {
+  LightboxPhoto,
+  OfficePhotoThumb,
+  PhotoLightbox,
+} from "@/components/photo-lightbox";
 import { CheckoutReport, PHOTO_ANGLES, PhotoAngle } from "@/lib/types";
 import { formatDate } from "@/lib/utils";
 
@@ -16,6 +21,7 @@ export function CheckoutPhotoComparison({
   highlightAngles = [],
 }: CheckoutPhotoComparisonProps) {
   const [priorId, setPriorId] = useState(priors[0]?.id ?? "");
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const prior = priors.find((p) => p.id === priorId) ?? priors[0];
 
   const photoMap = (report?: CheckoutReport) =>
@@ -27,6 +33,34 @@ export function CheckoutPhotoComparison({
   const angles = PHOTO_ANGLES.filter(
     (a) => currentMap[a.angle] || priorMap[a.angle]
   );
+
+  const lightboxPhotos = useMemo<LightboxPhoto[]>(() => {
+    const items: LightboxPhoto[] = [];
+    for (const a of PHOTO_ANGLES) {
+      const currentSrc = currentMap[a.angle];
+      const priorSrc = priorMap[a.angle];
+      if (currentSrc) {
+        items.push({
+          id: `${a.angle}:current`,
+          src: currentSrc,
+          label: `${a.label} · This report`,
+        });
+      }
+      if (priorSrc) {
+        items.push({
+          id: `${a.angle}:prior`,
+          src: priorSrc,
+          label: `${a.label} · Prior`,
+        });
+      }
+    }
+    return items;
+  }, [currentMap, priorMap]);
+
+  const openLightbox = (id: string) => {
+    const next = lightboxPhotos.findIndex((item) => item.id === id);
+    if (next >= 0) setLightboxIndex(next);
+  };
 
   if (priors.length === 0) {
     return (
@@ -64,6 +98,8 @@ export function CheckoutPhotoComparison({
       <div className="space-y-5">
         {angles.map((a) => {
           const flagged = highlightAngles.includes(a.angle);
+          const currentSrc = currentMap[a.angle];
+          const priorSrc = priorMap[a.angle];
           return (
             <div
               key={a.angle}
@@ -75,12 +111,11 @@ export function CheckoutPhotoComparison({
               </p>
               <div className="grid grid-cols-2 gap-2">
                 <div className="rounded-lg border border-gray-200 bg-gray-50 overflow-hidden aspect-video">
-                  {currentMap[a.angle] ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={currentMap[a.angle]}
-                      alt={`Current ${a.label}`}
-                      className="w-full h-full object-cover"
+                  {currentSrc ? (
+                    <OfficePhotoThumb
+                      src={currentSrc}
+                      label={`${a.label} · This report`}
+                      onOpen={() => openLightbox(`${a.angle}:current`)}
                     />
                   ) : (
                     <div className="flex items-center justify-center h-full text-xs text-gray-400">
@@ -89,12 +124,11 @@ export function CheckoutPhotoComparison({
                   )}
                 </div>
                 <div className="rounded-lg border border-gray-200 bg-gray-50 overflow-hidden aspect-video">
-                  {priorMap[a.angle] ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={priorMap[a.angle]}
-                      alt={`Prior ${a.label}`}
-                      className="w-full h-full object-cover"
+                  {priorSrc ? (
+                    <OfficePhotoThumb
+                      src={priorSrc}
+                      label={`${a.label} · Prior`}
+                      onOpen={() => openLightbox(`${a.angle}:prior`)}
                     />
                   ) : (
                     <div className="flex items-center justify-center h-full text-xs text-gray-400">
@@ -107,6 +141,12 @@ export function CheckoutPhotoComparison({
           );
         })}
       </div>
+      <PhotoLightbox
+        photos={lightboxPhotos}
+        index={lightboxIndex}
+        onClose={() => setLightboxIndex(null)}
+        onIndexChange={setLightboxIndex}
+      />
     </div>
   );
 }

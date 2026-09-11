@@ -8,6 +8,11 @@ import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { OfficePinGate } from "@/components/office-pin-gate";
 import { ReviewStatusBadge } from "@/components/review-status-badge";
 import { CheckoutPhotoComparison } from "@/components/checkout-photo-comparison";
+import {
+  LightboxPhoto,
+  OfficePhotoThumb,
+  PhotoLightbox,
+} from "@/components/photo-lightbox";
 import { useAuth } from "@/hooks/use-auth";
 import { canReviewCheckout } from "@/lib/fleet-config";
 import { getChecklistForCompany } from "@/lib/companies";
@@ -48,6 +53,7 @@ export default function OfficeReportDetailPage() {
   const [retakeAngles, setRetakeAngles] = useState<PhotoAngle[]>([]);
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState<"gallery" | "compare">("gallery");
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   useEffect(() => {
     if (!loading && !user) router.replace("/");
@@ -92,6 +98,16 @@ export default function OfficeReportDetailPage() {
   const photoMap = useMemo(
     () => Object.fromEntries(report?.photos.map((p) => [p.angle, p]) ?? []),
     [report]
+  );
+  const galleryPhotos = useMemo<LightboxPhoto[]>(
+    () =>
+      steps.flatMap((step) => {
+        const photo = photoMap[step.angle];
+        return photo?.dataUrl
+          ? [{ id: step.angle, src: photo.dataUrl, label: step.label }]
+          : [];
+      }),
+    [photoMap, steps]
   );
 
   const toggleRetake = (angle: PhotoAngle) => {
@@ -203,14 +219,20 @@ export default function OfficeReportDetailPage() {
             <Button
               size="sm"
               variant={tab === "gallery" ? "primary" : "secondary"}
-              onClick={() => setTab("gallery")}
+              onClick={() => {
+                setTab("gallery");
+                setLightboxIndex(null);
+              }}
             >
               Gallery
             </Button>
             <Button
               size="sm"
               variant={tab === "compare" ? "primary" : "secondary"}
-              onClick={() => setTab("compare")}
+              onClick={() => {
+                setTab("compare");
+                setLightboxIndex(null);
+              }}
             >
               Compare to prior ({priors.length})
             </Button>
@@ -227,11 +249,15 @@ export default function OfficeReportDetailPage() {
                   >
                     <div className="aspect-video bg-gray-100">
                       {photo?.dataUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
+                        <OfficePhotoThumb
                           src={photo.dataUrl}
-                          alt={step.label}
-                          className="w-full h-full object-cover"
+                          label={step.label}
+                          onOpen={() => {
+                            const next = galleryPhotos.findIndex(
+                              (item) => item.id === step.angle
+                            );
+                            if (next >= 0) setLightboxIndex(next);
+                          }}
                         />
                       ) : (
                         <div className="h-full flex items-center justify-center text-xs text-gray-400">
@@ -368,6 +394,12 @@ export default function OfficeReportDetailPage() {
           </Card>
         </div>
       </OfficePinGate>
+      <PhotoLightbox
+        photos={galleryPhotos}
+        index={lightboxIndex}
+        onClose={() => setLightboxIndex(null)}
+        onIndexChange={setLightboxIndex}
+      />
     </div>
   );
 }
