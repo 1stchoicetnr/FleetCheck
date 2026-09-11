@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AppHeader } from "@/components/app-header";
@@ -58,7 +58,7 @@ export default function OfficeReportsPage() {
     if (user && !canReviewCheckout(user.role)) router.replace("/dashboard");
   }, [user, loading, router]);
 
-  useEffect(() => {
+  const loadOffice = useCallback(() => {
     Promise.all([
       fetchCheckoutReports(),
       fetchCompanies(),
@@ -74,6 +74,19 @@ export default function OfficeReportsPage() {
         setLoadError(err.message || "Could not load shared checkout reports.");
       });
   }, []);
+
+  useEffect(() => {
+    loadOffice();
+    const onVis = () => {
+      if (document.visibilityState === "visible") loadOffice();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("focus", loadOffice);
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("focus", loadOffice);
+    };
+  }, [loadOffice]);
 
   const companyMap = Object.fromEntries(companies.map((c) => [c.id, c]));
   const vehicleMap = Object.fromEntries(vehicles.map((v) => [v.id, v]));
@@ -129,9 +142,16 @@ export default function OfficeReportsPage() {
                 Checkout reports
               </h2>
               <p className="text-sm text-gray-500">
-                {filtered.length} shown · {flagCount} flagged · all Neon CRs,
-                including plates that were not pre-seeded
+                {filtered.length} shown · {flagCount} flagged · live Neon list
+                (refresh if a new CR just landed)
               </p>
+              <button
+                type="button"
+                onClick={loadOffice}
+                className="text-xs font-semibold text-brand-700 underline underline-offset-2 mt-1"
+              >
+                Refresh from server
+              </button>
             </div>
             {flagCount > 0 && (
               <button
@@ -237,6 +257,11 @@ export default function OfficeReportsPage() {
                       {report.newDamageNotes && (
                         <p className="text-sm text-orange-800 bg-orange-50 rounded-lg px-2 py-1">
                           New damage: {report.newDamageNotes}
+                        </p>
+                      )}
+                      {report.reviewNotes && (
+                        <p className="text-sm text-gray-600 bg-gray-50 rounded-lg px-2 py-1">
+                          {report.reviewNotes}
                         </p>
                       )}
                     </CardContent>

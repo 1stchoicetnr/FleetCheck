@@ -1,6 +1,7 @@
 import jsPDF from "jspdf";
 import {
   CheckRecord,
+  CheckoutReport,
   Fleet,
   MAINTENANCE_ISSUES,
   PHOTO_ANGLES,
@@ -8,7 +9,13 @@ import {
   FUEL_LEVEL_LABELS,
   fleetTypeLabel,
 } from "./types";
-import { formatDate, formatMileage, fitInBox, getImageDimensions } from "./utils";
+import {
+  formatDate,
+  formatMileage,
+  formatUnitLabel,
+  fitInBox,
+  getImageDimensions,
+} from "./utils";
 
 export async function generateCheckPDF(
   check: CheckRecord,
@@ -244,6 +251,42 @@ export async function generateCheckPDF(
         rowMaxH = 0;
       }
     }
+  }
+
+  return doc.output("blob");
+}
+
+export async function generateCheckoutReportPDF(
+  report: CheckoutReport
+): Promise<Blob> {
+  const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.getWidth();
+  let y = 20;
+
+  doc.setFontSize(20);
+  doc.setFont("helvetica", "bold");
+  doc.text("FleetCheck Checkout Report", pageWidth / 2, y, { align: "center" });
+  y += 12;
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "normal");
+  doc.text(`Saved to Office: ${formatDate(report.completedAt)}`, pageWidth / 2, y, {
+    align: "center",
+  });
+  y += 14;
+
+  const lines = [
+    `Unit: ${formatUnitLabel(report.unitNumber, report.plate)}`,
+    `Vehicle: ${report.year} ${report.make} ${report.model}`,
+    `Type: ${report.type === "check_in" ? "Check In" : "Check Out"}`,
+    `Driver: ${report.driverName}`,
+    `Dispatcher: ${report.dispatcherName}`,
+    `Odometer: ${formatMileage(report.odometer)}`,
+    `Office id: ${report.id}`,
+    "This PDF is a copy. Office /office is the record.",
+  ];
+  for (const line of lines) {
+    doc.text(line, 14, y);
+    y += 7;
   }
 
   return doc.output("blob");

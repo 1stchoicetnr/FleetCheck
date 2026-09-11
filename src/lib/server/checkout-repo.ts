@@ -17,6 +17,7 @@ import {
   localUpsertVehicle,
 } from "./local-store";
 import { persistCheckoutPhoto } from "./photo-store";
+import { notifyCheckoutReport } from "./slack-notify";
 import {
   pgFindVehicleByPlate,
   pgGetReport,
@@ -160,7 +161,10 @@ export async function createReport(
     synced: true,
     createdAt: now,
   };
-  return mode === "postgres" ? pgPutReport(report) : localPutReport(report);
+  const saved =
+    mode === "postgres" ? await pgPutReport(report) : await localPutReport(report);
+  void notifyCheckoutReport(saved);
+  return saved;
 }
 
 export async function addReportPhoto(

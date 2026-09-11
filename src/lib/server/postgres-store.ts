@@ -9,7 +9,11 @@ import {
 } from "@/lib/types";
 import { normalizePlate } from "@/lib/utils";
 import { getDatabaseUrl } from "./shared-config";
-import { sharedSeedReports, sharedSeedVehicles } from "./seed-shared";
+import {
+  sharedRecoveredReports,
+  sharedSeedReports,
+  sharedSeedVehicles,
+} from "./seed-shared";
 import { SharedVehicle, UpsertVehicleInput } from "./shared-types";
 
 function sqlClient() {
@@ -152,14 +156,23 @@ export async function pgMigrateAndSeed(): Promise<void> {
     `;
   }
 
-  migrated = true;
-
   const reports = await sql`SELECT id FROM checkout_reports LIMIT 1`;
   if (reports.length === 0) {
     for (const report of sharedSeedReports()) {
       await upsertReportRow(report);
     }
   }
+
+  for (const report of sharedRecoveredReports()) {
+    const existing = await sql`
+      SELECT id FROM checkout_reports WHERE id = ${report.id} LIMIT 1
+    `;
+    if (existing.length === 0) {
+      await upsertReportRow(report);
+    }
+  }
+
+  migrated = true;
 }
 
 export async function pgListCompanies(): Promise<Company[]> {

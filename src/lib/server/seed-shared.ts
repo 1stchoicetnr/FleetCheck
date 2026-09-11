@@ -109,6 +109,36 @@ export function sharedSeedVehicles(): SharedVehicle[] {
   ];
 }
 
+/** Slack PDFs are not Office records. This backfills Nathan's missing CXB9373 CR. */
+export function sharedRecoveredReports(): CheckoutReport[] {
+  const completedAt = "2026-09-11T11:46:05.237Z";
+  return [
+    {
+      id: "cr-slack-cxb9373-1789127165237",
+      companyId: RAD_CAB_COMPANY_ID,
+      vehicleId: RAD_CAB_UNIT_CXB9373_ID,
+      unitNumber: "CXB9373",
+      plate: "CXB9373",
+      year: 2011,
+      make: "Dodge",
+      model: "Grand Caravan",
+      odometer: 134122,
+      driverName: "James",
+      dispatcherName: "Nathan",
+      type: "check_in",
+      photos: [],
+      status: "complete",
+      completedAt,
+      reviewStatus: "pending",
+      reviewNotes:
+        "Recovered from Slack PDF fleetcheck-CXB9373-1789127165237.pdf. Photos and signature were not stored on the server.",
+      flagged: true,
+      synced: true,
+      createdAt: completedAt,
+    },
+  ];
+}
+
 export function sharedSeedReports(): CheckoutReport[] {
   const older = daysAgo(14);
   const recent = daysAgo(7);

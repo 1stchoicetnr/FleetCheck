@@ -116,7 +116,7 @@ src/lib/storage          IndexedDB (shift check-in only)
 
 ## Future
 
-Slack bot posting into `#radcabcr` is **out of scope** for this PR. Radar already watches that channel.
+A Slack PDF in `#radcabcr` is **not** the Office record. Checkout submit writes **Neon first**; Slack is an optional copy (`SLACK_WEBHOOK_RADCABCR` or `SLACK_WEBHOOK_RAD_CAB_REPAIRS`). Office `/office` is the source of truth.
 
 ## License
 

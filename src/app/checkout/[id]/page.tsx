@@ -27,6 +27,7 @@ import {
   Company,
   PhotoAngle,
 } from "@/lib/types";
+import { generateCheckoutReportPDF, downloadPDF } from "@/lib/pdf";
 import { formatDate, formatUnitLabel } from "@/lib/utils";
 import { PHOTO_EXAMPLE_PATHS } from "@/lib/photo-examples";
 import { Check } from "lucide-react";
@@ -176,11 +177,25 @@ export default function CheckoutCapturePage() {
             {completed.make} {completed.model}
           </p>
           <p className="text-sm text-gray-500">
-            Saved {formatDate(completed.completedAt)} · pending office review
+            Saved to Office {formatDate(completed.completedAt)} · pending review.
+            Slack is only a copy — Office is the record.
           </p>
           <div className="space-y-3 pt-2">
             <Button
               size="xl"
+              className="w-full"
+              onClick={async () => {
+                const blob = await generateCheckoutReportPDF(completed);
+                downloadPDF(
+                  blob,
+                  `fleetcheck-${completed.plate || completed.unitNumber}-${Date.now()}.pdf`
+                );
+              }}
+            >
+              Download PDF for Slack
+            </Button>
+            <Button
+              size="lg"
               className="w-full"
               onClick={() => router.push("/checkout")}
             >

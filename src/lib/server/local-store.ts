@@ -3,7 +3,11 @@ import path from "path";
 import { SEEDED_COMPANIES } from "@/lib/companies";
 import { CheckoutReport } from "@/lib/types";
 import { normalizePlate } from "@/lib/utils";
-import { sharedSeedReports, sharedSeedVehicles } from "./seed-shared";
+import {
+  sharedRecoveredReports,
+  sharedSeedReports,
+  sharedSeedVehicles,
+} from "./seed-shared";
 import { SharedStore, SharedVehicle, UpsertVehicleInput } from "./shared-types";
 
 const STORE_PATH = path.join(process.cwd(), ".data", "shared.json");
@@ -56,6 +60,13 @@ async function loadAndSeedUnlocked(): Promise<SharedStore> {
   if (store.reports.length === 0) {
     store.reports = sharedSeedReports();
     changed = true;
+  }
+  const haveReports = new Set(store.reports.map((r) => r.id));
+  for (const report of sharedRecoveredReports()) {
+    if (!haveReports.has(report.id)) {
+      store.reports.unshift(report);
+      changed = true;
+    }
   }
   if (changed) await writeStore(store);
   return store;
