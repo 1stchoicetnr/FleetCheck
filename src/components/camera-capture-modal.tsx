@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   X,
@@ -22,14 +22,20 @@ import { useDeviceOrientation } from "@/hooks/use-orientation";
 import {
   CameraFacing,
   applyDesiredTorch,
+  applyTorchAndKeepPreview,
+  bindStreamToVideo,
   canUseBrowserCamera,
   describeGetUserMediaError,
+  describeTorchUnavailable,
   getSessionCameraFacing,
   getStreamVideoTrack,
+  isLikelyIOS,
+  isPreviewLive,
   openCameraStream,
+  probeTorchSupport,
   setSessionCameraFacing,
-  setTrackTorch,
   trackSupportsTorch,
+  waitForElement,
   waitForVideoFrame,
 } from "@/lib/camera";
 
@@ -106,11 +112,13 @@ function FlashlightButton({
   supported,
   onToggle,
   compact = false,
+  unavailableHint,
 }: {
   on: boolean;
   supported: boolean;
   onToggle: () => void;
   compact?: boolean;
+  unavailableHint?: string;
 }) {
   const Icon = on ? Flashlight : FlashlightOff;
   return (
@@ -151,8 +159,9 @@ function FlashlightButton({
         </span>
       </button>
       {!supported && (
-        <p className="text-[11px] text-white/55 text-center max-w-[11rem] leading-tight px-1">
-          {compact ? "Not available" : "Flashlight not available on this phone"}
+        <p className="text-[11px] text-white/70 text-center max-w-[14rem] leading-tight px-1">
+          {unavailableHint ||
+            (compact ? "Not available" : "Flashlight not available on this phone")}
         </p>
       )}
     </div>
@@ -285,11 +294,11 @@ export function CameraCaptureModal({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const prevLandscapeRef = useRef<boolean | null>(null);
-  /** Session torch intent — survives orientation / stream restarts until close or toggle-off. */
+  /** Session torch intent — survives orientation until close or toggle-off. */
   const torchDesiredRef = useRef(false);
-  const torchRetryRef = useRef<number | null>(null);
+  const startGenRef = useRef(0);
   const startCameraRef = useRef<() => Promise<void>>(async () => {});
+  const openRef = useRef(open);
 
   const [mounted, setMounted] = useState(false);
   const [phase, setPhase] = useState<Phase>("native");
@@ -309,6 +318,8 @@ export function CameraCaptureModal({
   const [torchOn, setTorchOn] = useState(false);
   const [torchSupported, setTorchSupported] = useState(false);
   const showLandscapeTip = photoStep.category === "exterior";
+
+  openRef.current = open;
 
   useEffect(() => setMounted(true), []);
 
@@ -349,7 +360,6 @@ export function CameraCaptureModal({
     return () => {
       document.body.style.overflow = prevOverflow;
       void exitNativeFullscreen();
-      prevLandscapeRef.current = null;
     };
   }, [open]);
 
@@ -360,12 +370,6 @@ export function CameraCaptureModal({
   }, [open, phase, orientationVersion, syncLiveLayout, syncPreviewLayout]);
 
   const stopStream = useCallback((opts?: { resetTorch?: boolean }) => {
-    if (torchRetryRef.current != null) {
-      window.clearTimeout(torchRetryRef.current);
-      torchRetryRef.current = null;
-    }
-    const track = getStreamVideoTrack(streamRef.current);
-    if (track) void setTrackTorch(track, false);
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
@@ -376,28 +380,11 @@ export function CameraCaptureModal({
     }
   }, []);
 
-  const restoreTorchOnStream = useCallback(async (stream: MediaStream) => {
-    const apply = async () => {
-      if (streamRef.current !== stream) return;
-      const result = await applyDesiredTorch(
-        getStreamVideoTrack(stream),
-        torchDesiredRef.current
-      );
-      if (streamRef.current !== stream) return;
-      setTorchSupported(result.supported);
-      setTorchOn(result.on);
-    };
-    await apply();
-    if (torchRetryRef.current != null) window.clearTimeout(torchRetryRef.current);
-    torchRetryRef.current = window.setTimeout(() => {
-      void apply();
-    }, 400);
-  }, []);
-
   const finishCapture = async (dataUrl: string) => {
     const compressed = await compressUploadPhoto(dataUrl);
     setPreviewUrl(compressed);
     setPhase("preview");
+    startGenRef.current += 1;
     stopStream();
     setAutoAccepting(true);
     setQualityPassed(true);
@@ -410,6 +397,7 @@ export function CameraCaptureModal({
   };
 
   const startCamera = useCallback(async () => {
+    const gen = ++startGenRef.current;
     stopStream();
     setLiveError("");
 
@@ -419,39 +407,109 @@ export function CameraCaptureModal({
       return;
     }
 
-    const landscape = window.innerWidth > window.innerHeight;
+    const facing = getSessionCameraFacing();
 
     try {
-      const stream = await openCameraStream(getSessionCameraFacing(), landscape);
+      const stream = await openCameraStream(facing);
+      if (gen !== startGenRef.current || !openRef.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
+
       streamRef.current = stream;
+      setFacingMode(facing);
       setPhase("live");
 
-      const video = videoRef.current;
-      if (video) {
-        video.srcObject = stream;
-        await video.play();
-        syncLiveLayout();
+      const video = await waitForElement(() => videoRef.current);
+      if (gen !== startGenRef.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
+
+      const previewOk = await bindStreamToVideo(video, stream);
+      syncLiveLayout();
+      if (!previewOk) {
+        setLiveError("Couldn't show the camera preview. Try Live preview again, or use Take photo.");
       }
 
       const track = getStreamVideoTrack(stream);
+      const recoverPreview = () => {
+        if (gen !== startGenRef.current) return;
+        if (streamRef.current !== stream) return;
+        if (track && track.readyState !== "live") return;
+        const el = videoRef.current;
+        if (!el) return;
+        if (el.srcObject !== stream) el.srcObject = stream;
+        if (el.paused) void el.play().catch(() => {});
+      };
+      track?.addEventListener("mute", recoverPreview);
+      track?.addEventListener("unmute", recoverPreview);
       track?.addEventListener("ended", () => {
         if (streamRef.current !== stream) return;
         void startCameraRef.current();
       });
 
-      await restoreTorchOnStream(stream);
+      const torchOk =
+        facing === "environment" && (await probeTorchSupport(track));
+      if (gen !== startGenRef.current) return;
+      setTorchSupported(torchOk);
+
+      if (torchDesiredRef.current && torchOk) {
+        const result = await applyDesiredTorch(track, true);
+        if (gen !== startGenRef.current) return;
+        setTorchOn(result.on);
+        await bindStreamToVideo(videoRef.current, stream, true);
+        if (!isPreviewLive(videoRef.current)) {
+          torchDesiredRef.current = false;
+          setTorchOn(false);
+          const recovered = await applyTorchAndKeepPreview(
+            track,
+            videoRef.current,
+            stream,
+            false
+          );
+          if (!recovered.previewLive) {
+            setPhase("native");
+            startGenRef.current += 1;
+            stopStream();
+            setLiveError(
+              "Live preview stopped after flashlight. Use Take photo instead."
+            );
+            return;
+          }
+          setLiveError(
+            "Flashlight froze the preview on this phone, so it was turned off. Use Take photo and Camera flash instead."
+          );
+        }
+      } else {
+        setTorchOn(false);
+      }
     } catch (err) {
+      if (gen !== startGenRef.current) return;
       setLiveError(describeGetUserMediaError(err));
       setPhase("native");
       setTorchSupported(false);
       setTorchOn(false);
     }
-  }, [restoreTorchOnStream, stopStream, syncLiveLayout]);
+  }, [stopStream, syncLiveLayout]);
 
   startCameraRef.current = startCamera;
 
+  useLayoutEffect(() => {
+    if (phase !== "live") return;
+    const video = videoRef.current;
+    const stream = streamRef.current;
+    if (!video || !stream) return;
+    if (video.srcObject !== stream) {
+      video.srcObject = stream;
+      void video.play().catch(() => {});
+    }
+    syncLiveLayout();
+  }, [phase, syncLiveLayout]);
+
   useEffect(() => {
     if (!open) {
+      startGenRef.current += 1;
       stopStream({ resetTorch: true });
       setPhase("native");
       setPreviewUrl(null);
@@ -468,74 +526,85 @@ export function CameraCaptureModal({
     setAutoAccepting(false);
     setLiveLowLight(false);
     setLiveError("");
-    startCamera();
-    return stopStream;
+    void startCamera();
+    return () => {
+      startGenRef.current += 1;
+      stopStream();
+    };
   }, [open, photoStep.angle, startCamera, stopStream]);
 
   const flipCamera = () => {
     const next: CameraFacing =
       getSessionCameraFacing() === "environment" ? "user" : "environment";
+    if (next === "user") {
+      torchDesiredRef.current = false;
+      setTorchOn(false);
+      setTorchSupported(false);
+    }
     setSessionCameraFacing(next);
     setFacingMode(next);
-    if (open && phase === "live") {
+    if (open && (phase === "live" || phase === "native")) {
       void startCamera();
     }
   };
 
   const toggleTorch = async () => {
-    const track = getStreamVideoTrack(streamRef.current);
-    if (!track || !trackSupportsTorch(track)) return;
-    const next = !torchDesiredRef.current;
-    torchDesiredRef.current = next;
-    const ok = await setTrackTorch(track, next);
-    if (ok) {
-      setTorchOn(next);
-      setTorchSupported(true);
+    const stream = streamRef.current;
+    const track = getStreamVideoTrack(stream);
+    const video = videoRef.current;
+    if (!stream || !track) return;
+
+    if (facingMode === "user" || !trackSupportsTorch(track)) {
+      setTorchSupported(false);
+      torchDesiredRef.current = false;
+      setTorchOn(false);
       return;
     }
+
+    const next = !torchDesiredRef.current;
+    torchDesiredRef.current = next;
+    const result = await applyTorchAndKeepPreview(track, video, stream, next);
+
+    if (result.applied && result.previewLive) {
+      setTorchOn(next);
+      setTorchSupported(true);
+      setLiveError("");
+      return;
+    }
+
     torchDesiredRef.current = false;
     setTorchOn(false);
-    setTorchSupported(false);
+    setTorchSupported(result.supported);
+    if (!result.previewLive) {
+      await bindStreamToVideo(video, stream, true);
+      if (!isPreviewLive(videoRef.current)) {
+        setPhase("native");
+        startGenRef.current += 1;
+        stopStream();
+        setLiveError("Live preview stopped after flashlight. Use Take photo instead.");
+        return;
+      }
+      setLiveError(
+        "Flashlight froze the camera preview, so it was turned off. Use Take photo and Camera flash instead."
+      );
+    } else if (result.rolledBack || next) {
+      setLiveError(
+        result.rolledBack
+          ? "Flashlight froze the camera preview, so it was turned off. Use Take photo and Camera flash instead."
+          : describeTorchUnavailable()
+      );
+    }
   };
 
   useEffect(() => {
     if (!open || phase !== "live") return;
-
     syncLiveLayout();
-
-    if (
-      prevLandscapeRef.current !== null &&
-      prevLandscapeRef.current !== isLandscape
-    ) {
-      startCamera();
-    } else if (torchDesiredRef.current && streamRef.current) {
-      void restoreTorchOnStream(streamRef.current);
-    }
-    prevLandscapeRef.current = isLandscape;
-  }, [
-    open,
-    phase,
-    isLandscape,
-    orientationVersion,
-    startCamera,
-    syncLiveLayout,
-    restoreTorchOnStream,
-  ]);
-
-  useEffect(() => {
-    if (!open || phase !== "live") return;
-    const reapply = () => {
-      const stream = streamRef.current;
-      if (!stream || !torchDesiredRef.current) return;
-      void restoreTorchOnStream(stream);
-    };
-    window.addEventListener("orientationchange", reapply);
-    window.addEventListener("resize", reapply);
-    return () => {
-      window.removeEventListener("orientationchange", reapply);
-      window.removeEventListener("resize", reapply);
-    };
-  }, [open, phase, restoreTorchOnStream]);
+    const video = videoRef.current;
+    const stream = streamRef.current;
+    if (!video || !stream) return;
+    if (video.srcObject !== stream) video.srcObject = stream;
+    if (video.paused) void video.play().catch(() => {});
+  }, [open, phase, isLandscape, orientationVersion, syncLiveLayout]);
 
   const capturePhoto = async () => {
     const video = videoRef.current;
@@ -621,18 +690,25 @@ export function CameraCaptureModal({
       data-torch-supported={torchSupported ? "true" : "false"}
       data-torch-on={torchOn ? "true" : "false"}
     >
+      {phase !== "preview" && (
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          className={`camera-media z-0 ${
+            facingMode === "user" ? "camera-media-mirror" : ""
+          }`}
+          style={{
+            ...LIVE_MEDIA_STYLE,
+            opacity: phase === "live" ? 1 : 0,
+            pointerEvents: "none",
+          }}
+        />
+      )}
+
       {phase === "live" && (
         <>
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            muted
-            className={`camera-media z-0 ${
-              facingMode === "user" ? "camera-media-mirror" : ""
-            }`}
-            style={LIVE_MEDIA_STYLE}
-          />
           <PhotoFrameGuide
             category={photoStep.category}
             mode="fullscreen"
@@ -727,12 +803,17 @@ export function CameraCaptureModal({
               <Camera className="h-6 w-6 mr-2" />
               Take photo
             </Button>
+            <p className="text-center text-white/70 text-xs mt-3 mb-1 px-2 leading-snug">
+              Need a flashlight for a dark shot? Take photo only has your phone’s
+              one-shot flash. Use Live preview for a continuous flashlight.
+            </p>
             <button
               type="button"
               onClick={() => void startCamera()}
-              className="block mx-auto mt-4 text-brand-200 text-sm underline"
+              className="flex items-center justify-center gap-2 mx-auto mt-2 min-h-[44px] px-4 rounded-full bg-black/50 text-amber-200 border border-amber-400/40 text-sm font-semibold"
             >
-              Live preview
+              <Flashlight className="h-4 w-4" />
+              Live preview + flashlight
             </button>
             <button
               type="button"
@@ -769,7 +850,11 @@ export function CameraCaptureModal({
           <div className="flex items-center gap-2 mx-auto max-w-sm bg-amber-950/75 backdrop-blur-sm rounded-xl px-4 py-2.5 border border-amber-500/30">
             <AlertTriangle className="h-4 w-4 text-amber-400 flex-shrink-0" />
             <p className="text-amber-100 text-sm leading-snug">
-              Low light — hold steady and move closer if possible
+              {torchSupported
+                ? "Low light — turn on Flashlight"
+                : isLikelyIOS()
+                  ? "Low light — use Take photo and Camera flash, or the Control Center torch"
+                  : "Low light — use Take photo and Camera flash if flashlight isn’t available"}
             </p>
           </div>
         </div>
@@ -843,9 +928,16 @@ export function CameraCaptureModal({
             />
             <FlashlightButton
               on={torchOn}
-              supported={torchSupported}
+              supported={torchSupported && facingMode === "environment"}
               onToggle={() => void toggleTorch()}
               compact={isLandscape}
+              unavailableHint={
+                isLandscape
+                  ? isLikelyIOS()
+                    ? "Use Take photo flash"
+                    : "Not available"
+                  : describeTorchUnavailable()
+              }
             />
           </div>
           <button

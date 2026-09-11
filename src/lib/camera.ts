@@ -8,6 +8,10 @@ export type CameraFacing = "environment" | "user";
 
 const SESSION_FACING_KEY = "fleetcheck-camera-facing";
 
+type TorchCapability = MediaTrackCapabilities & { torch?: boolean };
+type TorchConstraint = MediaTrackConstraintSet & { torch?: boolean };
+type TorchSettings = MediaTrackSettings & { torch?: boolean };
+
 /** Rear / environment-facing is the default for every checklist step. */
 export function getSessionCameraFacing(): CameraFacing {
   if (typeof window === "undefined") return "environment";
@@ -29,43 +33,42 @@ export function setSessionCameraFacing(facing: CameraFacing): void {
   }
 }
 
+export function isLikelyIOS(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return /iP(hone|ad|od)/.test(navigator.userAgent);
+}
+
+/**
+ * Keep facingMode as *ideal* only (never exact) and skip aspectRatio.
+ * Exact facing + portrait/landscape size locks have been seen to fight the
+ * torch constraint and restart the track (black live preview).
+ */
 export function videoConstraintsForFacing(
-  facing: CameraFacing,
-  landscape: boolean,
-  exact: boolean
+  facing: CameraFacing
 ): MediaTrackConstraints {
   return {
-    facingMode: exact ? { exact: facing } : { ideal: facing },
-    width: { ideal: landscape ? 1920 : 1080 },
-    height: { ideal: landscape ? 1080 : 1920 },
-    aspectRatio: { ideal: landscape ? 16 / 9 : 9 / 16 },
+    facingMode: { ideal: facing },
+    width: { ideal: 1920 },
+    height: { ideal: 1080 },
   };
 }
 
-/** Prefer the requested lens; fall back to ideal if the device rejects exact. */
+/** Prefer the requested lens; fall back to a bare facingMode if the device rejects size. */
 export async function openCameraStream(
-  facing: CameraFacing,
-  landscape: boolean
+  facing: CameraFacing
 ): Promise<MediaStream> {
   try {
     return await navigator.mediaDevices.getUserMedia({
-      video: videoConstraintsForFacing(facing, landscape, true),
+      video: videoConstraintsForFacing(facing),
       audio: false,
     });
   } catch {
     return await navigator.mediaDevices.getUserMedia({
-      video: videoConstraintsForFacing(facing, landscape, false),
+      video: { facingMode: { ideal: facing } },
       audio: false,
     });
   }
 }
-
-type TorchCapability = MediaTrackCapabilities & { torch?: boolean };
-type TorchConstraint = MediaTrackConstraintSet & { torch?: boolean };
-
-type ImageCaptureLike = {
-  setOptions?: (opts: { fillLightMode: "off" | "flash" | "auto" }) => Promise<void>;
-};
 
 export function getStreamVideoTrack(
   stream: MediaStream | null
@@ -75,13 +78,34 @@ export function getStreamVideoTrack(
 
 /** True only when the live track advertises a torch. iOS Safari typically does not. */
 export function trackSupportsTorch(track: MediaStreamTrack | null): boolean {
-  if (!track || typeof track.getCapabilities !== "function") return false;
+  if (!track || track.readyState !== "live") return false;
+  if (typeof track.getCapabilities !== "function") return false;
   try {
     const caps = track.getCapabilities() as TorchCapability;
-    return Boolean(caps && "torch" in caps && caps.torch !== false);
+    return caps?.torch === true;
   } catch {
     return false;
   }
+}
+
+export function trackTorchIsOn(track: MediaStreamTrack | null): boolean {
+  if (!track || typeof track.getSettings !== "function") return false;
+  try {
+    return (track.getSettings() as TorchSettings).torch === true;
+  } catch {
+    return false;
+  }
+}
+
+export function isPreviewLive(video: HTMLVideoElement | null): boolean {
+  return Boolean(
+    video &&
+      video.srcObject &&
+      !video.paused &&
+      video.readyState >= 2 &&
+      video.videoWidth > 0 &&
+      video.videoHeight > 0
+  );
 }
 
 export async function waitForVideoFrame(
@@ -96,6 +120,67 @@ export async function waitForVideoFrame(
     await new Promise((resolve) => requestAnimationFrame(resolve));
   }
   return video.videoWidth > 0 && video.videoHeight > 0;
+}
+
+export async function waitForElement<T>(
+  get: () => T | null | undefined,
+  timeoutMs = 2000
+): Promise<T | null> {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const value = get();
+    if (value) return value;
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+  }
+  return get() ?? null;
+}
+
+/**
+ * Capabilities are often empty until the track is producing frames.
+ * Probe after the preview is live rather than immediately after getUserMedia.
+ */
+export async function probeTorchSupport(
+  track: MediaStreamTrack | null,
+  attempts = 10
+): Promise<boolean> {
+  for (let i = 0; i < attempts; i++) {
+    if (trackSupportsTorch(track)) return true;
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+  }
+  return trackSupportsTorch(track);
+}
+
+/**
+ * Attach (or re-attach) a stream to the video element and wait for a frame.
+ * Re-assigning srcObject is required after torch applyConstraints on many
+ * Android Chrome builds — the track stays live but the <video> goes black.
+ */
+export async function bindStreamToVideo(
+  video: HTMLVideoElement | null,
+  stream: MediaStream | null,
+  remount = false
+): Promise<boolean> {
+  if (!video || !stream) return false;
+
+  video.setAttribute("playsinline", "true");
+  video.setAttribute("webkit-playsinline", "true");
+  video.muted = true;
+  video.autoplay = true;
+  video.playsInline = true;
+
+  const alreadyBound = video.srcObject === stream;
+  if (remount || !alreadyBound) {
+    if (video.srcObject) video.srcObject = null;
+    video.srcObject = stream;
+  }
+
+  try {
+    await video.play();
+  } catch {
+    /* muted + playsInline should allow autoplay; ignore AbortError on remount */
+  }
+
+  return waitForVideoFrame(video);
 }
 
 export function describeGetUserMediaError(err: unknown): string {
@@ -115,14 +200,52 @@ export function describeGetUserMediaError(err: unknown): string {
   return "Live preview couldn't start. Use Take photo instead.";
 }
 
-/** Re-apply session torch after a stream restart (orientation, flip, track ended). */
+export function describeTorchUnavailable(): string {
+  if (isLikelyIOS()) {
+    return "iPhone can’t run a flashlight in Live preview. Use Take photo and the Camera flash, or turn on the LED torch from Control Center.";
+  }
+  return "This camera doesn’t expose a flashlight. Use Take photo for a single flash.";
+}
+
+/**
+ * Continuous torch only. Do not mix facingMode/size into this call, and do not
+ * use ImageCapture fillLightMode "flash" (that is a one-shot photo flash and
+ * can black out the live preview).
+ */
+export async function setTrackTorch(
+  track: MediaStreamTrack | null,
+  on: boolean
+): Promise<boolean> {
+  if (!track || track.readyState !== "live") return false;
+  if (on && !trackSupportsTorch(track)) return false;
+
+  try {
+    await track.applyConstraints({
+      advanced: [{ torch: on } as TorchConstraint],
+    });
+  } catch {
+    return false;
+  }
+
+  try {
+    const settings = track.getSettings() as TorchSettings;
+    if (typeof settings.torch === "boolean") return settings.torch === on;
+  } catch {
+    /* some engines omit torch from getSettings even when the LED is on */
+  }
+  return true;
+}
+
+/** Apply session torch after a genuine stream restart (flip / track ended). */
 export async function applyDesiredTorch(
   track: MediaStreamTrack | null,
   desired: boolean
 ): Promise<{ supported: boolean; on: boolean }> {
-  const supported = trackSupportsTorch(track);
+  const supported = await probeTorchSupport(track);
   if (!desired) {
-    if (supported) await setTrackTorch(track, false);
+    if (supported && trackTorchIsOn(track)) {
+      await setTrackTorch(track, false);
+    }
     return { supported, on: false };
   }
   if (!supported) return { supported: false, on: false };
@@ -130,40 +253,40 @@ export async function applyDesiredTorch(
   return { supported: true, on: ok };
 }
 
-export async function setTrackTorch(
+/**
+ * After torch on/off, recover a black <video> without stopping the track.
+ * If the preview cannot be recovered with torch on, turn torch off and recover.
+ */
+export async function applyTorchAndKeepPreview(
   track: MediaStreamTrack | null,
+  video: HTMLVideoElement | null,
+  stream: MediaStream | null,
   on: boolean
-): Promise<boolean> {
-  if (!track) return false;
-
-  try {
-    await track.applyConstraints({
-      advanced: [{ torch: on } as TorchConstraint],
-    });
-    return true;
-  } catch {
-    /* try a flat constraint next */
+): Promise<{
+  applied: boolean;
+  previewLive: boolean;
+  supported: boolean;
+  rolledBack: boolean;
+}> {
+  const supported = trackSupportsTorch(track);
+  if (!track || !supported) {
+    const previewLive = await bindStreamToVideo(video, stream);
+    return { applied: false, previewLive, supported: false, rolledBack: false };
   }
 
-  try {
-    await track.applyConstraints({ torch: on } as MediaTrackConstraints);
-    return true;
-  } catch {
-    /* ImageCapture fillLightMode — last resort, not a fake UI toggle */
+  const applied = await setTrackTorch(track, on);
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+  let previewLive = await bindStreamToVideo(video, stream, true);
+
+  if (on && applied && !previewLive) {
+    await setTrackTorch(track, false);
+    previewLive = await bindStreamToVideo(video, stream, true);
+    return { applied: false, previewLive, supported: true, rolledBack: true };
   }
 
-  try {
-    const Ctor = (
-      window as unknown as {
-        ImageCapture?: new (t: MediaStreamTrack) => ImageCaptureLike;
-      }
-    ).ImageCapture;
-    if (!Ctor) return false;
-    const capture = new Ctor(track);
-    if (!capture.setOptions) return false;
-    await capture.setOptions({ fillLightMode: on ? "flash" : "off" });
-    return true;
-  } catch {
-    return false;
+  if (!previewLive) {
+    previewLive = await bindStreamToVideo(video, stream, true);
   }
+
+  return { applied, previewLive, supported: true, rolledBack: false };
 }

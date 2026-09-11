@@ -226,13 +226,17 @@ export function GuidedPhotoCapture({
               <Camera className="h-7 w-7" />
               {busy ? "Saving photo…" : "Take photo"}
             </button>
+            <p className="text-center text-xs text-gray-400 leading-snug px-1">
+              Dark shot? Take photo can use your phone’s flash, but not a
+              flashlight. Open Live preview for a continuous flashlight.
+            </p>
             <button
               type="button"
               onClick={openLivePreview}
-              className="w-full h-12 rounded-xl border border-gray-600 text-gray-200 text-sm font-medium hover:bg-gray-800 transition-colors flex items-center justify-center gap-2"
+              className="w-full h-12 rounded-xl border border-amber-700/60 bg-amber-950/30 text-amber-100 text-sm font-semibold hover:bg-amber-950/50 transition-colors flex items-center justify-center gap-2"
             >
               <Video className="h-4 w-4" />
-              Live preview
+              Live preview + flashlight
             </button>
             <button
               type="button"
