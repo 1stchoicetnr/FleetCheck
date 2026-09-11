@@ -281,16 +281,16 @@ export default function OfficeReportDetailPage() {
                   : ""}
               </p>
               {report.signatureDataUrl && (
-                <div className="rounded-xl border border-gray-200 bg-white p-2">
-                  <p className="text-xs font-semibold text-gray-500 mb-1">
-                    Driver signature
+                <div className="rounded-xl border border-gray-300 bg-gray-50 p-2">
+                  <p className="text-xs font-semibold text-gray-600 mb-1">
+                    Driver signature · {report.driverName}
                     {report.signedAt ? ` · ${formatDate(report.signedAt)}` : ""}
                   </p>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={report.signatureDataUrl}
                     alt={`Signature of ${report.driverName}`}
-                    className="h-16 w-full object-contain bg-white"
+                    className="h-28 w-full object-contain bg-white rounded-lg border border-gray-200"
                   />
                 </div>
               )}
