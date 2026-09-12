@@ -37,3 +37,6 @@ next-env.d.ts
 
 # vercel
 .vercel
+
+# local shared-backend fallback (next dev only)
+.data/

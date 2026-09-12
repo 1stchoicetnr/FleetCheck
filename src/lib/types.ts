@@ -1,3 +1,5 @@
+import type { CheckoutInspectionForm } from "./inspection-form";
+
 export type UserRole = "super_admin" | "management" | "tech" | "driver";
 
 export type FleetType = "taxi" | "tow" | "turo" | "service_vehicle";
@@ -80,6 +82,96 @@ export interface PhotoStep {
   /** exterior = full vehicle (landscape); detail = close-up; interior = cabin */
   category: "exterior" | "detail" | "interior";
   required: boolean;
+  /** Office-leniency / capture tip shown under the instruction */
+  helper?: string;
+}
+
+export type ChecklistId = "radcab_default" | "generic_30";
+
+export interface Company {
+  id: string;
+  name: string;
+  slug: string;
+  /** Which photo checklist this company uses. Others can add their own later. */
+  checklistId: ChecklistId;
+  createdAt: string;
+}
+
+export type CheckoutType = "check_out" | "check_in";
+
+export type CheckoutReviewStatus = "pending" | "pass" | "conditional" | "fail";
+
+export const CHECKOUT_REVIEW_LABELS: Record<CheckoutReviewStatus, string> = {
+  pending: "Pending review",
+  pass: "PASS",
+  conditional: "Conditional",
+  fail: "FAIL",
+};
+
+export const CHECKOUT_REVIEW_COLORS: Record<CheckoutReviewStatus, string> = {
+  pending: "bg-amber-100 text-amber-800",
+  pass: "bg-green-100 text-green-800",
+  conditional: "bg-orange-100 text-orange-800",
+  fail: "bg-red-100 text-red-800",
+};
+
+export interface CheckoutReport {
+  id: string;
+  companyId: string;
+  vehicleId: string;
+  unitNumber: string;
+  /** License plate copied onto the report so Office can show it without a seed row. */
+  plate?: string;
+  year: number;
+  make: string;
+  model: string;
+  odometer: number;
+  driverName: string;
+  dispatcherName: string;
+  type: CheckoutType;
+  /** Paper inspection checklist (in addition to the photo walkaround). */
+  inspectionForm?: CheckoutInspectionForm;
+  photos: VehiclePhoto[];
+  /** Driver finished capture */
+  status: "complete";
+  completedAt: string;
+  reviewStatus: CheckoutReviewStatus;
+  reviewNotes?: string;
+  /** Office notes about NEW damage vs prior reports */
+  newDamageNotes?: string;
+  /** Slots the office wants retaken (Conditional) */
+  retakeAngles?: PhotoAngle[];
+  reviewedAt?: string;
+  reviewedBy?: string;
+  flagged: boolean;
+  synced: boolean;
+  createdAt: string;
+  /** Driver signature image (data URL or Blob URL). */
+  signatureDataUrl?: string;
+  signedAt?: string;
+}
+
+/** In-progress checkout report saved locally for offline resume. */
+export interface CheckoutDraft {
+  id: string;
+  companyId: string;
+  vehicleId: string;
+  type: CheckoutType;
+  driverId: string;
+  driverName: string;
+  dispatcherName: string;
+  odometer: string;
+  year: string;
+  make: string;
+  model: string;
+  photos: Partial<Record<PhotoAngle, string>>;
+  photoFlags?: Partial<
+    Record<PhotoAngle, { flaggedDamage: boolean; damageNote?: string }>
+  >;
+  inspectionForm?: CheckoutInspectionForm;
+  signatureDataUrl?: string;
+  signedAt?: string;
+  updatedAt: string;
 }
 
 export interface User {
@@ -88,18 +180,23 @@ export interface User {
   email: string;
   role: UserRole;
   fleetIds: string[];
+  companyIds: string[];
 }
 
 export interface Fleet {
   id: string;
   name: string;
   type: StoredFleetType;
+  companyId: string;
   createdAt: string;
 }
 
 export interface Vehicle {
   id: string;
   fleetId: string;
+  companyId: string;
+  /** Fleet unit number (e.g. Rad Cab "12"). Falls back to plate in UI. */
+  unitNumber: string;
   plate: string;
   make: string;
   model: string;
@@ -131,6 +228,9 @@ export interface VehiclePhoto {
   angle: PhotoAngle;
   dataUrl: string;
   capturedAt: string;
+  /** Driver or office marked this angle as new damage. */
+  flaggedDamage?: boolean;
+  damageNote?: string;
 }
 
 export type FuelLevel =
@@ -279,9 +379,80 @@ export interface AppSettings {
   id?: string;
   notificationSettings: NotificationSettings;
   companyName: string;
+  /** Light office PIN for checkout-report review (MVP). */
+  officePin?: string;
 }
 
+export const TIRE_HELPER =
+  "Tire tread and wheel-well shots are hard — get as close as you can, keep it well-lit, and hold steady. Close enough is OK.";
+
+export const WHEEL_HELPER =
+  "Wheel-well and rim shots are hard — get close, keep the wheel centered, and hold steady. Close enough is OK.";
+
+export const REGISTRATION_HELPER =
+  "Office mainly needs the expiration date and VIN to be readable. The rest of the document can be imperfect.";
+
+export const ODOMETER_HELPER =
+  "Office mainly needs the mileage to be readable. Fuel and warning lights are a bonus.";
+
+export const INTERIOR_NIGHT_HELPER =
+  "At night, turn the interior lights on before you shoot.";
+
+/**
+ * Default ~30-slot checkout walkaround (Rad Cab + generic_30).
+ *
+ * Physical path a driver walks — do not scatter corners / wheels:
+ *   1–4   Docs from the driver seat: odometer, registration, windshield, radio
+ *   5–8   Start at LF corner; shoot fender + tire + wheel as you stand there
+ *   9     Straight-on front, then walk clockwise
+ *   10–13 RF corner cluster (corner, fender, tire, wheel)
+ *   14    Passenger doors (RAD CAB logo / full panels)
+ *   15–18 RR cluster (quarter, tire, wheel, corner)
+ *   19    Straight-on rear
+ *   20–23 LR cluster (corner, quarter, tire, wheel)
+ *   24    Driver-side doors — back at the start side
+ *   25–29 Interiors: driver door in → rear seats → trunk → passenger
+ *   30    Engine bay last (oil)
+ *
+ * Example JPGs stay keyed by `angle` in photo-examples.ts (old filenames are fine).
+ */
 export const PHOTO_ANGLES: PhotoStep[] = [
+  {
+    angle: "odometer_fuel",
+    label: "Odometer & Fuel",
+    instruction: "Capture mileage, fuel level, and any warning lights on the dash.",
+    icon: "🔢",
+    category: "interior",
+    required: true,
+    helper: ODOMETER_HELPER,
+  },
+  {
+    angle: "registration",
+    label: "Registration & Insurance",
+    instruction: "Clear photo of the registration and insurance documents.",
+    icon: "📄",
+    category: "interior",
+    required: true,
+    helper: REGISTRATION_HELPER,
+  },
+  {
+    angle: "windshield",
+    label: "Windshield",
+    instruction: "From the driver seat — show windshield condition.",
+    icon: "🪟",
+    category: "interior",
+    required: true,
+    helper: INTERIOR_NIGHT_HELPER,
+  },
+  {
+    angle: "radio_climate",
+    label: "Radio & Climate",
+    instruction: "Photograph the radio and climate control panel.",
+    icon: "📻",
+    category: "interior",
+    required: true,
+    helper: INTERIOR_NIGHT_HELPER,
+  },
   {
     angle: "lf_corner",
     label: "Front 3/4 Left",
@@ -305,6 +476,7 @@ export const PHOTO_ANGLES: PhotoStep[] = [
     icon: "🛞",
     category: "detail",
     required: true,
+    helper: TIRE_HELPER,
   },
   {
     angle: "lf_wheel",
@@ -313,54 +485,7 @@ export const PHOTO_ANGLES: PhotoStep[] = [
     icon: "⭕",
     category: "detail",
     required: true,
-  },
-  {
-    angle: "driver_doors",
-    label: "Driver Side Doors",
-    instruction: "Capture both driver-side doors — full door panels visible.",
-    icon: "⬅️",
-    category: "exterior",
-    required: true,
-  },
-  {
-    angle: "lr_quarter_panel",
-    label: "LR Quarter Panel",
-    instruction: "Show the left-rear quarter panel condition.",
-    icon: "📐",
-    category: "detail",
-    required: true,
-  },
-  {
-    angle: "lr_tire",
-    label: "LR Tire",
-    instruction: "Show the condition of the left-rear tire.",
-    icon: "🛞",
-    category: "detail",
-    required: true,
-  },
-  {
-    angle: "lr_wheel",
-    label: "LR Wheel",
-    instruction: "Show the condition of the left-rear wheel and rim.",
-    icon: "⭕",
-    category: "detail",
-    required: true,
-  },
-  {
-    angle: "lr_corner",
-    label: "Rear 3/4 Left",
-    instruction: "Show the whole left-rear (LR) of the vehicle.",
-    icon: "↙️",
-    category: "exterior",
-    required: true,
-  },
-  {
-    angle: "rear",
-    label: "Rear",
-    instruction: "Straight-on rear view — show the full rear of the vehicle.",
-    icon: "⬇️",
-    category: "exterior",
-    required: true,
+    helper: WHEEL_HELPER,
   },
   {
     angle: "front",
@@ -393,6 +518,7 @@ export const PHOTO_ANGLES: PhotoStep[] = [
     icon: "🛞",
     category: "detail",
     required: true,
+    helper: TIRE_HELPER,
   },
   {
     angle: "rf_wheel",
@@ -401,6 +527,7 @@ export const PHOTO_ANGLES: PhotoStep[] = [
     icon: "⭕",
     category: "detail",
     required: true,
+    helper: WHEEL_HELPER,
   },
   {
     angle: "passenger_doors",
@@ -425,6 +552,7 @@ export const PHOTO_ANGLES: PhotoStep[] = [
     icon: "🛞",
     category: "detail",
     required: true,
+    helper: TIRE_HELPER,
   },
   {
     angle: "rr_wheel",
@@ -433,6 +561,7 @@ export const PHOTO_ANGLES: PhotoStep[] = [
     icon: "⭕",
     category: "detail",
     required: true,
+    helper: WHEEL_HELPER,
   },
   {
     angle: "rr_corner",
@@ -443,12 +572,63 @@ export const PHOTO_ANGLES: PhotoStep[] = [
     required: true,
   },
   {
+    angle: "rear",
+    label: "Rear",
+    instruction: "Straight-on rear view — show the full rear of the vehicle.",
+    icon: "⬇️",
+    category: "exterior",
+    required: true,
+  },
+  {
+    angle: "lr_corner",
+    label: "Rear 3/4 Left",
+    instruction: "Show the whole left-rear (LR) of the vehicle.",
+    icon: "↙️",
+    category: "exterior",
+    required: true,
+  },
+  {
+    angle: "lr_quarter_panel",
+    label: "LR Quarter Panel",
+    instruction: "Show the left-rear quarter panel condition.",
+    icon: "📐",
+    category: "detail",
+    required: true,
+  },
+  {
+    angle: "lr_tire",
+    label: "LR Tire",
+    instruction: "Show the condition of the left-rear tire.",
+    icon: "🛞",
+    category: "detail",
+    required: true,
+    helper: TIRE_HELPER,
+  },
+  {
+    angle: "lr_wheel",
+    label: "LR Wheel",
+    instruction: "Show the condition of the left-rear wheel and rim.",
+    icon: "⭕",
+    category: "detail",
+    required: true,
+    helper: WHEEL_HELPER,
+  },
+  {
+    angle: "driver_doors",
+    label: "Driver Side Doors",
+    instruction: "Capture both driver-side doors — full door panels visible.",
+    icon: "⬅️",
+    category: "exterior",
+    required: true,
+  },
+  {
     angle: "driver_door_in",
     label: "Driver Door — Interior",
     instruction: "Open the driver door and photograph facing in.",
     icon: "🚪",
     category: "interior",
     required: true,
+    helper: INTERIOR_NIGHT_HELPER,
   },
   {
     angle: "driver_rear_door_in",
@@ -457,6 +637,7 @@ export const PHOTO_ANGLES: PhotoStep[] = [
     icon: "🚪",
     category: "interior",
     required: true,
+    helper: INTERIOR_NIGHT_HELPER,
   },
   {
     angle: "trunk_interior",
@@ -465,6 +646,7 @@ export const PHOTO_ANGLES: PhotoStep[] = [
     icon: "📦",
     category: "interior",
     required: true,
+    helper: INTERIOR_NIGHT_HELPER,
   },
   {
     angle: "passenger_rear_in",
@@ -473,6 +655,7 @@ export const PHOTO_ANGLES: PhotoStep[] = [
     icon: "💺",
     category: "interior",
     required: true,
+    helper: INTERIOR_NIGHT_HELPER,
   },
   {
     angle: "passenger_front_in",
@@ -481,14 +664,7 @@ export const PHOTO_ANGLES: PhotoStep[] = [
     icon: "💺",
     category: "interior",
     required: true,
-  },
-  {
-    angle: "registration",
-    label: "Registration & Insurance",
-    instruction: "Clear photo of the registration and insurance documents.",
-    icon: "📄",
-    category: "interior",
-    required: true,
+    helper: INTERIOR_NIGHT_HELPER,
   },
   {
     angle: "engine_oil",
@@ -496,30 +672,6 @@ export const PHOTO_ANGLES: PhotoStep[] = [
     instruction: "Show the dipstick with the engine oil level visible.",
     icon: "🛢️",
     category: "detail",
-    required: true,
-  },
-  {
-    angle: "odometer_fuel",
-    label: "Odometer & Fuel",
-    instruction: "Capture mileage, fuel level, and any warning lights on the dash.",
-    icon: "🔢",
-    category: "interior",
-    required: true,
-  },
-  {
-    angle: "windshield",
-    label: "Windshield",
-    instruction: "From the driver seat — show windshield condition.",
-    icon: "🪟",
-    category: "interior",
-    required: true,
-  },
-  {
-    angle: "radio_climate",
-    label: "Radio & Climate",
-    instruction: "Photograph the radio and climate control panel.",
-    icon: "📻",
-    category: "interior",
     required: true,
   },
 ];

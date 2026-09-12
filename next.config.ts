@@ -8,6 +8,10 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: path.join(__dirname),
   },
+  redirects: async () => [
+    { source: "/check-in", destination: "/checkout", permanent: false },
+    { source: "/check-in/:path*", destination: "/checkout", permanent: false },
+  ],
   headers: async () => [
     {
       source: "/sw.js",
