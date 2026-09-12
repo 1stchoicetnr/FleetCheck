@@ -183,6 +183,7 @@ export default function OfficeUnitsPage() {
                         </CardTitle>
                         <p className="text-sm text-gray-600">
                           {vehicle.year} {vehicle.make} {vehicle.model}
+                          {vehicle.powertrain === "ev" ? " · EV" : ""}
                         </p>
                         <p className="text-xs text-gray-400 mt-1">
                           {company?.name ?? "Company"}

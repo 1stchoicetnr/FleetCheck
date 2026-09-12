@@ -14,6 +14,7 @@ import {
 } from "./types";
 import {
   formatDate,
+  formatDateOnly,
   formatMileage,
   formatUnitLabel,
   fitInBox,
@@ -25,6 +26,7 @@ import {
   photoAngleLabel,
   sortAnglesDamageFirst,
 } from "./photo-flags";
+import { inspectionFormSummaryLines } from "./inspection-form";
 
 export type CheckoutPdfOptions = {
   companyName?: string;
@@ -403,19 +405,29 @@ export async function generateCheckoutReportPDF(
 
   section("Inspection form");
   const formLines = [
-    `Company: ${options.companyName || "—"}`,
-    `Unit: ${formatUnitLabel(report.unitNumber, plate)}`,
-    `Plate: ${plate || "—"}`,
+    `Date: ${formatDateOnly(report.inspectionForm?.inspectedAt || report.completedAt)}`,
+    `Name: ${report.driverName}`,
     `Vehicle: ${report.year} ${report.make} ${report.model}`,
+    `Unit / Clover #: ${report.inspectionForm?.cloverNumber || report.unitNumber}`,
+    `Company: ${options.companyName || "—"}`,
+    `Plate: ${plate || "—"}`,
     `Type: ${report.type === "check_in" ? "Check In" : "Check Out"}`,
-    `Odometer: ${formatMileage(report.odometer)}`,
-    `Driver: ${report.driverName}`,
+    `Odometer start: ${formatMileage(report.odometer)}`,
     `Dispatcher: ${report.dispatcherName}`,
     `Completed: ${formatDate(report.completedAt)}`,
     `Photos: ${present.length} of ${listed.length}`,
     `Office id: ${report.id}`,
   ];
   for (const line of formLines) addWrapped(line);
+
+  section("Walkaround checklist");
+  if (report.inspectionForm) {
+    for (const line of inspectionFormSummaryLines(report.inspectionForm)) {
+      addWrapped(line);
+    }
+  } else {
+    addWrapped("No paper checklist on this report (submitted before the form was added).");
+  }
 
   section("Office review");
   addWrapped(`Status: ${CHECKOUT_REVIEW_LABELS[report.reviewStatus]}`);

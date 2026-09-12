@@ -6,6 +6,10 @@ import {
   RAD_CAB_COMPANY_ID,
   SEEDED_COMPANIES,
 } from "@/lib/companies";
+import {
+  CheckoutInspectionForm,
+  createEmptyInspectionForm,
+} from "@/lib/inspection-form";
 import { CheckoutReport, PHOTO_ANGLES, VehiclePhoto } from "@/lib/types";
 import { SharedVehicle } from "./shared-types";
 
@@ -13,7 +17,29 @@ export const RAD_CAB_UNIT_12_ID = "vehicle-radcab-12";
 export const RAD_CAB_UNIT_18_ID = "vehicle-radcab-18";
 export const RAD_CAB_UNIT_23_ID = "vehicle-radcab-23";
 export const RAD_CAB_UNIT_CXB9373_ID = "vehicle-radcab-cxb9373";
+export const RAD_CAB_UNIT_091_ID = "vehicle-radcab-091";
 export const FIRST_CHOICE_UNIT_T1_ID = "vehicle-1st-t1";
+
+function checkedForm(
+  powertrain: "gas" | "ev",
+  extras?: Partial<CheckoutInspectionForm>
+): CheckoutInspectionForm {
+  const form = createEmptyInspectionForm(powertrain);
+  for (const id of Object.keys(form.checks) as Array<keyof typeof form.checks>) {
+    if (form.checks[id].na) continue;
+    form.checks[id] = { ...form.checks[id], checked: true };
+  }
+  return {
+    ...form,
+    interiorClean: "yes",
+    exteriorClean: "yes",
+    ...extras,
+    checks: {
+      ...form.checks,
+      ...extras?.checks,
+    },
+  };
+}
 
 function examplePhotos(capturedAt: string): VehiclePhoto[] {
   return PHOTO_ANGLES.map((step) => ({
@@ -39,6 +65,7 @@ export function sharedSeedVehicles(): SharedVehicle[] {
       model: "Grand Caravan",
       year: 2014,
       lastMileage: 128440,
+      powertrain: "gas",
       createdAt: now,
     },
     {
@@ -50,6 +77,7 @@ export function sharedSeedVehicles(): SharedVehicle[] {
       model: "Grand Caravan",
       year: 2018,
       lastMileage: 87210,
+      powertrain: "gas",
       createdAt: now,
     },
     {
@@ -61,6 +89,19 @@ export function sharedSeedVehicles(): SharedVehicle[] {
       model: "Camry",
       year: 2022,
       lastMileage: 45230,
+      powertrain: "gas",
+      createdAt: now,
+    },
+    {
+      id: RAD_CAB_UNIT_091_ID,
+      companyId: RAD_CAB_COMPANY_ID,
+      unitNumber: "091",
+      plate: "EV-0091",
+      make: "Tesla",
+      model: "Model Y",
+      year: 2024,
+      lastMileage: 55280,
+      powertrain: "ev",
       createdAt: now,
     },
     {
@@ -71,6 +112,7 @@ export function sharedSeedVehicles(): SharedVehicle[] {
       make: "Dodge",
       model: "Grand Caravan",
       year: 2011,
+      powertrain: "gas",
       createdAt: now,
     },
     {
@@ -82,6 +124,7 @@ export function sharedSeedVehicles(): SharedVehicle[] {
       model: "F-550",
       year: 2021,
       lastMileage: 78450,
+      powertrain: "gas",
       createdAt: now,
     },
     {
@@ -93,6 +136,7 @@ export function sharedSeedVehicles(): SharedVehicle[] {
       model: "CR-V",
       year: 2023,
       lastMileage: 22100,
+      powertrain: "gas",
       createdAt: now,
     },
     {
@@ -104,15 +148,54 @@ export function sharedSeedVehicles(): SharedVehicle[] {
       model: "F-450",
       year: 2019,
       lastMileage: 61000,
+      powertrain: "gas",
       createdAt: now,
     },
   ];
+}
+
+function teslaPaperExampleReport(): CheckoutReport {
+  const completedAt = "2024-09-10T16:00:00.000Z";
+  return {
+    id: "cr-seed-unit091-paper-example",
+    companyId: RAD_CAB_COMPANY_ID,
+    vehicleId: RAD_CAB_UNIT_091_ID,
+    unitNumber: "091",
+    plate: "EV-0091",
+    year: 2024,
+    make: "Tesla",
+    model: "Model Y",
+    odometer: 55280,
+    driverName: "KEN",
+    dispatcherName: "Ashley",
+    type: "check_out",
+    photos: examplePhotos(completedAt),
+    status: "complete",
+    completedAt,
+    reviewStatus: "pending",
+    inspectionForm: checkedForm("ev", {
+      cloverNumber: "091",
+      inspectedAt: completedAt,
+      checks: {
+        ...checkedForm("ev").checks,
+        tirePressure: { checked: true, note: "35 Psi" },
+      },
+      interiorClean: "yes",
+      exteriorClean: "yes",
+      damage: { right: "SCRATCHES", marks: ["right"] },
+      additionalComments: "Right-side bumper scratches circled on paper form.",
+    }),
+    flagged: true,
+    synced: true,
+    createdAt: completedAt,
+  };
 }
 
 /** Slack PDFs are not Office records. This backfills Nathan's missing CXB9373 CR. */
 export function sharedRecoveredReports(): CheckoutReport[] {
   const completedAt = "2026-09-11T11:46:05.237Z";
   return [
+    teslaPaperExampleReport(),
     {
       id: "cr-slack-cxb9373-1789127165237",
       companyId: RAD_CAB_COMPANY_ID,
@@ -161,6 +244,14 @@ export function sharedSeedReports(): CheckoutReport[] {
       status: "complete",
       completedAt: older,
       reviewStatus: "pass",
+      inspectionForm: checkedForm("gas", {
+        cloverNumber: "12",
+        inspectedAt: older,
+        checks: {
+          ...checkedForm("gas").checks,
+          tirePressure: { checked: true, note: "35 Psi" },
+        },
+      }),
       reviewNotes: "No new damage vs prior.",
       reviewedAt: older,
       reviewedBy: "Ashley",
@@ -184,6 +275,15 @@ export function sharedSeedReports(): CheckoutReport[] {
       status: "complete",
       completedAt: recent,
       reviewStatus: "pass",
+      inspectionForm: checkedForm("gas", {
+        cloverNumber: "12",
+        inspectedAt: recent,
+        checks: {
+          ...checkedForm("gas").checks,
+          tirePressure: { checked: true, note: "35 Psi" },
+        },
+        damage: { left: "Same scuff on LF bumper", marks: ["left"] },
+      }),
       reviewNotes: "Same scuff on LF bumper as last report.",
       reviewedAt: recent,
       reviewedBy: "Ashley",
@@ -207,10 +307,19 @@ export function sharedSeedReports(): CheckoutReport[] {
       status: "complete",
       completedAt: pendingAt,
       reviewStatus: "pending",
+      inspectionForm: checkedForm("gas", {
+        cloverNumber: "18",
+        inspectedAt: pendingAt,
+        checks: {
+          ...checkedForm("gas").checks,
+          tirePressure: { checked: true, note: "35 Psi" },
+        },
+      }),
       flagged: false,
       synced: true,
       createdAt: pendingAt,
     },
+    teslaPaperExampleReport(),
   ];
 }
 

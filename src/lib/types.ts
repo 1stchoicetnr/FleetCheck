@@ -1,3 +1,5 @@
+import type { CheckoutInspectionForm } from "./inspection-form";
+
 export type UserRole = "super_admin" | "management" | "tech" | "driver";
 
 export type FleetType = "taxi" | "tow" | "turo" | "service_vehicle";
@@ -127,6 +129,8 @@ export interface CheckoutReport {
   driverName: string;
   dispatcherName: string;
   type: CheckoutType;
+  /** Paper inspection checklist (in addition to the photo walkaround). */
+  inspectionForm?: CheckoutInspectionForm;
   photos: VehiclePhoto[];
   /** Driver finished capture */
   status: "complete";
@@ -164,6 +168,7 @@ export interface CheckoutDraft {
   photoFlags?: Partial<
     Record<PhotoAngle, { flaggedDamage: boolean; damageNote?: string }>
   >;
+  inspectionForm?: CheckoutInspectionForm;
   signatureDataUrl?: string;
   signedAt?: string;
   updatedAt: string;

@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "fs/promises";
 import path from "path";
 import { SEEDED_COMPANIES } from "@/lib/companies";
 import { CheckoutReport } from "@/lib/types";
+import { inferPowertrain } from "@/lib/inspection-form";
 import { normalizePlate } from "@/lib/utils";
 import {
   sharedRecoveredReports,
@@ -139,6 +140,11 @@ export async function localUpsertVehicle(
       year: Number(input.year),
       lastMileage: existing?.lastMileage,
       archivedAt: existing?.archivedAt,
+      powertrain: inferPowertrain(
+        input.make,
+        input.model,
+        input.powertrain ?? existing?.powertrain
+      ),
       createdAt: existing?.createdAt ?? now,
     };
     if (existing) {

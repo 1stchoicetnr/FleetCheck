@@ -1,3 +1,4 @@
+import type { CheckoutInspectionForm, Powertrain } from "@/lib/inspection-form";
 import {
   CheckoutReport,
   CheckoutReviewStatus,
@@ -18,6 +19,8 @@ export interface SharedVehicle {
   lastMileage?: number;
   /** ISO timestamp when Office archived the unit. Absent = active. */
   archivedAt?: string;
+  /** Explicit powertrain. If omitted, inferred from make/model. */
+  powertrain?: Powertrain;
   createdAt: string;
 }
 
@@ -37,6 +40,7 @@ export interface CheckoutReportInput {
   driverName: string;
   dispatcherName: string;
   type: CheckoutType;
+  inspectionForm?: CheckoutInspectionForm;
   signatureDataUrl?: string;
   signedAt?: string;
 }
@@ -48,6 +52,7 @@ export interface UpsertVehicleInput {
   make: string;
   model: string;
   year: number;
+  powertrain?: Powertrain;
 }
 
 export interface CheckoutReviewInput {

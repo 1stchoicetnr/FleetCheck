@@ -4,6 +4,7 @@ import {
   listReports,
   SharedBackendError,
 } from "@/lib/server/checkout-repo";
+import type { CheckoutInspectionForm } from "@/lib/inspection-form";
 import { CheckoutType } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -39,6 +40,7 @@ export async function POST(req: Request) {
       driverName?: string;
       dispatcherName?: string;
       type?: CheckoutType;
+      inspectionForm?: CheckoutInspectionForm;
       signatureDataUrl?: string;
       signedAt?: string;
     };
@@ -70,6 +72,7 @@ export async function POST(req: Request) {
       driverName: body.driverName,
       dispatcherName: body.dispatcherName,
       type: body.type === "check_in" ? "check_in" : "check_out",
+      inspectionForm: body.inspectionForm,
       signatureDataUrl: body.signatureDataUrl,
       signedAt: body.signedAt,
     });

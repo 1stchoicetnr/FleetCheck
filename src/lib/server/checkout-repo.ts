@@ -5,6 +5,11 @@ import {
   PhotoAngle,
   VehiclePhoto,
 } from "@/lib/types";
+import {
+  inferPowertrain,
+  inspectionFormFlagsReport,
+  validateInspectionForm,
+} from "@/lib/inspection-form";
 import { reportHasPhotoDamage } from "@/lib/photo-flags";
 import {
   VEHICLE_ARCHIVED_MESSAGE,
@@ -113,6 +118,9 @@ export async function upsertVehicle(
   if (Number.isNaN(Number(input.year))) {
     throw new SharedBackendError("Year must be a number", 400);
   }
+  if (input.powertrain && input.powertrain !== "ev" && input.powertrain !== "gas") {
+    throw new SharedBackendError("Powertrain must be gas or ev", 400);
+  }
   const existing = await findVehicleByPlate(input.companyId, input.plate);
   if (existing && isVehicleArchived(existing)) {
     throw new SharedBackendError(VEHICLE_ARCHIVED_MESSAGE, 409);
@@ -169,6 +177,15 @@ export async function createReport(
   if (!input.signatureDataUrl?.trim()) {
     throw new SharedBackendError("Driver signature is required", 400);
   }
+  const powertrain = inferPowertrain(
+    input.make,
+    input.model,
+    vehicle?.powertrain
+  );
+  const inspection = validateInspectionForm(input.inspectionForm, powertrain);
+  if (!inspection.ok) {
+    throw new SharedBackendError(inspection.error, 400);
+  }
   if (vehicle && isVehicleArchived(vehicle)) {
     throw new SharedBackendError(VEHICLE_ARCHIVED_MESSAGE, 409);
   }
@@ -189,11 +206,16 @@ export async function createReport(
     vehicleId: vehicle.id,
     unitNumber: input.unitNumber || vehicle.unitNumber,
     plate,
+    inspectionForm: {
+      ...inspection.form,
+      cloverNumber: inspection.form.cloverNumber || input.unitNumber || vehicle.unitNumber,
+      inspectedAt: inspection.form.inspectedAt || now,
+    },
     photos: [],
     status: "complete",
     completedAt: now,
     reviewStatus: "pending",
-    flagged: false,
+    flagged: inspectionFormFlagsReport(inspection.form),
     synced: true,
     createdAt: now,
     signatureDataUrl: input.signatureDataUrl,
@@ -231,7 +253,10 @@ export async function addReportPhoto(
   const updated: CheckoutReport = {
     ...existing,
     photos,
-    flagged: existing.flagged || reportHasPhotoDamage({ photos }),
+    flagged:
+      existing.flagged ||
+      reportHasPhotoDamage({ photos }) ||
+      inspectionFormFlagsReport(existing.inspectionForm),
   };
   return mode === "postgres" ? pgPutReport(updated) : localPutReport(updated);
 }
@@ -269,7 +294,8 @@ export async function patchReportPhotoFlags(
       existing.reviewStatus === "conditional" ||
       existing.reviewStatus === "fail" ||
       !!(existing.newDamageNotes && existing.newDamageNotes.trim()) ||
-      reportHasPhotoDamage({ photos }),
+      reportHasPhotoDamage({ photos }) ||
+      inspectionFormFlagsReport(existing.inspectionForm),
   };
   return mode === "postgres" ? pgPutReport(updated) : localPutReport(updated);
 }
@@ -297,7 +323,8 @@ export async function reviewReport(
       input.reviewStatus === "conditional" ||
       input.reviewStatus === "fail" ||
       !!(input.newDamageNotes && input.newDamageNotes.trim()) ||
-      reportHasPhotoDamage(existing),
+      reportHasPhotoDamage(existing) ||
+      inspectionFormFlagsReport(existing.inspectionForm),
   };
   if (mode === "postgres") return pgPutReport(updated);
   const saved = await localPatchReport(reportId, updated);

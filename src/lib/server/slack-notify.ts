@@ -1,3 +1,4 @@
+import { activeIssueFlagLabels } from "@/lib/inspection-form";
 import { CheckoutReport } from "@/lib/types";
 import { formatMileage, formatUnitLabel } from "@/lib/utils";
 
@@ -20,9 +21,20 @@ export async function notifyCheckoutReport(report: CheckoutReport): Promise<void
     `*Type:* ${report.type === "check_in" ? "Check in" : "Check out"}`,
     `*Driver:* ${report.driverName} · *Dispatcher:* ${report.dispatcherName}`,
     `*Odometer:* ${formatMileage(report.odometer)}`,
+    report.inspectionForm
+      ? `*Inspection:* Interior ${report.inspectionForm.interiorClean === "yes" ? "Yes" : "No"} · Exterior ${report.inspectionForm.exteriorClean === "yes" ? "Yes" : "No"}`
+      : "",
+    report.inspectionForm && activeIssueFlagLabels(report.inspectionForm).length
+      ? `*Flags:* ${activeIssueFlagLabels(report.inspectionForm).join(", ")}`
+      : "",
+    report.inspectionForm?.additionalComments?.trim()
+      ? `*Comments:* ${report.inspectionForm.additionalComments.trim()}`
+      : "",
     `*Office id:* \`${report.id}\``,
     "_Slack is not the record. This row is in /office._",
-  ].join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
   try {
     await fetch(url, {
       method: "POST",

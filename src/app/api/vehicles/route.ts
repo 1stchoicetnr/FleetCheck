@@ -6,6 +6,7 @@ import {
   upsertVehicle,
 } from "@/lib/server/checkout-repo";
 import { parseIncludeArchived } from "@/lib/vehicle-archive";
+import type { Powertrain } from "@/lib/inspection-form";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,6 +48,7 @@ export async function POST(req: Request) {
       make?: string;
       model?: string;
       year?: number;
+      powertrain?: Powertrain;
     };
     if (!body.companyId || !body.plate || !body.make || !body.model || body.year == null) {
       return NextResponse.json(
@@ -61,6 +63,7 @@ export async function POST(req: Request) {
       make: body.make,
       model: body.model,
       year: Number(body.year),
+      powertrain: body.powertrain,
     });
     return NextResponse.json({ vehicle }, { status: 201 });
   } catch (err) {

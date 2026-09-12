@@ -20,6 +20,15 @@ export function formatDate(iso: string): string {
   });
 }
 
+/** Paper-form style date (e.g. 9/10/24). */
+export function formatDateOnly(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-US", {
+    month: "numeric",
+    day: "numeric",
+    year: "2-digit",
+  });
+}
+
 export function formatMileage(miles: number): string {
   return miles.toLocaleString("en-US") + " mi";
 }

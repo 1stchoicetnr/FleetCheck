@@ -39,13 +39,14 @@ import {
   downloadPDF,
   generateCheckoutReportPDF,
 } from "@/lib/pdf";
-import { formatDate, formatMileage, formatUnitLabel } from "@/lib/utils";
+import { formatDate, formatDateOnly, formatMileage, formatUnitLabel } from "@/lib/utils";
 import { isVehicleArchived } from "@/lib/vehicle-archive";
 import {
   isPhotoDamageFlagged,
   sortAnglesDamageFirst,
 } from "@/lib/photo-flags";
 import { Download } from "lucide-react";
+import { InspectionFormSummary } from "@/components/inspection-form-summary";
 
 export default function OfficeReportDetailPage() {
   const params = useParams();
@@ -269,8 +270,18 @@ export default function OfficeReportDetailPage() {
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2 text-sm text-gray-700">
-                <p>Odometer: {formatMileage(report.odometer)}</p>
-                <p>Driver: {report.driverName}</p>
+                <p>
+                  Date:{" "}
+                  {formatDateOnly(
+                    report.inspectionForm?.inspectedAt || report.completedAt
+                  )}
+                </p>
+                <p>Name: {report.driverName}</p>
+                <p>
+                  Unit / Clover #:{" "}
+                  {report.inspectionForm?.cloverNumber || report.unitNumber}
+                </p>
+                <p>Odometer start: {formatMileage(report.odometer)}</p>
                 <p>Dispatcher: {report.dispatcherName}</p>
                 <p>Photos: {report.photos.length}</p>
               </div>
@@ -306,6 +317,20 @@ export default function OfficeReportDetailPage() {
                   {report.newDamageNotes
                     ? ` — new damage: ${report.newDamageNotes}`
                     : ""}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="py-4 space-y-3">
+              <CardTitle className="text-base">Paper inspection form</CardTitle>
+              {report.inspectionForm ? (
+                <InspectionFormSummary form={report.inspectionForm} />
+              ) : (
+                <p className="text-sm text-gray-500">
+                  No paper checklist on this report (submitted before the form
+                  was added).
                 </p>
               )}
             </CardContent>

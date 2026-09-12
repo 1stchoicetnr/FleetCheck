@@ -1,3 +1,4 @@
+import type { CheckoutInspectionForm, Powertrain } from "./inspection-form";
 import {
   CheckoutReport,
   CheckoutReviewStatus,
@@ -16,6 +17,7 @@ export interface SharedVehicle {
   year: number;
   lastMileage?: number;
   archivedAt?: string;
+  powertrain?: Powertrain;
   createdAt: string;
 }
 
@@ -77,6 +79,7 @@ export async function upsertSharedVehicle(input: {
   make: string;
   model: string;
   year: number;
+  powertrain?: Powertrain;
 }): Promise<SharedVehicle> {
   const data = await api<{ vehicle: SharedVehicle }>("/api/vehicles", {
     method: "POST",
@@ -123,6 +126,7 @@ export async function createCheckoutReport(input: {
   driverName: string;
   dispatcherName: string;
   type: CheckoutType;
+  inspectionForm?: CheckoutInspectionForm;
   signatureDataUrl?: string;
   signedAt?: string;
 }): Promise<CheckoutReport> {

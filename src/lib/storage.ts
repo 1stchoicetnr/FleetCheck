@@ -21,6 +21,7 @@ import {
   VehiclePhoto,
 } from "./types";
 import { generateId } from "./utils";
+import { inspectionFormFlagsReport } from "./inspection-form";
 import { SLACK_CHANNEL_DEFAULTS } from "./slack-config";
 import { PHOTO_EXAMPLE_PATHS } from "./photo-examples";
 import {
@@ -1009,7 +1010,8 @@ export function isCheckoutFlagged(report: CheckoutReport): boolean {
     report.flagged ||
     report.reviewStatus === "conditional" ||
     report.reviewStatus === "fail" ||
-    !!(report.newDamageNotes && report.newDamageNotes.trim())
+    !!(report.newDamageNotes && report.newDamageNotes.trim()) ||
+    inspectionFormFlagsReport(report.inspectionForm)
   );
 }
 

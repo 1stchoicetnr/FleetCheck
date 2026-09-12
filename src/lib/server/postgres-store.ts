@@ -1,6 +1,10 @@
 import { neon } from "@neondatabase/serverless";
 import { SEEDED_COMPANIES } from "@/lib/companies";
 import {
+  CheckoutInspectionForm,
+  inferPowertrain,
+} from "@/lib/inspection-form";
+import {
   CheckoutReport,
   CheckoutReviewStatus,
   Company,
@@ -48,6 +52,7 @@ type ReportRow = {
   created_at: string;
   signature_data_url: string | null;
   signed_at: string | null;
+  inspection_form: CheckoutInspectionForm | null;
 };
 
 function rowToReport(row: ReportRow): CheckoutReport {
@@ -80,6 +85,7 @@ function rowToReport(row: ReportRow): CheckoutReport {
     createdAt: new Date(row.created_at).toISOString(),
     signatureDataUrl: row.signature_data_url ?? undefined,
     signedAt: row.signed_at ? new Date(row.signed_at).toISOString() : undefined,
+    inspectionForm: row.inspection_form ?? undefined,
   };
 }
 
@@ -142,7 +148,9 @@ export async function pgMigrateAndSeed(): Promise<void> {
   await sql`ALTER TABLE checkout_reports ADD COLUMN IF NOT EXISTS plate TEXT`;
   await sql`ALTER TABLE checkout_reports ADD COLUMN IF NOT EXISTS signature_data_url TEXT`;
   await sql`ALTER TABLE checkout_reports ADD COLUMN IF NOT EXISTS signed_at TIMESTAMPTZ`;
+  await sql`ALTER TABLE checkout_reports ADD COLUMN IF NOT EXISTS inspection_form JSONB`;
   await sql`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ`;
+  await sql`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS powertrain TEXT`;
 
   for (const company of SEEDED_COMPANIES) {
     await sql`
@@ -153,11 +161,11 @@ export async function pgMigrateAndSeed(): Promise<void> {
   }
   for (const vehicle of sharedSeedVehicles()) {
     await sql`
-      INSERT INTO vehicles (id, company_id, unit_number, plate, make, model, year, last_mileage, created_at)
+      INSERT INTO vehicles (id, company_id, unit_number, plate, make, model, year, last_mileage, created_at, powertrain)
       VALUES (
         ${vehicle.id}, ${vehicle.companyId}, ${vehicle.unitNumber}, ${vehicle.plate},
         ${vehicle.make}, ${vehicle.model}, ${vehicle.year}, ${vehicle.lastMileage ?? null},
-        ${vehicle.createdAt}
+        ${vehicle.createdAt}, ${vehicle.powertrain ?? "gas"}
       )
       ON CONFLICT (id) DO NOTHING
     `;
@@ -235,6 +243,11 @@ function mapVehicleRow(row: Record<string, unknown>): SharedVehicle {
     archivedAt: row.archived_at
       ? new Date(String(row.archived_at)).toISOString()
       : undefined,
+    powertrain: inferPowertrain(
+      String(row.make),
+      String(row.model),
+      typeof row.powertrain === "string" ? row.powertrain : undefined
+    ),
     createdAt: new Date(String(row.created_at)).toISOString(),
   };
 }
@@ -283,22 +296,28 @@ export async function pgUpsertVehicle(
     year: Number(input.year),
     lastMileage: existing?.lastMileage,
     archivedAt: existing?.archivedAt,
+    powertrain: inferPowertrain(
+      input.make,
+      input.model,
+      input.powertrain ?? existing?.powertrain
+    ),
     createdAt: existing?.createdAt ?? now,
   };
   const sql = sqlClient();
   await sql`
-    INSERT INTO vehicles (id, company_id, unit_number, plate, make, model, year, last_mileage, created_at)
+    INSERT INTO vehicles (id, company_id, unit_number, plate, make, model, year, last_mileage, created_at, powertrain)
     VALUES (
       ${vehicle.id}, ${vehicle.companyId}, ${vehicle.unitNumber}, ${vehicle.plate},
       ${vehicle.make}, ${vehicle.model}, ${vehicle.year}, ${vehicle.lastMileage ?? null},
-      ${vehicle.createdAt}
+      ${vehicle.createdAt}, ${vehicle.powertrain ?? "gas"}
     )
     ON CONFLICT (id) DO UPDATE SET
       unit_number = EXCLUDED.unit_number,
       plate = EXCLUDED.plate,
       make = EXCLUDED.make,
       model = EXCLUDED.model,
-      year = EXCLUDED.year
+      year = EXCLUDED.year,
+      powertrain = EXCLUDED.powertrain
   `;
   return vehicle;
 }
@@ -344,7 +363,7 @@ async function upsertReportRow(report: CheckoutReport): Promise<void> {
       id, company_id, vehicle_id, unit_number, plate, year, make, model, odometer,
       driver_name, dispatcher_name, type, status, completed_at, review_status,
       review_notes, new_damage_notes, retake_angles, reviewed_at, reviewed_by,
-      flagged, photos, created_at, signature_data_url, signed_at
+      flagged, photos, created_at, signature_data_url, signed_at, inspection_form
     ) VALUES (
       ${report.id}, ${report.companyId}, ${report.vehicleId}, ${report.unitNumber},
       ${report.plate ?? null},
@@ -354,7 +373,8 @@ async function upsertReportRow(report: CheckoutReport): Promise<void> {
       ${report.newDamageNotes ?? null},       CAST(${JSON.stringify(report.retakeAngles ?? [])} AS jsonb),
       ${report.reviewedAt ?? null}, ${report.reviewedBy ?? null}, ${report.flagged},
       CAST(${JSON.stringify(report.photos)} AS jsonb), ${report.createdAt},
-      ${report.signatureDataUrl ?? null}, ${report.signedAt ?? null}
+      ${report.signatureDataUrl ?? null}, ${report.signedAt ?? null},
+      CAST(${JSON.stringify(report.inspectionForm ?? null)} AS jsonb)
     )
     ON CONFLICT (id) DO UPDATE SET
       review_status = EXCLUDED.review_status,
@@ -368,7 +388,8 @@ async function upsertReportRow(report: CheckoutReport): Promise<void> {
       odometer = EXCLUDED.odometer,
       plate = EXCLUDED.plate,
       signature_data_url = EXCLUDED.signature_data_url,
-      signed_at = EXCLUDED.signed_at
+      signed_at = EXCLUDED.signed_at,
+      inspection_form = EXCLUDED.inspection_form
   `;
   await sql`
     UPDATE vehicles SET last_mileage = ${report.odometer} WHERE id = ${report.vehicleId}

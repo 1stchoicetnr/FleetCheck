@@ -5,7 +5,10 @@ A professional, mobile-first internal web app for vehicle documentation, damage 
 ## Driver vs office
 
 **Driver (phone)**  
-Start a Checkout Report: pick company → unit # → confirm year/make/model → enter odometer, driver, and dispatcher. Then walk the guided photo checklist (one slot at a time, camera, retake, progress). Submit when every required slot is filled. The report is saved **Complete** with a timestamp on the **shared server** so office can see it on another phone.
+Start a Checkout Report: pick company → unit / clover # → confirm year/make/model → enter odometer start, driver name, and dispatcher. Fill the **paper inspection form** (checklist + notes, interior/exterior clean, left/right/front/rear damage, comments/flags). Then walk the guided photo checklist (one slot at a time, camera, retake, progress). Submit when every required slot is filled and the report is signed. The report is saved **Complete** with a timestamp on the **shared server** so office can see it on another phone.
+
+**EV units**  
+If the unit is EV (Tesla, powertrain=EV, or other electric make/model), **Oil** and **Fuel Level** on the paper form are N/A and not required. Gas vans keep them required. The 30-photo walkaround is unchanged.
 
 The older **Check In / Out** shift flow (mileage, fuel, signature, Slack PDF) is **retired on this preview**. Those reports never wrote to Neon, so they never appeared in Office. `/check-in` now redirects to Checkout Report.
 
@@ -17,6 +20,9 @@ Office → **Manage units (archive)** (or Dashboard → **Units**). PIN-gated li
 
 **DAMAGE flags + signature**  
 After each accepted photo, drivers can mark that angle as **DAMAGE**. Office gallery/compare lists flagged angles first. PDF marks them. Submit requires a finger/stylus **driver signature**, shown on Office detail and PDF page 1.
+
+**Paper inspection form**  
+Office detail and PDF page 1 show checklist results, optional notes, interior/exterior clean Y/N, side damage notes, additional comments, and issue flags (safety / repair / refuse to drive / out of service). This is in addition to the photo walkaround.
 
 **Live preview silhouette**  
 Live preview + flashlight shows a per-angle ghost outline. Native **Take photo** cannot overlay a guide.

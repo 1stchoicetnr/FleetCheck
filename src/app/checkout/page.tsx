@@ -17,7 +17,13 @@ import {
 } from "@/lib/checkout-api";
 import { Company, CheckoutType } from "@/lib/types";
 import { defaultCompanyId } from "@/lib/companies";
-import { formatUnitLabel, normalizePlate } from "@/lib/utils";
+import {
+  applyPowertrainToForm,
+  createEmptyInspectionForm,
+  inferPowertrain,
+  Powertrain,
+} from "@/lib/inspection-form";
+import { formatDateOnly, formatUnitLabel, normalizePlate } from "@/lib/utils";
 import { ClipboardCheck } from "lucide-react";
 
 export default function CheckoutStartPage() {
@@ -42,6 +48,8 @@ export default function CheckoutStartPage() {
   const [dispatcherName, setDispatcherName] = useState("");
   const [error, setError] = useState("");
   const [starting, setStarting] = useState(false);
+  const [powertrainOverride, setPowertrainOverride] = useState<Powertrain | "">("");
+  const inspectionDate = formatDateOnly(new Date().toISOString());
 
   useEffect(() => {
     if (!loading && !user) router.replace("/");
@@ -93,6 +101,12 @@ export default function CheckoutStartPage() {
   const selected = useMemo(
     () => vehicles.find((v) => v.id === vehicleId),
     [vehicles, vehicleId]
+  );
+
+  const inferredPowertrain = inferPowertrain(
+    make,
+    model,
+    addingUnit ? powertrainOverride || undefined : selected?.powertrain
   );
 
   useEffect(() => {
@@ -148,6 +162,7 @@ export default function CheckoutStartPage() {
           make: make.trim(),
           model: model.trim(),
           year: Number(year),
+          powertrain: inferredPowertrain,
         });
         setVehicles((prev) => {
           const next = prev.some((v) => v.id === vehicle!.id)
@@ -167,6 +182,19 @@ export default function CheckoutStartPage() {
 
       const id = checkoutDraftId(companyId, vehicle.id, type, user.id);
       const existing = await getCheckoutDraft(id);
+      const powertrain = inferPowertrain(
+        make.trim(),
+        model.trim(),
+        vehicle.powertrain || inferredPowertrain
+      );
+      const inspectionForm = applyPowertrainToForm(
+        existing?.inspectionForm ??
+          createEmptyInspectionForm(powertrain, {
+            inspectedAt: new Date().toISOString(),
+            cloverNumber: vehicle.unitNumber,
+          }),
+        powertrain
+      );
       await saveCheckoutDraft({
         id,
         companyId,
@@ -180,6 +208,10 @@ export default function CheckoutStartPage() {
         make: make.trim(),
         model: model.trim(),
         photos: existing?.photos ?? {},
+        photoFlags: existing?.photoFlags,
+        inspectionForm,
+        signatureDataUrl: existing?.signatureDataUrl,
+        signedAt: existing?.signedAt,
         updatedAt: new Date().toISOString(),
       });
       router.push(`/checkout/${id}`);
@@ -207,14 +239,23 @@ export default function CheckoutStartPage() {
             Start a vehicle checkout
           </h2>
           <p className="text-sm text-gray-600">
-            This is the only report Office can see. Fill in the handoff, then
-            take the guided photo checklist.
+            Paper inspection form plus the guided photo walkaround. Office sees
+            both.
           </p>
         </div>
 
         <Card>
           <CardContent className="py-5">
             <form onSubmit={handleStart} className="space-y-4">
+              <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+                <p>
+                  <span className="font-semibold">Date:</span> {inspectionDate}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Same header as the paper form — date, name, vehicle, clover #,
+                  odometer start.
+                </p>
+              </div>
               <div>
                 <label className="block text-base font-semibold text-gray-900 mb-1.5">
                   Company
@@ -242,7 +283,7 @@ export default function CheckoutStartPage() {
                   />
                   <div>
                     <label className="block text-base font-semibold text-gray-900 mb-1.5">
-                      Unit # (active vans)
+                      Unit / Clover # (active vans)
                     </label>
                     <select
                       value={vehicleId}
@@ -293,11 +334,40 @@ export default function CheckoutStartPage() {
                     placeholder="e.g. CXB9373"
                   />
                   <Input
-                    label="Unit # (optional)"
+                    label="Unit / Clover # (optional)"
                     value={newUnitNumber}
                     onChange={(e) => setNewUnitNumber(e.target.value)}
                     hint="Leave blank to use the plate as the unit number"
                   />
+                  <div>
+                    <p className="block text-base font-semibold text-gray-900 mb-1.5">
+                      Powertrain
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(
+                        [
+                          ["gas", "Gas"],
+                          ["ev", "EV"],
+                        ] as const
+                      ).map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setPowertrainOverride(value)}
+                          className={`min-h-[48px] rounded-xl border-2 font-semibold ${
+                            inferredPowertrain === value
+                              ? "border-brand-600 bg-brand-50 text-brand-800"
+                              : "border-gray-200 bg-white text-gray-700"
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1.5">
+                      Tesla and other EVs skip Oil and Fuel Level.
+                    </p>
+                  </div>
                 </div>
               )}
 
@@ -321,7 +391,7 @@ export default function CheckoutStartPage() {
               </div>
 
               <Input
-                label="Odometer"
+                label="Odometer start"
                 type="number"
                 inputMode="numeric"
                 value={odometer}
@@ -329,10 +399,20 @@ export default function CheckoutStartPage() {
                 hint="Mileage on the dash — must be readable in the odometer photo"
               />
               <Input
-                label="Driver"
+                label="Name (driver)"
                 value={driverName}
                 onChange={(e) => setDriverName(e.target.value)}
               />
+              <div className="rounded-xl border border-gray-200 px-4 py-3 text-sm">
+                <p className="font-semibold text-gray-900">
+                  {inferredPowertrain === "ev" ? "EV unit" : "Gas unit"}
+                </p>
+                <p className="text-gray-600 mt-0.5">
+                  {inferredPowertrain === "ev"
+                    ? "Oil and Fuel Level will be N/A on the inspection form."
+                    : "Oil and Fuel Level are required on the inspection form."}
+                </p>
+              </div>
               <Input
                 label="Dispatcher"
                 value={dispatcherName}
@@ -379,7 +459,7 @@ export default function CheckoutStartPage() {
                 className="w-full"
                 disabled={starting || (!addingUnit && !vehicleId)}
               >
-                {starting ? "Starting…" : "Start photo checklist"}
+                {starting ? "Starting…" : "Continue to inspection form"}
               </Button>
             </form>
           </CardContent>

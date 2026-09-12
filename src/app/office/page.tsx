@@ -24,6 +24,7 @@ import {
 import { formatDate, formatMileage, formatUnitLabel } from "@/lib/utils";
 import { isVehicleArchived } from "@/lib/vehicle-archive";
 import { Flag, FileSearch } from "lucide-react";
+import { activeIssueFlagLabels } from "@/lib/inspection-form";
 
 const STATUS_FILTERS: Array<CheckoutReviewStatus | "all" | "flagged"> = [
   "all",
@@ -315,6 +316,29 @@ function OfficeReportsPage() {
                         {report.driverName} · Disp. {report.dispatcherName} ·{" "}
                         {formatMileage(report.odometer)}
                       </p>
+                      {report.inspectionForm && (
+                        <p className="text-xs text-gray-600">
+                          Interior{" "}
+                          {report.inspectionForm.interiorClean === "yes"
+                            ? "Yes"
+                            : report.inspectionForm.interiorClean === "no"
+                              ? "No"
+                              : "—"}
+                          {" · "}
+                          Exterior{" "}
+                          {report.inspectionForm.exteriorClean === "yes"
+                            ? "Yes"
+                            : report.inspectionForm.exteriorClean === "no"
+                              ? "No"
+                              : "—"}
+                          {activeIssueFlagLabels(report.inspectionForm).length
+                            ? ` · ${activeIssueFlagLabels(report.inspectionForm).join(", ")}`
+                            : ""}
+                          {report.inspectionForm.additionalComments?.trim()
+                            ? ` · ${report.inspectionForm.additionalComments.trim()}`
+                            : ""}
+                        </p>
+                      )}
                       <p className="text-xs text-gray-400">
                         Complete {formatDate(report.completedAt)}
                       </p>
