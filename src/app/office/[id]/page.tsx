@@ -49,6 +49,11 @@ import {
 } from "@/lib/photo-flags";
 import { Download } from "lucide-react";
 import { InspectionFormSummary, TrafficLightBadge } from "@/components/inspection-form-summary";
+import {
+  CLOVER_SERIAL_LABEL,
+  formatCloverSerial,
+  UNIT_NUMBER_LABEL,
+} from "@/lib/inspection-form";
 
 export default function OfficeReportDetailPage() {
   const params = useParams();
@@ -283,8 +288,10 @@ export default function OfficeReportDetailPage() {
                 </p>
                 <p>Name: {report.driverName}</p>
                 <p>
-                  Unit / Clover #:{" "}
-                  {report.inspectionForm?.cloverNumber || report.unitNumber}
+                  {UNIT_NUMBER_LABEL}: {report.unitNumber}
+                </p>
+                <p>
+                  {CLOVER_SERIAL_LABEL}: {formatCloverSerial(report.inspectionForm)}
                 </p>
                 <p>Odometer start: {formatMileage(report.odometer)}</p>
                 <p>Dispatcher: {report.dispatcherName}</p>

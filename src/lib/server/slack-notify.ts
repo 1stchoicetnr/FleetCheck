@@ -1,4 +1,4 @@
-import { activeIssueFlagLabels, trafficLightLabel } from "@/lib/inspection-form";
+import { activeIssueFlagLabels, formatCloverSerial, trafficLightLabel } from "@/lib/inspection-form";
 import { CheckoutReport } from "@/lib/types";
 import { formatMileage, formatUnitLabel } from "@/lib/utils";
 
@@ -17,6 +17,9 @@ export async function notifyCheckoutReport(report: CheckoutReport): Promise<void
   const text = [
     "*Checkout Report saved to Office*",
     `*Unit:* ${unit}`,
+    report.inspectionForm
+      ? `*Clover serial:* ${formatCloverSerial(report.inspectionForm)}`
+      : "",
     `*Vehicle:* ${report.year} ${report.make} ${report.model}`,
     `*Type:* ${report.type === "check_in" ? "Check in" : "Check out"}`,
     `*Driver:* ${report.driverName} · *Dispatcher:* ${report.dispatcherName}`,

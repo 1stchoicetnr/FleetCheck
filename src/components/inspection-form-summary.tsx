@@ -1,8 +1,10 @@
 import {
   activeIssueFlagLabels,
   CheckoutInspectionForm,
+  CLOVER_SERIAL_LABEL,
   DAMAGE_SIDES,
   formatCheckResult,
+  formatCloverSerial,
   INSPECTION_CHECK_ITEMS,
   trafficLightLabel,
   treadLevelLabel,
@@ -44,6 +46,10 @@ export function InspectionFormSummary({
   const extra = form.additionalComments?.trim();
   return (
     <div className="space-y-3">
+      <p className="text-sm text-gray-800">
+        <span className="font-semibold">{CLOVER_SERIAL_LABEL}:</span>{" "}
+        {formatCloverSerial(form)}
+      </p>
       <div className="flex flex-wrap gap-2 text-xs font-semibold">
         <TrafficLightBadge form={form} />
         <span

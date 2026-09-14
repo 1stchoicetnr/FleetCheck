@@ -229,7 +229,6 @@ export async function createReport(
     plate,
     inspectionForm: {
       ...inspection.form,
-      cloverNumber: inspection.form.cloverNumber || input.unitNumber || vehicle.unitNumber,
       inspectedAt: inspection.form.inspectedAt || now,
     },
     photos: [],

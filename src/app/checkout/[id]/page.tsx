@@ -36,10 +36,13 @@ import {
 import {
   applyPowertrainToForm,
   canContinueToPhotos,
+  CLOVER_SERIAL_LABEL,
+  cloverSerialOf,
   createEmptyInspectionForm,
   inferPowertrain,
   isPrecheckRed,
   trafficLightLabel,
+  UNIT_NUMBER_LABEL,
   validateInspectionForm,
 } from "@/lib/inspection-form";
 import { formatDate, formatDateOnly, formatUnitLabel } from "@/lib/utils";
@@ -128,14 +131,7 @@ export default function CheckoutCapturePage() {
   useEffect(() => {
     if (!draft || !vehicle) return;
     const next = inferPowertrain(draft.make, draft.model, vehicle.powertrain);
-    setInspectionForm((prev) => {
-      const cloverNumber = prev.cloverNumber || vehicle.unitNumber;
-      const synced = applyPowertrainToForm(
-        { ...prev, cloverNumber },
-        next
-      );
-      return synced;
-    });
+    setInspectionForm((prev) => applyPowertrainToForm(prev, next));
   }, [draft, vehicle]);
 
   useEffect(() => {
@@ -213,8 +209,6 @@ export default function CheckoutCapturePage() {
         type: draft.type,
         inspectionForm: {
           ...inspectionValid.form,
-          cloverNumber:
-            inspectionValid.form.cloverNumber || vehicle.unitNumber,
           inspectedAt: inspectionValid.form.inspectedAt || capturedAt,
         },
         signatureDataUrl,
@@ -350,6 +344,12 @@ export default function CheckoutCapturePage() {
             Date {formatDateOnly(inspectionForm.inspectedAt || new Date().toISOString())}{" "}
             · {draft.driverName} · Dispatcher {draft.dispatcherName}
           </p>
+          <p className="text-gray-500">
+            {UNIT_NUMBER_LABEL} {vehicle.unitNumber}
+            {cloverSerialOf(inspectionForm)
+              ? ` · ${CLOVER_SERIAL_LABEL} ${cloverSerialOf(inspectionForm)}`
+              : ""}
+          </p>
           <p className="text-xs text-gray-500">
             {powertrain === "ev" ? "EV — oil/fuel N/A" : "Gas — oil/fuel required"}
             {inspectionForm.trafficLight
@@ -393,6 +393,7 @@ export default function CheckoutCapturePage() {
             <InspectionFormFields
               form={inspectionForm}
               powertrain={powertrain}
+              unitNumber={vehicle.unitNumber}
               onChange={setInspectionForm}
             />
             {redPark && inspectionValid.ok ? (

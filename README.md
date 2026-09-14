@@ -5,7 +5,7 @@ A professional, mobile-first internal web app for vehicle documentation, damage 
 ## Driver vs office
 
 **Driver (phone)**  
-Start a Checkout Report: pick company → unit / clover # → confirm year/make/model → enter odometer start, driver name, and dispatcher. Fill **Precheck** (paper checklist, tread rating, clean Y/N, damage notes, traffic light). **Green** or **Yellow** continues to the guided photo walkaround (tire-tread photo slots are dropped — tread lives on Precheck). **Red** parks the van: no photos, sign, Office gets a repairs flag. Submit when required photos (if any) are filled and the report is signed. The report is saved **Complete** with a timestamp on the **shared server** so office can see it on another phone.
+Start a Checkout Report: pick company → **Unit #** → confirm year/make/model → enter odometer start, **Clover serial (last digits)** of the borrowed card reader, driver name, and dispatcher. Fill **Precheck** (paper checklist, tread rating, clean Y/N, damage notes, traffic light). Clover is the payment device drivers borrow from Rad Cab — it is **not** the vehicle unit number. **Green** or **Yellow** continues to the guided photo walkaround (tire-tread photo slots are dropped — tread lives on Precheck). **Red** parks the van: no photos, sign, Office gets a repairs flag. Submit when required photos (if any) are filled and the report is signed. The report is saved **Complete** with a timestamp on the **shared server** so office can see it on another phone.
 
 **EV units**  
 If the unit is EV (Tesla, powertrain=EV toggle, or other electric make/model), **Oil** and **Fuel Level** on Precheck are N/A and not required. Gas vans keep them required. Set EV/Gas when adding a unit on Checkout or on Office → Units.
@@ -22,7 +22,7 @@ Office → **Manage units (archive)** (or Dashboard → **Units**). PIN-gated li
 After each accepted photo, drivers can mark that angle as **DAMAGE**. Office gallery/compare lists flagged angles first. PDF marks them. Submit requires a finger/stylus **driver signature**, shown on Office detail and PDF page 1.
 
 **Precheck**  
-Office detail and PDF page 1 show the traffic light (Green / Yellow / Red), tread rating, checklist results, optional notes, interior/exterior clean Y/N, side damage notes, additional comments, and issue flags. Red reports are flagged for Office / repairs and may have no photos.
+Office detail and PDF page 1 show **Unit #** (the van) and **Clover serial (last digits)** (the borrowed card reader — not the vehicle), plus the traffic light (Green / Yellow / Red), tread rating, checklist results, optional notes, interior/exterior clean Y/N, side damage notes, additional comments, and issue flags. Red reports are flagged for Office / repairs and may have no photos.
 
 **Live preview silhouette**  
 Live preview + flashlight shows a per-angle ghost outline. Native **Take photo** cannot overlay a guide.

@@ -27,7 +27,10 @@ import {
   photoAngleLabel,
   sortAnglesDamageFirst,
 } from "./photo-flags";
-import { inspectionFormSummaryLines } from "./inspection-form";
+import {
+  formatCloverSerial,
+  inspectionFormSummaryLines,
+} from "./inspection-form";
 
 export type CheckoutPdfOptions = {
   companyName?: string;
@@ -411,7 +414,8 @@ export async function generateCheckoutReportPDF(
     `Date: ${formatDateOnly(report.inspectionForm?.inspectedAt || report.completedAt)}`,
     `Name: ${report.driverName}`,
     `Vehicle: ${report.year} ${report.make} ${report.model}`,
-    `Unit / Clover #: ${report.inspectionForm?.cloverNumber || report.unitNumber}`,
+    `Unit #: ${report.unitNumber}`,
+    `Clover serial (last digits): ${formatCloverSerial(report.inspectionForm)}`,
     `Company: ${options.companyName || "—"}`,
     `Plate: ${plate || "—"}`,
     `Type: ${report.type === "check_in" ? "Check In" : "Check Out"}`,

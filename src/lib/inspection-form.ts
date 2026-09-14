@@ -45,6 +45,12 @@ export type InspectionDamage = {
 
 export type CheckoutInspectionForm = {
   inspectedAt?: string;
+  /**
+   * Last digits of the borrowed Clover card-reader serial.
+   * Not the vehicle unit number — devices are not assigned to a van.
+   */
+  cloverSerial?: string;
+  /** @deprecated Legacy alias written when Clover was mixed with unit #. */
   cloverNumber?: string;
   powertrain: Powertrain;
   checks: Record<InspectionCheckId, InspectionCheckState>;
@@ -174,13 +180,41 @@ function emptyChecks(powertrain: Powertrain): Record<
   ) as Record<InspectionCheckId, InspectionCheckState>;
 }
 
+export const CLOVER_SERIAL_LABEL = "Clover serial (last digits)";
+export const CLOVER_SERIAL_HINT =
+  "Borrowed card reader from Rad Cab — not the van. Write the last 3–4 digits of the Clover serial number.";
+export const UNIT_NUMBER_LABEL = "Unit #";
+
+export function normalizeCloverSerial(raw: unknown): string {
+  if (typeof raw !== "string") return "";
+  return raw.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+}
+
+export function cloverSerialOf(
+  form?: CheckoutInspectionForm | null
+): string {
+  if (!form) return "";
+  if (typeof form.cloverSerial === "string") {
+    return normalizeCloverSerial(form.cloverSerial);
+  }
+  return normalizeCloverSerial(form.cloverNumber);
+}
+
+export function formatCloverSerial(
+  form?: CheckoutInspectionForm | null
+): string {
+  return cloverSerialOf(form) || "—";
+}
+
 export function createEmptyInspectionForm(
   powertrain: Powertrain = "gas",
-  extras?: Partial<Pick<CheckoutInspectionForm, "inspectedAt" | "cloverNumber">>
+  extras?: Partial<Pick<CheckoutInspectionForm, "inspectedAt" | "cloverSerial">>
 ): CheckoutInspectionForm {
   return {
     inspectedAt: extras?.inspectedAt,
-    cloverNumber: extras?.cloverNumber,
+    cloverSerial: extras?.cloverSerial
+      ? normalizeCloverSerial(extras.cloverSerial) || undefined
+      : undefined,
     powertrain,
     checks: emptyChecks(powertrain),
     interiorClean: "",
@@ -318,11 +352,11 @@ export function normalizeInspectionForm(
       }
     }
   }
+  const cloverSerial = cloverSerialOf(row as CheckoutInspectionForm);
   return {
     inspectedAt:
       typeof row.inspectedAt === "string" ? row.inspectedAt : undefined,
-    cloverNumber:
-      typeof row.cloverNumber === "string" ? row.cloverNumber : undefined,
+    cloverSerial: cloverSerial || undefined,
     powertrain,
     checks,
     interiorClean: asYesNo(row.interiorClean),
@@ -394,6 +428,26 @@ export function validateInspectionForm(
   const normalized = applyTrafficLightDefaults(
     applyPowertrainToForm(form, powertrain)
   );
+  const cloverSerial = cloverSerialOf(normalized);
+  if (!cloverSerial) {
+    return {
+      ok: false,
+      error:
+        "Enter the last digits of the Clover serial (the card reader, not the van).",
+    };
+  }
+  if (cloverSerial.length < 2 || cloverSerial.length > 8) {
+    return {
+      ok: false,
+      error: `${CLOVER_SERIAL_LABEL} should be about 3–4 digits (2–8 characters).`,
+    };
+  }
+  if (!/^[A-Z0-9]+$/.test(cloverSerial)) {
+    return {
+      ok: false,
+      error: `${CLOVER_SERIAL_LABEL} should be letters and numbers only.`,
+    };
+  }
   const missing = INSPECTION_CHECK_ITEMS.filter((item) => {
     const state = normalized.checks[item.id];
     if (state.result === "na" || evSkipsCheck(item.id, powertrain)) return false;
@@ -545,6 +599,7 @@ export function inspectionFormSummaryLines(
   form: CheckoutInspectionForm
 ): string[] {
   const lines: string[] = [];
+  lines.push(`${CLOVER_SERIAL_LABEL}: ${formatCloverSerial(form)}`);
   lines.push(`Traffic light: ${trafficLightLabel(form.trafficLight)}`);
   if (precheckNote(form)) {
     lines.push(`Traffic note: ${precheckNote(form)}`);

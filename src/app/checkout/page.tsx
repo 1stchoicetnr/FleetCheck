@@ -19,9 +19,12 @@ import { Company, CheckoutType } from "@/lib/types";
 import { defaultCompanyId } from "@/lib/companies";
 import {
   applyPowertrainToForm,
+  CLOVER_SERIAL_HINT,
+  CLOVER_SERIAL_LABEL,
   createEmptyInspectionForm,
   inferPowertrain,
   Powertrain,
+  UNIT_NUMBER_LABEL,
 } from "@/lib/inspection-form";
 import {
   getLastDispatcherName,
@@ -52,6 +55,7 @@ export default function CheckoutStartPage() {
   const [odometer, setOdometer] = useState("");
   const [driverName, setDriverName] = useState("");
   const [dispatcherName, setDispatcherName] = useState("");
+  const [cloverSerial, setCloverSerial] = useState("");
   const [error, setError] = useState("");
   const [starting, setStarting] = useState(false);
   const [powertrainOverride, setPowertrainOverride] = useState<Powertrain | "">("");
@@ -217,11 +221,15 @@ export default function CheckoutStartPage() {
         vehicle.powertrain || inferredPowertrain
       );
       const inspectionForm = applyPowertrainToForm(
-        existing?.inspectionForm ??
-          createEmptyInspectionForm(powertrain, {
-            inspectedAt: new Date().toISOString(),
-            cloverNumber: vehicle.unitNumber,
-          }),
+        {
+          ...(existing?.inspectionForm ??
+            createEmptyInspectionForm(powertrain, {
+              inspectedAt: new Date().toISOString(),
+            })),
+          ...(cloverSerial.trim()
+            ? { cloverSerial: cloverSerial.trim() }
+            : {}),
+        },
         powertrain
       );
       await saveCheckoutDraft({
@@ -283,8 +291,8 @@ export default function CheckoutStartPage() {
                   <span className="font-semibold">Date:</span> {inspectionDate}
                 </p>
                 <p className="text-xs text-gray-500 mt-1">
-                  Same header as the paper form — date, name, vehicle, clover #,
-                  odometer start.
+                  Same header as the paper form — date, name, vehicle, Clover
+                  serial (last digits), odometer start.
                 </p>
               </div>
               <div>
@@ -314,7 +322,7 @@ export default function CheckoutStartPage() {
                   />
                   <div>
                     <label className="block text-base font-semibold text-gray-900 mb-1.5">
-                      Unit / Clover # (active vans)
+                      {UNIT_NUMBER_LABEL} (active vans)
                     </label>
                     <select
                       value={vehicleId}
@@ -365,10 +373,10 @@ export default function CheckoutStartPage() {
                     placeholder="e.g. CXB9373"
                   />
                   <Input
-                    label="Unit / Clover # (optional)"
+                    label={`${UNIT_NUMBER_LABEL} (optional)`}
                     value={newUnitNumber}
                     onChange={(e) => setNewUnitNumber(e.target.value)}
-                    hint="Leave blank to use the plate as the unit number"
+                    hint="Vehicle number for this van. Leave blank to use the plate."
                   />
                   <div>
                     <p className="block text-base font-semibold text-gray-900 mb-1.5">
@@ -428,6 +436,18 @@ export default function CheckoutStartPage() {
                 value={odometer}
                 onChange={(e) => setOdometer(e.target.value)}
                 hint="Mileage on the dash — must be readable in the odometer photo"
+              />
+              <Input
+                label={CLOVER_SERIAL_LABEL}
+                value={cloverSerial}
+                onChange={(e) => setCloverSerial(e.target.value)}
+                inputMode="numeric"
+                autoCapitalize="characters"
+                autoCorrect="off"
+                spellCheck={false}
+                maxLength={8}
+                placeholder="e.g. 4821"
+                hint={CLOVER_SERIAL_HINT}
               />
               <Input
                 label="Name (driver)"

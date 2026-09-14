@@ -176,7 +176,7 @@ function teslaPaperExampleReport(): CheckoutReport {
     completedAt,
     reviewStatus: "pending",
     inspectionForm: checkedForm("ev", {
-      cloverNumber: "091",
+      cloverSerial: "4821",
       inspectedAt: completedAt,
       checks: {
         ...checkedForm("ev").checks,
@@ -250,7 +250,7 @@ export function sharedSeedReports(): CheckoutReport[] {
       completedAt: older,
       reviewStatus: "pass",
       inspectionForm: checkedForm("gas", {
-        cloverNumber: "12",
+        cloverSerial: "773",
         inspectedAt: older,
         checks: {
           ...checkedForm("gas").checks,
@@ -281,7 +281,7 @@ export function sharedSeedReports(): CheckoutReport[] {
       completedAt: recent,
       reviewStatus: "pass",
       inspectionForm: checkedForm("gas", {
-        cloverNumber: "12",
+        cloverSerial: "773",
         inspectedAt: recent,
         checks: {
           ...checkedForm("gas").checks,
@@ -312,7 +312,7 @@ export function sharedSeedReports(): CheckoutReport[] {
       completedAt: pendingAt,
       reviewStatus: "pending",
       inspectionForm: checkedForm("gas", {
-        cloverNumber: "18",
+        cloverSerial: "9044",
         inspectedAt: pendingAt,
         checks: {
           ...checkedForm("gas").checks,

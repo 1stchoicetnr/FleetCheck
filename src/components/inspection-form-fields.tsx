@@ -3,6 +3,9 @@
 import {
   applyPowertrainToForm,
   CheckoutInspectionForm,
+  CLOVER_SERIAL_HINT,
+  CLOVER_SERIAL_LABEL,
+  cloverSerialOf,
   DAMAGE_SIDES,
   DamageSide,
   INSPECTION_CHECK_ITEMS,
@@ -15,6 +18,7 @@ import {
   toggleDamageMark,
   TrafficLight,
   TreadLevel,
+  UNIT_NUMBER_LABEL,
   validateInspectionForm,
 } from "@/lib/inspection-form";
 import { cn } from "@/lib/utils";
@@ -65,10 +69,12 @@ function YesNoButtons({
 export function InspectionFormFields({
   form,
   powertrain,
+  unitNumber,
   onChange,
 }: {
   form: CheckoutInspectionForm;
   powertrain: Powertrain;
+  unitNumber?: string;
   onChange: (next: CheckoutInspectionForm) => void;
 }) {
   const synced = applyPowertrainToForm(form, powertrain);
@@ -96,6 +102,43 @@ export function InspectionFormFields({
         {powertrain === "ev"
           ? "EV unit — Oil and Fuel level are N/A. Aim for about a minute."
           : "Gas unit — Oil and Fuel level are required. Aim for about a minute."}
+      </div>
+
+      <div className="space-y-3">
+        {unitNumber ? (
+          <div>
+            <p className="block text-base font-semibold text-gray-900 mb-1">
+              {UNIT_NUMBER_LABEL}
+            </p>
+            <p className="rounded-xl border-2 border-gray-200 bg-gray-50 px-4 py-3 text-lg font-semibold text-gray-900">
+              {unitNumber}
+            </p>
+            <p className="mt-1.5 text-sm text-gray-500">
+              Vehicle number for this van — not the Clover.
+            </p>
+          </div>
+        ) : null}
+        <label className="block">
+          <span className="block text-base font-semibold text-gray-900 mb-1.5">
+            {CLOVER_SERIAL_LABEL}
+          </span>
+          <input
+            value={cloverSerialOf(synced)}
+            onChange={(e) =>
+              update({ ...synced, cloverSerial: e.target.value })
+            }
+            inputMode="numeric"
+            autoCapitalize="characters"
+            autoCorrect="off"
+            spellCheck={false}
+            maxLength={8}
+            placeholder="e.g. 4821"
+            className="w-full rounded-xl border-2 border-gray-300 px-4 py-3 text-lg min-h-[52px]"
+          />
+          <span className="mt-1.5 block text-sm text-gray-500">
+            {CLOVER_SERIAL_HINT}
+          </span>
+        </label>
       </div>
 
       <div className="space-y-2">
