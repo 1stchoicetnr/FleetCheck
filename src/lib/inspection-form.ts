@@ -360,7 +360,6 @@ export function suggestedTrafficLight(
     (item) => form.checks[item.id]?.result === "not_ok"
   );
   if (
-    flags.needsRepair ||
     form.treadLevel === "low" ||
     hasIssue ||
     form.interiorClean === "no" ||
