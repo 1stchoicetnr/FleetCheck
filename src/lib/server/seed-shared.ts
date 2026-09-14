@@ -26,13 +26,15 @@ function checkedForm(
 ): CheckoutInspectionForm {
   const form = createEmptyInspectionForm(powertrain);
   for (const id of Object.keys(form.checks) as Array<keyof typeof form.checks>) {
-    if (form.checks[id].na) continue;
-    form.checks[id] = { ...form.checks[id], checked: true };
+    if (form.checks[id].result === "na") continue;
+    form.checks[id] = { ...form.checks[id], result: "ok" };
   }
   return {
     ...form,
     interiorClean: "yes",
     exteriorClean: "yes",
+    treadLevel: "good",
+    trafficLight: "green",
     ...extras,
     checks: {
       ...form.checks,
@@ -178,10 +180,13 @@ function teslaPaperExampleReport(): CheckoutReport {
       inspectedAt: completedAt,
       checks: {
         ...checkedForm("ev").checks,
-        tirePressure: { checked: true, note: "35 Psi" },
+        tirePressure: { result: "ok", note: "35 Psi" },
       },
       interiorClean: "yes",
       exteriorClean: "yes",
+      treadLevel: "good",
+      trafficLight: "yellow",
+      trafficNote: "Right-side bumper scratches — note & drive.",
       damage: { right: "SCRATCHES", marks: ["right"] },
       additionalComments: "Right-side bumper scratches circled on paper form.",
     }),
@@ -249,7 +254,7 @@ export function sharedSeedReports(): CheckoutReport[] {
         inspectedAt: older,
         checks: {
           ...checkedForm("gas").checks,
-          tirePressure: { checked: true, note: "35 Psi" },
+          tirePressure: { result: "ok", note: "35 Psi" },
         },
       }),
       reviewNotes: "No new damage vs prior.",
@@ -280,14 +285,13 @@ export function sharedSeedReports(): CheckoutReport[] {
         inspectedAt: recent,
         checks: {
           ...checkedForm("gas").checks,
-          tirePressure: { checked: true, note: "35 Psi" },
+          tirePressure: { result: "ok", note: "35 Psi" },
         },
         damage: { left: "Same scuff on LF bumper", marks: ["left"] },
+        trafficLight: "yellow",
+        trafficNote: "Same scuff on LF bumper as last report.",
       }),
-      reviewNotes: "Same scuff on LF bumper as last report.",
-      reviewedAt: recent,
-      reviewedBy: "Ashley",
-      flagged: false,
+      flagged: true,
       synced: true,
       createdAt: recent,
     },
@@ -312,7 +316,7 @@ export function sharedSeedReports(): CheckoutReport[] {
         inspectedAt: pendingAt,
         checks: {
           ...checkedForm("gas").checks,
-          tirePressure: { checked: true, note: "35 Psi" },
+          tirePressure: { result: "ok", note: "35 Psi" },
         },
       }),
       flagged: false,

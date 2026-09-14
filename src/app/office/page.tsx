@@ -24,7 +24,7 @@ import {
 import { formatDate, formatMileage, formatUnitLabel } from "@/lib/utils";
 import { isVehicleArchived } from "@/lib/vehicle-archive";
 import { Flag, FileSearch } from "lucide-react";
-import { activeIssueFlagLabels } from "@/lib/inspection-form";
+import { activeIssueFlagLabels, trafficLightLabel } from "@/lib/inspection-form";
 
 const STATUS_FILTERS: Array<CheckoutReviewStatus | "all" | "flagged"> = [
   "all",
@@ -318,6 +318,9 @@ function OfficeReportsPage() {
                       </p>
                       {report.inspectionForm && (
                         <p className="text-xs text-gray-600">
+                          {report.inspectionForm.trafficLight
+                            ? `${trafficLightLabel(report.inspectionForm.trafficLight)} · `
+                            : ""}
                           Interior{" "}
                           {report.inspectionForm.interiorClean === "yes"
                             ? "Yes"

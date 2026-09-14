@@ -338,6 +338,21 @@ export async function pgSetVehicleArchived(
   };
 }
 
+export async function pgSetVehiclePowertrain(
+  id: string,
+  powertrain: "gas" | "ev"
+): Promise<SharedVehicle | undefined> {
+  await pgMigrateAndSeed();
+  const existing = await pgGetVehicle(id);
+  if (!existing) return undefined;
+  const sql = sqlClient();
+  await sql`UPDATE vehicles SET powertrain = ${powertrain} WHERE id = ${id}`;
+  return {
+    ...existing,
+    powertrain,
+  };
+}
+
 export async function pgListReports(): Promise<CheckoutReport[]> {
   await pgMigrateAndSeed();
   const sql = sqlClient();

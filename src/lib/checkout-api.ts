@@ -72,6 +72,19 @@ export async function setVehicleArchived(
   return data.vehicle;
 }
 
+export async function setVehiclePowertrain(
+  id: string,
+  powertrain: Powertrain,
+  officePin: string
+): Promise<SharedVehicle> {
+  const data = await api<{ vehicle: SharedVehicle }>(`/api/vehicles/${id}`, {
+    method: "PATCH",
+    headers: { "x-office-pin": officePin },
+    body: JSON.stringify({ powertrain }),
+  });
+  return data.vehicle;
+}
+
 export async function upsertSharedVehicle(input: {
   companyId: string;
   unitNumber?: string;

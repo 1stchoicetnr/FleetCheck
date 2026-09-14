@@ -42,7 +42,7 @@ export default function DashboardPage() {
     href: "/checkout",
     icon: <ClipboardCheck className="h-7 w-7" />,
     label: "Checkout Report",
-    desc: "Start a vehicle handoff — unit, odometer, photos",
+    desc: "Precheck, then photos if Green or Yellow",
     color: "bg-emerald-100 text-emerald-700",
   };
 
@@ -193,7 +193,7 @@ export default function DashboardPage() {
                     Checkout Report
                   </p>
                   <p className="text-brand-100 text-sm mt-1">
-                    The only handoff Office can see — company, unit or plate, photos
+                    The only handoff Office can see — Precheck, then photos
                   </p>
                 </div>
                 <span className="text-sm font-semibold bg-white text-brand-700 rounded-full px-3 py-1.5 shrink-0">

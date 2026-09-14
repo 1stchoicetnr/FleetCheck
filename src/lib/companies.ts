@@ -3,6 +3,7 @@ import {
   Company,
   PHOTO_ANGLES,
   PhotoStep,
+  walkaroundPhotoSteps,
 } from "./types";
 
 export const RAD_CAB_COMPANY_ID = "company-rad-cab";
@@ -53,14 +54,14 @@ export function companyIdForFleetType(type: string): string {
 }
 
 const CHECKLISTS: Record<ChecklistId, PhotoStep[]> = {
-  // Same clockwise walkaround as PHOTO_ANGLES (docs → exterior → cabin → engine).
-  radcab_default: PHOTO_ANGLES,
-  generic_30: PHOTO_ANGLES,
+  // Clockwise walkaround minus the four tire-tread slots (tread is Precheck).
+  radcab_default: walkaroundPhotoSteps(PHOTO_ANGLES),
+  generic_30: walkaroundPhotoSteps(PHOTO_ANGLES),
 };
 
 export function getChecklistForCompany(company?: Company | null): PhotoStep[] {
-  if (!company) return PHOTO_ANGLES;
-  return CHECKLISTS[company.checklistId] ?? PHOTO_ANGLES;
+  if (!company) return walkaroundPhotoSteps(PHOTO_ANGLES);
+  return CHECKLISTS[company.checklistId] ?? walkaroundPhotoSteps(PHOTO_ANGLES);
 }
 
 export function companyById(

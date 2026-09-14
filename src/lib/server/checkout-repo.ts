@@ -8,6 +8,7 @@ import {
 import {
   inferPowertrain,
   inspectionFormFlagsReport,
+  Powertrain,
   validateInspectionForm,
 } from "@/lib/inspection-form";
 import { reportHasPhotoDamage } from "@/lib/photo-flags";
@@ -25,6 +26,7 @@ import {
   localPatchReport,
   localPutReport,
   localSetVehicleArchived,
+  localSetVehiclePowertrain,
   localUpsertVehicle,
 } from "./local-store";
 import { persistCheckoutPhoto } from "./photo-store";
@@ -38,6 +40,7 @@ import {
   pgListVehicles,
   pgPutReport,
   pgSetVehicleArchived,
+  pgSetVehiclePowertrain,
   pgUpsertVehicle,
 } from "./postgres-store";
 import { sharedBackendMode } from "./shared-config";
@@ -137,6 +140,24 @@ export async function setVehicleArchived(
     mode === "postgres"
       ? await pgSetVehicleArchived(id, archived)
       : await localSetVehicleArchived(id, archived);
+  if (!vehicle) {
+    throw new SharedBackendError("Unit not found", 404);
+  }
+  return vehicle;
+}
+
+export async function setVehiclePowertrain(
+  id: string,
+  powertrain: Powertrain
+): Promise<SharedVehicle> {
+  const mode = assertConfigured();
+  if (powertrain !== "ev" && powertrain !== "gas") {
+    throw new SharedBackendError("Powertrain must be gas or ev", 400);
+  }
+  const vehicle =
+    mode === "postgres"
+      ? await pgSetVehiclePowertrain(id, powertrain)
+      : await localSetVehiclePowertrain(id, powertrain);
   if (!vehicle) {
     throw new SharedBackendError("Unit not found", 404);
   }

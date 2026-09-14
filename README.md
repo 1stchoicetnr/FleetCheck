@@ -5,10 +5,10 @@ A professional, mobile-first internal web app for vehicle documentation, damage 
 ## Driver vs office
 
 **Driver (phone)**  
-Start a Checkout Report: pick company → unit / clover # → confirm year/make/model → enter odometer start, driver name, and dispatcher. Fill the **paper inspection form** (checklist + notes, interior/exterior clean, left/right/front/rear damage, comments/flags). Then walk the guided photo checklist (one slot at a time, camera, retake, progress). Submit when every required slot is filled and the report is signed. The report is saved **Complete** with a timestamp on the **shared server** so office can see it on another phone.
+Start a Checkout Report: pick company → unit / clover # → confirm year/make/model → enter odometer start, driver name, and dispatcher. Fill **Precheck** (paper checklist, tread rating, clean Y/N, damage notes, traffic light). **Green** or **Yellow** continues to the guided photo walkaround (tire-tread photo slots are dropped — tread lives on Precheck). **Red** parks the van: no photos, sign, Office gets a repairs flag. Submit when required photos (if any) are filled and the report is signed. The report is saved **Complete** with a timestamp on the **shared server** so office can see it on another phone.
 
 **EV units**  
-If the unit is EV (Tesla, powertrain=EV, or other electric make/model), **Oil** and **Fuel Level** on the paper form are N/A and not required. Gas vans keep them required. The 30-photo walkaround is unchanged.
+If the unit is EV (Tesla, powertrain=EV toggle, or other electric make/model), **Oil** and **Fuel Level** on Precheck are N/A and not required. Gas vans keep them required. Set EV/Gas when adding a unit on Checkout or on Office → Units.
 
 The older **Check In / Out** shift flow (mileage, fuel, signature, Slack PDF) is **retired on this preview**. Those reports never wrote to Neon, so they never appeared in Office. `/check-in` now redirects to Checkout Report.
 
@@ -21,8 +21,8 @@ Office → **Manage units (archive)** (or Dashboard → **Units**). PIN-gated li
 **DAMAGE flags + signature**  
 After each accepted photo, drivers can mark that angle as **DAMAGE**. Office gallery/compare lists flagged angles first. PDF marks them. Submit requires a finger/stylus **driver signature**, shown on Office detail and PDF page 1.
 
-**Paper inspection form**  
-Office detail and PDF page 1 show checklist results, optional notes, interior/exterior clean Y/N, side damage notes, additional comments, and issue flags (safety / repair / refuse to drive / out of service). This is in addition to the photo walkaround.
+**Precheck**  
+Office detail and PDF page 1 show the traffic light (Green / Yellow / Red), tread rating, checklist results, optional notes, interior/exterior clean Y/N, side damage notes, additional comments, and issue flags. Red reports are flagged for Office / repairs and may have no photos.
 
 **Live preview silhouette**  
 Live preview + flashlight shows a per-angle ghost outline. Native **Take photo** cannot overlay a guide.
@@ -91,16 +91,16 @@ Open [http://localhost:3000](http://localhost:3000)
 
 ## Policy notes (Rad Cab default checklist)
 
-Walkaround order (30 required slots — same list for Rad Cab and other companies):
+Walkaround order (photo slots after Precheck — tire-tread photos dropped; same list for Rad Cab and other companies):
 
 1. **Docs from the driver seat** — odometer/fuel, registration (date + VIN), windshield, radio/climate
-2. **Clockwise exterior from the LF corner** — LF cluster (corner, fender, tire, wheel) → front → RF cluster → passenger doors → RR cluster → rear → LR cluster → driver-side doors
-3. **Wheels/tires as you pass each corner** (not a separate later block)
+2. **Clockwise exterior from the LF corner** — LF cluster (corner, fender, wheel) → front → RF cluster → passenger doors → RR cluster → rear → LR cluster → driver-side doors
+3. **Wheels as you pass each corner** (tread rating is on Precheck, not four extra photos)
 4. **Interior** — driver door in, driver rear, trunk/cargo, passenger rear, passenger front
 5. **Engine bay last** — oil dipstick
 
 - Example angle photos live in `public/photo-examples/` (paths keyed by angle, not step number).
-- Tire tread / wheel-well: hard shots — close enough and well-lit is OK.
+- Tire tread is a Precheck rating (Good / Fair / Low / Bald). Wheel-well photos: close enough and well-lit is OK.
 - Registration: office mainly needs date + VIN readable.
 - Dash / odometer: office mainly needs mileage readable.
 - Night interiors: turn the lights on.

@@ -23,6 +23,12 @@ import {
   inferPowertrain,
   Powertrain,
 } from "@/lib/inspection-form";
+import {
+  getLastDispatcherName,
+  getLastVehicleId,
+  saveLastDispatcherName,
+  saveLastVehicleId,
+} from "@/lib/checkout-prefs";
 import { formatDateOnly, formatUnitLabel, normalizePlate } from "@/lib/utils";
 import { ClipboardCheck } from "lucide-react";
 
@@ -50,6 +56,11 @@ export default function CheckoutStartPage() {
   const [starting, setStarting] = useState(false);
   const [powertrainOverride, setPowertrainOverride] = useState<Powertrain | "">("");
   const inspectionDate = formatDateOnly(new Date().toISOString());
+
+  useEffect(() => {
+    const saved = getLastDispatcherName();
+    if (saved) setDispatcherName(saved);
+  }, []);
 
   useEffect(() => {
     if (!loading && !user) router.replace("/");
@@ -80,9 +91,12 @@ export default function CheckoutStartPage() {
           a.unitNumber.localeCompare(b.unitNumber, undefined, { numeric: true })
         );
         setVehicles(sorted);
-        setVehicleId((prev) =>
-          sorted.some((v) => v.id === prev) ? prev : sorted[0]?.id ?? ""
-        );
+        setVehicleId((prev) => {
+          if (sorted.some((v) => v.id === prev)) return prev;
+          const last = getLastVehicleId(companyId);
+          if (last && sorted.some((v) => v.id === last)) return last;
+          return sorted[0]?.id ?? "";
+        });
       })
       .catch((err: Error) => {
         setLoadError(err.message || "Could not load units from the shared server.");
@@ -106,7 +120,7 @@ export default function CheckoutStartPage() {
   const inferredPowertrain = inferPowertrain(
     make,
     model,
-    addingUnit ? powertrainOverride || undefined : selected?.powertrain
+    powertrainOverride || selected?.powertrain
   );
 
   useEffect(() => {
@@ -120,6 +134,7 @@ export default function CheckoutStartPage() {
     setYear(String(selected.year));
     setMake(selected.make);
     setModel(selected.model);
+    setPowertrainOverride(selected.powertrain || "");
     if (selected.lastMileage != null) {
       setOdometer(String(selected.lastMileage));
     }
@@ -179,6 +194,20 @@ export default function CheckoutStartPage() {
         setStarting(false);
         return;
       }
+      if (vehicle.powertrain !== inferredPowertrain) {
+        vehicle = await upsertSharedVehicle({
+          companyId,
+          unitNumber: vehicle.unitNumber,
+          plate: vehicle.plate,
+          make: make.trim() || vehicle.make,
+          model: model.trim() || vehicle.model,
+          year: Number(year) || vehicle.year,
+          powertrain: inferredPowertrain,
+        });
+        setVehicles((prev) =>
+          prev.map((item) => (item.id === vehicle!.id ? vehicle! : item))
+        );
+      }
 
       const id = checkoutDraftId(companyId, vehicle.id, type, user.id);
       const existing = await getCheckoutDraft(id);
@@ -214,6 +243,8 @@ export default function CheckoutStartPage() {
         signedAt: existing?.signedAt,
         updatedAt: new Date().toISOString(),
       });
+      saveLastDispatcherName(dispatcherName.trim());
+      saveLastVehicleId(companyId, vehicle.id);
       router.push(`/checkout/${id}`);
     } catch (err) {
       setError(
@@ -239,8 +270,8 @@ export default function CheckoutStartPage() {
             Start a vehicle checkout
           </h2>
           <p className="text-sm text-gray-600">
-            Paper inspection form plus the guided photo walkaround. Office sees
-            both.
+            Precheck first (about a minute), then photos if Green or Yellow.
+            Red parks the van for Office.
           </p>
         </div>
 
@@ -365,7 +396,7 @@ export default function CheckoutStartPage() {
                       ))}
                     </div>
                     <p className="text-xs text-gray-500 mt-1.5">
-                      Tesla and other EVs skip Oil and Fuel Level.
+                      Tesla and other EVs skip Oil and Fuel level.
                     </p>
                   </div>
                 </div>
@@ -403,14 +434,42 @@ export default function CheckoutStartPage() {
                 value={driverName}
                 onChange={(e) => setDriverName(e.target.value)}
               />
+              {!addingUnit && (
+                <div>
+                  <p className="block text-base font-semibold text-gray-900 mb-1.5">
+                    Powertrain
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(
+                      [
+                        ["gas", "Gas"],
+                        ["ev", "EV"],
+                      ] as const
+                    ).map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setPowertrainOverride(value)}
+                        className={`min-h-[48px] rounded-xl border-2 font-semibold ${
+                          inferredPowertrain === value
+                            ? "border-brand-600 bg-brand-50 text-brand-800"
+                            : "border-gray-200 bg-white text-gray-700"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="rounded-xl border border-gray-200 px-4 py-3 text-sm">
                 <p className="font-semibold text-gray-900">
                   {inferredPowertrain === "ev" ? "EV unit" : "Gas unit"}
                 </p>
                 <p className="text-gray-600 mt-0.5">
                   {inferredPowertrain === "ev"
-                    ? "Oil and Fuel Level will be N/A on the inspection form."
-                    : "Oil and Fuel Level are required on the inspection form."}
+                    ? "Oil and Fuel level will be N/A on Precheck."
+                    : "Oil and Fuel level are required on Precheck."}
                 </p>
               </div>
               <Input
@@ -459,7 +518,7 @@ export default function CheckoutStartPage() {
                 className="w-full"
                 disabled={starting || (!addingUnit && !vehicleId)}
               >
-                {starting ? "Starting…" : "Continue to inspection form"}
+                {starting ? "Starting…" : "Continue to Precheck"}
               </Button>
             </form>
           </CardContent>

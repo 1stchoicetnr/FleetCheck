@@ -1,4 +1,4 @@
-import { activeIssueFlagLabels } from "@/lib/inspection-form";
+import { activeIssueFlagLabels, trafficLightLabel } from "@/lib/inspection-form";
 import { CheckoutReport } from "@/lib/types";
 import { formatMileage, formatUnitLabel } from "@/lib/utils";
 
@@ -21,8 +21,11 @@ export async function notifyCheckoutReport(report: CheckoutReport): Promise<void
     `*Type:* ${report.type === "check_in" ? "Check in" : "Check out"}`,
     `*Driver:* ${report.driverName} · *Dispatcher:* ${report.dispatcherName}`,
     `*Odometer:* ${formatMileage(report.odometer)}`,
+    report.inspectionForm?.trafficLight
+      ? `*Precheck:* ${trafficLightLabel(report.inspectionForm.trafficLight)}`
+      : "",
     report.inspectionForm
-      ? `*Inspection:* Interior ${report.inspectionForm.interiorClean === "yes" ? "Yes" : "No"} · Exterior ${report.inspectionForm.exteriorClean === "yes" ? "Yes" : "No"}`
+      ? `*Clean:* Interior ${report.inspectionForm.interiorClean === "yes" ? "Yes" : "No"} · Exterior ${report.inspectionForm.exteriorClean === "yes" ? "Yes" : "No"}`
       : "",
     report.inspectionForm && activeIssueFlagLabels(report.inspectionForm).length
       ? `*Flags:* ${activeIssueFlagLabels(report.inspectionForm).join(", ")}`

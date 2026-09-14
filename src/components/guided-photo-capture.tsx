@@ -15,7 +15,7 @@ import { ProgressBar } from "./ui/progress-bar";
 import { CameraCaptureModal } from "./camera-capture-modal";
 import { PhotoExampleCard } from "./photo-example-image";
 import { compressImageFile } from "@/lib/utils";
-import { PHOTO_ANGLES, PhotoAngle, PhotoStep } from "@/lib/types";
+import { PHOTO_ANGLES, PhotoAngle, PhotoStep, walkaroundPhotoSteps } from "@/lib/types";
 
 interface GuidedPhotoCaptureProps {
   photos: Partial<Record<PhotoAngle, string>>;
@@ -28,7 +28,7 @@ interface GuidedPhotoCaptureProps {
   onAllComplete: () => void;
   /** Dev: browse all steps without requiring captures */
   testingBrowseMode?: boolean;
-  /** Company checklist. Defaults to the 30-step policy. */
+  /** Company checklist. Defaults to the walkaround without tire-tread slots. */
   steps?: PhotoStep[];
   testingFinishLabel?: string;
   allCompleteMessage?: string;
@@ -42,7 +42,7 @@ export function GuidedPhotoCapture({
   onFlagDamage,
   onAllComplete,
   testingBrowseMode = false,
-  steps = PHOTO_ANGLES,
+  steps = walkaroundPhotoSteps(PHOTO_ANGLES),
   testingFinishLabel = "Finish preview → Mileage",
   allCompleteMessage = "All photos accepted — moving to mileage...",
 }: GuidedPhotoCaptureProps) {

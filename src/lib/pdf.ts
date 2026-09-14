@@ -11,6 +11,7 @@ import {
   Vehicle,
   FUEL_LEVEL_LABELS,
   fleetTypeLabel,
+  walkaroundPhotoSteps,
 } from "./types";
 import {
   formatDate,
@@ -338,7 +339,9 @@ export async function generateCheckoutReportPDF(
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const plate = options.plate ?? report.plate;
-  const steps = options.steps?.length ? options.steps : PHOTO_ANGLES;
+  const steps = walkaroundPhotoSteps(
+    options.steps?.length ? options.steps : PHOTO_ANGLES
+  );
   const photoMap = Object.fromEntries(
     report.photos.filter((p) => p.dataUrl).map((p) => [p.angle, p])
   );
@@ -403,7 +406,7 @@ export async function generateCheckoutReportPDF(
     doc.setFont("helvetica", "normal");
   };
 
-  section("Inspection form");
+  section("Precheck");
   const formLines = [
     `Date: ${formatDateOnly(report.inspectionForm?.inspectedAt || report.completedAt)}`,
     `Name: ${report.driverName}`,
@@ -420,13 +423,13 @@ export async function generateCheckoutReportPDF(
   ];
   for (const line of formLines) addWrapped(line);
 
-  section("Walkaround checklist");
+  section("Precheck answers");
   if (report.inspectionForm) {
     for (const line of inspectionFormSummaryLines(report.inspectionForm)) {
       addWrapped(line);
     }
   } else {
-    addWrapped("No paper checklist on this report (submitted before the form was added).");
+    addWrapped("No Precheck on this report (submitted before Precheck was added).");
   }
 
   section("Office review");

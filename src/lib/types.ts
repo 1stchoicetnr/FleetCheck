@@ -129,7 +129,7 @@ export interface CheckoutReport {
   driverName: string;
   dispatcherName: string;
   type: CheckoutType;
-  /** Paper inspection checklist (in addition to the photo walkaround). */
+  /** Precheck (paper inspection) completed before the photo walkaround. */
   inspectionForm?: CheckoutInspectionForm;
   photos: VehiclePhoto[];
   /** Driver finished capture */
@@ -398,21 +398,53 @@ export const ODOMETER_HELPER =
 export const INTERIOR_NIGHT_HELPER =
   "At night, turn the interior lights on before you shoot.";
 
+/** Tread is captured on Precheck, not as required photo slots. */
+export const TIRE_TREAD_PHOTO_ANGLES: readonly PhotoAngle[] = [
+  "lf_tire",
+  "rf_tire",
+  "rr_tire",
+  "lr_tire",
+];
+
+export function isTireTreadPhotoAngle(angle: PhotoAngle): boolean {
+  return (TIRE_TREAD_PHOTO_ANGLES as readonly PhotoAngle[]).includes(angle);
+}
+
+/** Driver walkaround — drops the four tire-tread slots. */
+export function walkaroundPhotoSteps(steps: PhotoStep[] = PHOTO_ANGLES): PhotoStep[] {
+  return steps.filter((step) => !isTireTreadPhotoAngle(step.angle));
+}
+
+/** Office/PDF: current walkaround plus any legacy tire photos still on the report. */
+export function photoStepsForReport(
+  steps: PhotoStep[],
+  photos: Array<{ angle: PhotoAngle }>
+): PhotoStep[] {
+  const walkaround = walkaroundPhotoSteps(steps);
+  const present = new Set(photos.map((photo) => photo.angle));
+  const extras = PHOTO_ANGLES.filter(
+    (step) => isTireTreadPhotoAngle(step.angle) && present.has(step.angle)
+  );
+  if (extras.length === 0) return walkaround;
+  const keep = new Set(
+    [...walkaround, ...extras].map((step) => step.angle)
+  );
+  return PHOTO_ANGLES.filter((step) => keep.has(step.angle));
+}
+
 /**
- * Default ~30-slot checkout walkaround (Rad Cab + generic_30).
+ * Default checkout walkaround (Rad Cab + generic_30).
+ * Tire-tread slots stay in this list for old reports / labels, but
+ * `walkaroundPhotoSteps` drops them from the required driver checklist.
  *
  * Physical path a driver walks — do not scatter corners / wheels:
- *   1–4   Docs from the driver seat: odometer, registration, windshield, radio
- *   5–8   Start at LF corner; shoot fender + tire + wheel as you stand there
- *   9     Straight-on front, then walk clockwise
- *   10–13 RF corner cluster (corner, fender, tire, wheel)
- *   14    Passenger doors (RAD CAB logo / full panels)
- *   15–18 RR cluster (quarter, tire, wheel, corner)
- *   19    Straight-on rear
- *   20–23 LR cluster (corner, quarter, tire, wheel)
- *   24    Driver-side doors — back at the start side
- *   25–29 Interiors: driver door in → rear seats → trunk → passenger
- *   30    Engine bay last (oil)
+ *   Docs from the driver seat: odometer, registration, windshield, radio
+ *   Start at LF corner; shoot fender + wheel as you stand there (tread is Precheck)
+ *   Straight-on front, then walk clockwise
+ *   RF cluster (corner, fender, wheel) → passenger doors → RR cluster
+ *   Straight-on rear → LR cluster → driver-side doors
+ *   Interiors: driver door in → rear seats → trunk → passenger
+ *   Engine bay last (oil)
  *
  * Example JPGs stay keyed by `angle` in photo-examples.ts (old filenames are fine).
  */
@@ -475,7 +507,7 @@ export const PHOTO_ANGLES: PhotoStep[] = [
     instruction: "Show the condition of the left-front tire tread and sidewall.",
     icon: "🛞",
     category: "detail",
-    required: true,
+    required: false,
     helper: TIRE_HELPER,
   },
   {
@@ -517,7 +549,7 @@ export const PHOTO_ANGLES: PhotoStep[] = [
     instruction: "Show the condition of the right-front tire.",
     icon: "🛞",
     category: "detail",
-    required: true,
+    required: false,
     helper: TIRE_HELPER,
   },
   {
@@ -551,7 +583,7 @@ export const PHOTO_ANGLES: PhotoStep[] = [
     instruction: "Show the condition of the right-rear tire.",
     icon: "🛞",
     category: "detail",
-    required: true,
+    required: false,
     helper: TIRE_HELPER,
   },
   {
@@ -601,7 +633,7 @@ export const PHOTO_ANGLES: PhotoStep[] = [
     instruction: "Show the condition of the left-rear tire.",
     icon: "🛞",
     category: "detail",
-    required: true,
+    required: false,
     helper: TIRE_HELPER,
   },
   {

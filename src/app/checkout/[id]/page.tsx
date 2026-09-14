@@ -35,8 +35,11 @@ import {
 } from "@/lib/pdf";
 import {
   applyPowertrainToForm,
+  canContinueToPhotos,
   createEmptyInspectionForm,
   inferPowertrain,
+  isPrecheckRed,
+  trafficLightLabel,
   validateInspectionForm,
 } from "@/lib/inspection-form";
 import { formatDate, formatDateOnly, formatUnitLabel } from "@/lib/utils";
@@ -97,7 +100,7 @@ export default function CheckoutCapturePage() {
       );
       setInspectionForm(form);
       const formOk = validateInspectionForm(form, powertrain).ok;
-      setPhase(formOk ? "photos" : "inspect");
+      setPhase(formOk && !isPrecheckRed(form) ? "photos" : "inspect");
       try {
         const [vehicles, companies] = await Promise.all([
           fetchVehicles(d.companyId, { includeArchived: true }),
@@ -150,17 +153,23 @@ export default function CheckoutCapturePage() {
     return () => clearTimeout(timer);
   }, [draft, photos, photoFlags, inspectionForm, signatureDataUrl, signedAt]);
 
+  useEffect(() => {
+    if (inspectionForm.trafficLight === "red") setPhase("inspect");
+  }, [inspectionForm.trafficLight]);
+
   const steps = getChecklistForCompany(company);
   const required = steps.filter((s) => s.required);
   const allFilled = required.every((s) => photos[s.angle]);
-  const photosComplete =
-    allFilled || canSkipPhotosForTesting() || photosReady;
   const powertrain = inferPowertrain(
     draft?.make,
     draft?.model,
     vehicle?.powertrain || inspectionForm.powertrain
   );
   const inspectionValid = validateInspectionForm(inspectionForm, powertrain);
+  const redPark = isPrecheckRed(inspectionValid.ok ? inspectionValid.form : inspectionForm);
+  const photosNeeded = !redPark;
+  const photosComplete =
+    !photosNeeded || allFilled || canSkipPhotosForTesting() || photosReady;
   const canSubmit =
     photosComplete && Boolean(signatureDataUrl) && inspectionValid.ok;
 
@@ -174,6 +183,16 @@ export default function CheckoutCapturePage() {
       setSubmitError(inspectionValid.error);
       setPhase("inspect");
       return;
+    }
+    if (isPrecheckRed(inspectionValid.form) === false) {
+      const missing = required.filter((s) => !photos[s.angle]);
+      if (missing.length && !canSkipPhotosForTesting() && !photosReady) {
+        setSubmitError(
+          `Finish the photo walkaround (${required.length - missing.length}/${required.length}).`
+        );
+        setPhase("photos");
+        return;
+      }
     }
     setSubmitting(true);
     setSubmitError("");
@@ -236,6 +255,8 @@ export default function CheckoutCapturePage() {
     signatureDataUrl,
     signedAt,
     inspectionValid,
+    required,
+    photosReady,
   ]);
 
   if (loading || !user || !draft || (!vehicle && !loadError)) {
@@ -331,6 +352,9 @@ export default function CheckoutCapturePage() {
           </p>
           <p className="text-xs text-gray-500">
             {powertrain === "ev" ? "EV — oil/fuel N/A" : "Gas — oil/fuel required"}
+            {inspectionForm.trafficLight
+              ? ` · ${trafficLightLabel(inspectionForm.trafficLight)}`
+              : ""}
           </p>
         </div>
 
@@ -341,17 +365,17 @@ export default function CheckoutCapturePage() {
             variant={phase === "inspect" ? "primary" : "secondary"}
             onClick={() => setPhase("inspect")}
           >
-            1. Inspection form
+            1. Precheck
           </Button>
           <Button
             type="button"
             size="sm"
             variant={phase === "photos" ? "primary" : "secondary"}
             onClick={() => {
-              if (!inspectionValid.ok) return;
+              if (!canContinueToPhotos(inspectionForm, powertrain)) return;
               setPhase("photos");
             }}
-            disabled={!inspectionValid.ok}
+            disabled={!canContinueToPhotos(inspectionForm, powertrain)}
           >
             2. Photo walkaround
           </Button>
@@ -360,12 +384,10 @@ export default function CheckoutCapturePage() {
         {phase === "inspect" ? (
           <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-4">
             <div>
-              <h3 className="text-base font-bold text-gray-900">
-                Paper inspection form
-              </h3>
+              <h3 className="text-base font-bold text-gray-900">Precheck</h3>
               <p className="text-sm text-gray-600">
-                Digitized from the Rad Cab sheet. The 30-photo walkaround is
-                next — this does not replace it.
+                Paper form, about a minute. Green or Yellow continues to photos
+                (no tire-tread slots). Red parks the van for Office.
               </p>
             </div>
             <InspectionFormFields
@@ -373,16 +395,55 @@ export default function CheckoutCapturePage() {
               powertrain={powertrain}
               onChange={setInspectionForm}
             />
-            <Button
-              size="xl"
-              className="w-full"
-              disabled={!inspectionValid.ok}
-              onClick={() => setPhase("photos")}
-            >
-              {inspectionValid.ok
-                ? "Continue to photo walkaround"
-                : "Finish the checklist to continue"}
-            </Button>
+            {redPark && inspectionValid.ok ? (
+              <div className="space-y-3">
+                <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">
+                  Park it. Photos are blocked. Sign below so Office gets the
+                  repairs flag.
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-gray-900">
+                    Driver signature
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Signing as {draft.driverName}
+                  </p>
+                </div>
+                <SignaturePad
+                  value={signatureDataUrl || undefined}
+                  onSignature={(dataUrl) => {
+                    setSignatureDataUrl(dataUrl);
+                    setSignedAt(dataUrl ? new Date().toISOString() : "");
+                  }}
+                />
+                {submitError && (
+                  <p className="text-sm text-red-600 font-medium">{submitError}</p>
+                )}
+                <Button
+                  size="xl"
+                  className="w-full"
+                  onClick={handleSubmit}
+                  disabled={submitting || !canSubmit}
+                >
+                  {submitting
+                    ? uploadProgress || "Saving…"
+                    : !signatureDataUrl
+                      ? "Sign above to send park-it to Office"
+                      : "Submit park-it report to Office"}
+                </Button>
+              </div>
+            ) : (
+              <Button
+                size="xl"
+                className="w-full"
+                disabled={!canContinueToPhotos(inspectionForm, powertrain)}
+                onClick={() => setPhase("photos")}
+              >
+                {canContinueToPhotos(inspectionForm, powertrain)
+                  ? "Continue to photo walkaround"
+                  : "Finish Precheck to continue"}
+              </Button>
+            )}
           </div>
         ) : (
           <>
@@ -474,7 +535,9 @@ export default function CheckoutCapturePage() {
             {submitting
               ? uploadProgress || "Saving…"
               : !inspectionValid.ok
-                ? "Finish the inspection form"
+                ? "Finish Precheck"
+                : redPark
+                  ? "Park it — go back to Precheck to sign"
                 : !photosComplete
                 ? `Submit when ${required.filter((s) => photos[s.angle]).length}/${required.length} photos are filled`
                 : !signatureDataUrl

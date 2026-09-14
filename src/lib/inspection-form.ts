@@ -9,15 +9,24 @@ export type InspectionCheckId =
   | "licensePlateTabs"
   | "fuelLevel";
 
+export type CheckResult = "ok" | "not_ok" | "na";
+
 export type InspectionCheckState = {
-  checked: boolean;
-  na?: boolean;
+  result: CheckResult | "";
   note?: string;
+  /** Legacy paper-form field — mapped to result on read. */
+  checked?: boolean;
+  /** Legacy paper-form field — mapped to result on read. */
+  na?: boolean;
 };
 
 export type YesNo = "yes" | "no";
 
 export type DamageSide = "left" | "right" | "front" | "rear";
+
+export type TreadLevel = "good" | "fair" | "low" | "bald";
+
+export type TrafficLight = "green" | "yellow" | "red";
 
 export type InspectionIssueFlags = {
   safety?: boolean;
@@ -41,6 +50,9 @@ export type CheckoutInspectionForm = {
   checks: Record<InspectionCheckId, InspectionCheckState>;
   interiorClean: YesNo | "";
   exteriorClean: YesNo | "";
+  treadLevel?: TreadLevel | "";
+  trafficLight?: TrafficLight | "";
+  trafficNote?: string;
   damage: InspectionDamage;
   additionalComments?: string;
   issueFlags?: InspectionIssueFlags;
@@ -55,23 +67,23 @@ export const INSPECTION_CHECK_ITEMS: ReadonlyArray<{
   { id: "oil", label: "Oil", evSkips: true },
   {
     id: "tirePressure",
-    label: "Tire Pressure",
-    hint: "35 Psi",
+    label: "All corners OK @ 35 psi?",
+    hint: "One answer for all four tires — not four fields.",
     evSkips: false,
   },
   { id: "headlights", label: "Headlights", evSkips: false },
-  { id: "brakeLights", label: "Brake Lights", evSkips: false },
+  { id: "brakeLights", label: "Brake lights", evSkips: false },
   {
     id: "hazardsTurnSignal",
-    label: "Hazards / Turn Signal",
+    label: "Hazards / Turn signal",
     evSkips: false,
   },
   {
     id: "licensePlateTabs",
-    label: "License Plate-Tabs",
+    label: "License plate-tabs",
     evSkips: false,
   },
-  { id: "fuelLevel", label: "Fuel Level", evSkips: true },
+  { id: "fuelLevel", label: "Fuel level", evSkips: true },
 ];
 
 export const DAMAGE_SIDES: ReadonlyArray<{
@@ -82,6 +94,27 @@ export const DAMAGE_SIDES: ReadonlyArray<{
   { id: "left", label: "Left" },
   { id: "right", label: "Right" },
   { id: "rear", label: "Rear" },
+];
+
+export const TREAD_LEVEL_ITEMS: ReadonlyArray<{
+  id: TreadLevel;
+  label: string;
+  hint: string;
+}> = [
+  { id: "good", label: "Good", hint: "Plenty of tread" },
+  { id: "fair", label: "Fair", hint: "Wear showing, still OK" },
+  { id: "low", label: "Low", hint: "Note & drive" },
+  { id: "bald", label: "Bald", hint: "Park it" },
+];
+
+export const TRAFFIC_LIGHT_ITEMS: ReadonlyArray<{
+  id: TrafficLight;
+  label: string;
+  action: string;
+}> = [
+  { id: "green", label: "Green", action: "Good to go → photos" },
+  { id: "yellow", label: "Yellow", action: "Note & drive → photos" },
+  { id: "red", label: "Red", action: "Park it — no photos" },
 ];
 
 export const ISSUE_FLAG_ITEMS: ReadonlyArray<{
@@ -136,10 +169,7 @@ function emptyChecks(powertrain: Powertrain): Record<
   return Object.fromEntries(
     INSPECTION_CHECK_ITEMS.map((item) => {
       const na = evSkipsCheck(item.id, powertrain);
-      return [
-        item.id,
-        na ? { checked: false, na: true } : { checked: false },
-      ];
+      return [item.id, na ? { result: "na" as const } : { result: "" as const }];
     })
   ) as Record<InspectionCheckId, InspectionCheckState>;
 }
@@ -155,6 +185,9 @@ export function createEmptyInspectionForm(
     checks: emptyChecks(powertrain),
     interiorClean: "",
     exteriorClean: "",
+    treadLevel: "",
+    trafficLight: "",
+    trafficNote: "",
     damage: {},
     additionalComments: "",
     issueFlags: {},
@@ -171,28 +204,63 @@ export function applyPowertrainToForm(
     powertrain,
     checks: Object.fromEntries(
       INSPECTION_CHECK_ITEMS.map((item) => {
-        const current = base.checks[item.id] ?? { checked: false };
+        const current = base.checks[item.id] ?? { result: "" };
         if (evSkipsCheck(item.id, powertrain)) {
-          return [item.id, { ...current, checked: false, na: true }];
+          return [item.id, { ...current, result: "na" as const }];
         }
-        return [item.id, { ...current, na: undefined }];
+        if (current.result === "na") {
+          return [item.id, { ...current, result: "" as const }];
+        }
+        return [item.id, current];
       })
     ) as Record<InspectionCheckId, InspectionCheckState>,
   };
 }
 
 function asCheckState(value: unknown): InspectionCheckState {
-  if (!value || typeof value !== "object") return { checked: false };
+  if (!value || typeof value !== "object") return { result: "" };
   const row = value as InspectionCheckState;
+  if (row.result === "ok" || row.result === "not_ok" || row.result === "na") {
+    return {
+      result: row.result,
+      note: typeof row.note === "string" ? row.note : undefined,
+    };
+  }
+  if (row.na) {
+    return {
+      result: "na",
+      note: typeof row.note === "string" ? row.note : undefined,
+    };
+  }
+  if (row.checked) {
+    return {
+      result: "ok",
+      note: typeof row.note === "string" ? row.note : undefined,
+    };
+  }
   return {
-    checked: Boolean(row.checked),
-    na: row.na ? true : undefined,
+    result: "",
     note: typeof row.note === "string" ? row.note : undefined,
   };
 }
 
 function asYesNo(value: unknown): YesNo | "" {
   return value === "yes" || value === "no" ? value : "";
+}
+
+function asTreadLevel(value: unknown): TreadLevel | "" {
+  return value === "good" ||
+    value === "fair" ||
+    value === "low" ||
+    value === "bald"
+    ? value
+    : "";
+}
+
+function asTrafficLight(value: unknown): TrafficLight | "" {
+  return value === "green" || value === "yellow" || value === "red"
+    ? value
+    : "";
 }
 
 function asDamage(value: unknown): InspectionDamage {
@@ -244,9 +312,9 @@ export function normalizeInspectionForm(
     for (const item of INSPECTION_CHECK_ITEMS) {
       checks[item.id] = asCheckState(row.checks[item.id]);
       if (evSkipsCheck(item.id, powertrain)) {
-        checks[item.id] = { ...checks[item.id], checked: false, na: true };
-      } else {
-        checks[item.id] = { ...checks[item.id], na: undefined };
+        checks[item.id] = { ...checks[item.id], result: "na" };
+      } else if (checks[item.id].result === "na") {
+        checks[item.id] = { ...checks[item.id], result: "" };
       }
     }
   }
@@ -259,6 +327,10 @@ export function normalizeInspectionForm(
     checks,
     interiorClean: asYesNo(row.interiorClean),
     exteriorClean: asYesNo(row.exteriorClean),
+    treadLevel: asTreadLevel(row.treadLevel),
+    trafficLight: asTrafficLight(row.trafficLight),
+    trafficNote:
+      typeof row.trafficNote === "string" ? row.trafficNote : undefined,
     damage: asDamage(row.damage),
     additionalComments:
       typeof row.additionalComments === "string"
@@ -268,24 +340,79 @@ export function normalizeInspectionForm(
   };
 }
 
+export function precheckNote(form: CheckoutInspectionForm): string {
+  return (form.trafficNote || form.additionalComments || "").trim();
+}
+
+export function suggestedTrafficLight(
+  form: CheckoutInspectionForm
+): TrafficLight {
+  const flags = form.issueFlags ?? {};
+  if (
+    flags.refuseToDrive ||
+    flags.outOfService ||
+    flags.safety ||
+    form.treadLevel === "bald"
+  ) {
+    return "red";
+  }
+  const hasIssue = INSPECTION_CHECK_ITEMS.some(
+    (item) => form.checks[item.id]?.result === "not_ok"
+  );
+  if (
+    flags.needsRepair ||
+    form.treadLevel === "low" ||
+    hasIssue ||
+    form.interiorClean === "no" ||
+    form.exteriorClean === "no" ||
+    hasInspectionDamageNotes(form)
+  ) {
+    return "yellow";
+  }
+  return "green";
+}
+
+export function applyTrafficLightDefaults(
+  form: CheckoutInspectionForm
+): CheckoutInspectionForm {
+  if (form.trafficLight !== "red") return form;
+  return {
+    ...form,
+    issueFlags: {
+      ...form.issueFlags,
+      needsRepair: true,
+    },
+  };
+}
+
 export function validateInspectionForm(
   form: CheckoutInspectionForm | undefined,
   powertrain: Powertrain
 ): { ok: true; form: CheckoutInspectionForm } | { ok: false; error: string } {
   if (!form) {
-    return { ok: false, error: "Fill the inspection checklist before submitting." };
+    return { ok: false, error: "Fill Precheck before submitting." };
   }
-  const normalized = applyPowertrainToForm(form, powertrain);
+  const normalized = applyTrafficLightDefaults(
+    applyPowertrainToForm(form, powertrain)
+  );
   const missing = INSPECTION_CHECK_ITEMS.filter((item) => {
     const state = normalized.checks[item.id];
-    if (state.na || evSkipsCheck(item.id, powertrain)) return false;
-    return !state.checked;
+    if (state.result === "na" || evSkipsCheck(item.id, powertrain)) return false;
+    return state.result !== "ok" && state.result !== "not_ok";
   });
   if (missing.length) {
     return {
       ok: false,
-      error: `Check ${missing.map((item) => item.label).join(", ")}.`,
+      error: `Answer ${missing.map((item) => item.label).join(", ")}.`,
     };
+  }
+  if (
+    normalized.treadLevel !== "good" &&
+    normalized.treadLevel !== "fair" &&
+    normalized.treadLevel !== "low" &&
+    normalized.treadLevel !== "bald"
+  ) {
+    return { ok: false, error: "Mark tread: Good, Fair, Low, or Bald." };
   }
   if (normalized.interiorClean !== "yes" && normalized.interiorClean !== "no") {
     return { ok: false, error: "Mark Interior clean Yes or No." };
@@ -293,7 +420,46 @@ export function validateInspectionForm(
   if (normalized.exteriorClean !== "yes" && normalized.exteriorClean !== "no") {
     return { ok: false, error: "Mark Exterior clean Yes or No." };
   }
+  if (
+    normalized.trafficLight !== "green" &&
+    normalized.trafficLight !== "yellow" &&
+    normalized.trafficLight !== "red"
+  ) {
+    return {
+      ok: false,
+      error: "Pick Green, Yellow, or Red at the end of Precheck.",
+    };
+  }
+  if (
+    (normalized.trafficLight === "yellow" ||
+      normalized.trafficLight === "red") &&
+    !precheckNote(normalized)
+  ) {
+    return {
+      ok: false,
+      error:
+        normalized.trafficLight === "red"
+          ? "Add a short note for Red — park it."
+          : "Add a short note for Yellow — note & drive.",
+    };
+  }
   return { ok: true, form: normalized };
+}
+
+export function canContinueToPhotos(
+  form: CheckoutInspectionForm | undefined,
+  powertrain: Powertrain
+): boolean {
+  const result = validateInspectionForm(form, powertrain);
+  return result.ok && result.form.trafficLight !== "red";
+}
+
+export function isPrecheckRed(form?: CheckoutInspectionForm | null): boolean {
+  return form?.trafficLight === "red";
+}
+
+export function isPrecheckYellow(form?: CheckoutInspectionForm | null): boolean {
+  return form?.trafficLight === "yellow";
 }
 
 export function inspectionCheckLabel(id: InspectionCheckId): string {
@@ -301,8 +467,22 @@ export function inspectionCheckLabel(id: InspectionCheckId): string {
 }
 
 export function formatCheckResult(state: InspectionCheckState): string {
-  if (state.na) return "N/A";
-  return state.checked ? "Checked" : "Not checked";
+  if (state.result === "na" || state.na) return "N/A";
+  if (state.result === "ok" || state.checked) return "OK";
+  if (state.result === "not_ok") return "Issue";
+  return "Not answered";
+}
+
+export function treadLevelLabel(level?: TreadLevel | "" | null): string {
+  if (!level) return "—";
+  return TREAD_LEVEL_ITEMS.find((item) => item.id === level)?.label ?? level;
+}
+
+export function trafficLightLabel(light?: TrafficLight | "" | null): string {
+  if (light === "green") return "Green — good to go";
+  if (light === "yellow") return "Yellow — note & drive";
+  if (light === "red") return "Red — park it";
+  return "—";
 }
 
 export function hasInspectionIssueFlags(
@@ -331,10 +511,26 @@ export function hasInspectionDamageNotes(
   );
 }
 
+export function hasNotOkChecks(form?: CheckoutInspectionForm | null): boolean {
+  if (!form) return false;
+  return INSPECTION_CHECK_ITEMS.some(
+    (item) => form.checks[item.id]?.result === "not_ok"
+  );
+}
+
 export function inspectionFormFlagsReport(
   form?: CheckoutInspectionForm | null
 ): boolean {
-  return hasInspectionIssueFlags(form) || hasInspectionDamageNotes(form);
+  if (!form) return false;
+  return (
+    form.trafficLight === "red" ||
+    form.trafficLight === "yellow" ||
+    form.treadLevel === "bald" ||
+    form.treadLevel === "low" ||
+    hasInspectionIssueFlags(form) ||
+    hasInspectionDamageNotes(form) ||
+    hasNotOkChecks(form)
+  );
 }
 
 export function activeIssueFlagLabels(
@@ -350,9 +546,14 @@ export function inspectionFormSummaryLines(
   form: CheckoutInspectionForm
 ): string[] {
   const lines: string[] = [];
+  lines.push(`Traffic light: ${trafficLightLabel(form.trafficLight)}`);
+  if (precheckNote(form)) {
+    lines.push(`Traffic note: ${precheckNote(form)}`);
+  }
   lines.push(
     `Powertrain: ${form.powertrain === "ev" ? "EV (oil / fuel N/A)" : "Gas"}`
   );
+  lines.push(`Tread: ${treadLevelLabel(form.treadLevel)}`);
   for (const item of INSPECTION_CHECK_ITEMS) {
     const state = form.checks[item.id];
     const note = state.note?.trim();

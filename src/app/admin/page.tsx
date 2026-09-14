@@ -92,7 +92,7 @@ export default function AdminPage() {
             <CardTitle>Companies</CardTitle>
             <p className="text-xs text-gray-500">
               Tenants. Each company can use its own checkout checklist later.
-              Rad Cab is seeded first with the 30-photo policy.
+              Rad Cab is seeded first with the photo walkaround policy.
             </p>
             {companies.map((c) => (
               <div

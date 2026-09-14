@@ -4,8 +4,33 @@ import {
   DAMAGE_SIDES,
   formatCheckResult,
   INSPECTION_CHECK_ITEMS,
+  trafficLightLabel,
+  treadLevelLabel,
 } from "@/lib/inspection-form";
 import { cn } from "@/lib/utils";
+
+export function TrafficLightBadge({
+  form,
+}: {
+  form?: CheckoutInspectionForm | null;
+}) {
+  const light = form?.trafficLight;
+  if (!light) return null;
+  return (
+    <span
+      className={cn(
+        "rounded-full px-2.5 py-1 text-xs font-bold",
+        light === "green"
+          ? "bg-green-100 text-green-800"
+          : light === "yellow"
+            ? "bg-amber-100 text-amber-900"
+            : "bg-red-100 text-red-800"
+      )}
+    >
+      {trafficLightLabel(light)}
+    </span>
+  );
+}
 
 export function InspectionFormSummary({
   form,
@@ -15,9 +40,12 @@ export function InspectionFormSummary({
   compact?: boolean;
 }) {
   const flags = activeIssueFlagLabels(form);
+  const traffic = form.trafficNote?.trim();
+  const extra = form.additionalComments?.trim();
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2 text-xs font-semibold">
+        <TrafficLightBadge form={form} />
         <span
           className={cn(
             "rounded-full px-2.5 py-1",
@@ -27,6 +55,22 @@ export function InspectionFormSummary({
           )}
         >
           {form.powertrain === "ev" ? "EV · oil/fuel N/A" : "Gas"}
+        </span>
+        <span
+          className={cn(
+            "rounded-full px-2.5 py-1",
+            form.treadLevel === "good"
+              ? "bg-green-100 text-green-800"
+              : form.treadLevel === "fair"
+                ? "bg-sky-100 text-sky-800"
+                : form.treadLevel === "low"
+                  ? "bg-amber-100 text-amber-900"
+                  : form.treadLevel === "bald"
+                    ? "bg-red-100 text-red-800"
+                    : "bg-gray-100 text-gray-600"
+          )}
+        >
+          Tread {treadLevelLabel(form.treadLevel)}
         </span>
         <span
           className={cn(
@@ -62,6 +106,20 @@ export function InspectionFormSummary({
         ))}
       </div>
 
+      {form.trafficLight === "red" && (
+        <p className="text-sm font-semibold text-red-800 bg-red-50 rounded-xl px-3 py-2">
+          Park it — driver did not continue to photos. Flagged for Office /
+          repairs.
+        </p>
+      )}
+      {traffic && (
+        <p className="text-sm text-gray-800 bg-gray-50 rounded-xl px-3 py-2">
+          {form.trafficLight === "yellow" || form.trafficLight === "red"
+            ? `${trafficLightLabel(form.trafficLight)}: ${traffic}`
+            : traffic}
+        </p>
+      )}
+
       <div className={cn("grid gap-2", compact ? "grid-cols-1" : "sm:grid-cols-2")}>
         {INSPECTION_CHECK_ITEMS.map((item) => {
           const state = form.checks[item.id];
@@ -75,11 +133,13 @@ export function InspectionFormSummary({
                 <span
                   className={cn(
                     "text-xs font-bold",
-                    state.na
+                    state.result === "na" || state.na
                       ? "text-gray-500"
-                      : state.checked
+                      : state.result === "ok" || state.checked
                         ? "text-green-700"
-                        : "text-red-700"
+                        : state.result === "not_ok"
+                          ? "text-amber-800"
+                          : "text-red-700"
                   )}
                 >
                   {formatCheckResult(state)}
@@ -95,23 +155,23 @@ export function InspectionFormSummary({
 
       <div className="space-y-1 text-sm">
         {DAMAGE_SIDES.map((side) => {
-          const note = form.damage[side.id]?.trim();
+          const noteText = form.damage[side.id]?.trim();
           const marked = form.damage.marks?.includes(side.id);
-          if (!note && !marked) return null;
+          if (!noteText && !marked) return null;
           return (
             <p key={side.id} className="text-red-800">
               <span className="font-semibold">{side.label}:</span>{" "}
               {marked ? "marked" : ""}
-              {marked && note ? " — " : ""}
-              {note}
+              {marked && noteText ? " — " : ""}
+              {noteText}
             </p>
           );
         })}
       </div>
 
-      {form.additionalComments?.trim() && (
+      {extra && extra !== traffic && (
         <p className="text-sm text-gray-800 bg-gray-50 rounded-xl px-3 py-2">
-          {form.additionalComments}
+          {extra}
         </p>
       )}
     </div>

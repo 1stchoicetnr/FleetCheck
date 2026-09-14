@@ -33,6 +33,8 @@ import {
   Company,
   PHOTO_ANGLES,
   PhotoAngle,
+  photoStepsForReport,
+  walkaroundPhotoSteps,
 } from "@/lib/types";
 import {
   checkoutReportPdfFilename,
@@ -46,7 +48,7 @@ import {
   sortAnglesDamageFirst,
 } from "@/lib/photo-flags";
 import { Download } from "lucide-react";
-import { InspectionFormSummary } from "@/components/inspection-form-summary";
+import { InspectionFormSummary, TrafficLightBadge } from "@/components/inspection-form-summary";
 
 export default function OfficeReportDetailPage() {
   const params = useParams();
@@ -110,7 +112,10 @@ export default function OfficeReportDetailPage() {
     load();
   }, [reportId]);
 
-  const steps = getChecklistForCompany(company);
+  const steps = photoStepsForReport(
+    getChecklistForCompany(company),
+    report?.photos ?? []
+  );
   const photoMap = useMemo(
     () => Object.fromEntries(report?.photos.map((p) => [p.angle, p]) ?? []),
     [report]
@@ -285,6 +290,11 @@ export default function OfficeReportDetailPage() {
                 <p>Dispatcher: {report.dispatcherName}</p>
                 <p>Photos: {report.photos.length}</p>
               </div>
+              {report.inspectionForm && (
+                <div className="pt-1">
+                  <TrafficLightBadge form={report.inspectionForm} />
+                </div>
+              )}
               <p className="text-xs text-gray-400">
                 Complete {formatDate(report.completedAt)}
                 {report.reviewedAt
@@ -324,13 +334,13 @@ export default function OfficeReportDetailPage() {
 
           <Card>
             <CardContent className="py-4 space-y-3">
-              <CardTitle className="text-base">Paper inspection form</CardTitle>
+              <CardTitle className="text-base">Precheck</CardTitle>
               {report.inspectionForm ? (
                 <InspectionFormSummary form={report.inspectionForm} />
               ) : (
                 <p className="text-sm text-gray-500">
-                  No paper checklist on this report (submitted before the form
-                  was added).
+                  No Precheck on this report (submitted before Precheck was
+                  added).
                 </p>
               )}
             </CardContent>
@@ -347,7 +357,7 @@ export default function OfficeReportDetailPage() {
               {downloading ? "Preparing PDF…" : "Download report (PDF)"}
             </Button>
             <p className="text-xs text-gray-500 text-center">
-              Inspection form and all photos — one file for Slack / #radcabcr.
+              Inspection Precheck and photos — one file for Slack / #radcabcr.
             </p>
             {downloadError && (
               <p className="text-sm text-red-600 font-medium text-center">
@@ -488,7 +498,7 @@ export default function OfficeReportDetailPage() {
                     Retake list — tap slots to send back
                   </p>
                   <div className="flex flex-wrap gap-2">
-                    {PHOTO_ANGLES.map((step) => {
+                    {walkaroundPhotoSteps(PHOTO_ANGLES).map((step) => {
                       const on = retakeAngles.includes(step.angle);
                       return (
                         <button

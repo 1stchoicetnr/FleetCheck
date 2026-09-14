@@ -176,6 +176,23 @@ export async function localSetVehicleArchived(
   });
 }
 
+export async function localSetVehiclePowertrain(
+  id: string,
+  powertrain: "gas" | "ev"
+): Promise<SharedVehicle | undefined> {
+  return enqueueWrite(async () => {
+    const store = await loadAndSeedUnlocked();
+    const idx = store.vehicles.findIndex((v) => v.id === id);
+    if (idx < 0) return undefined;
+    store.vehicles[idx] = {
+      ...store.vehicles[idx],
+      powertrain,
+    };
+    await writeStore(store);
+    return store.vehicles[idx];
+  });
+}
+
 export async function localListReports(): Promise<CheckoutReport[]> {
   const store = await localEnsureSeed();
   return [...store.reports].sort(

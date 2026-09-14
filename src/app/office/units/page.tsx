@@ -13,6 +13,7 @@ import {
   fetchCompanies,
   fetchVehicles,
   setVehicleArchived,
+  setVehiclePowertrain,
   SharedVehicle,
 } from "@/lib/checkout-api";
 import { getStoredOfficePin } from "@/lib/office-auth";
@@ -72,6 +73,31 @@ export default function OfficeUnitsPage() {
 
   const archivedCount = vehicles.filter(isVehicleArchived).length;
 
+  const handlePowertrain = async (
+    vehicle: SharedVehicle,
+    powertrain: "gas" | "ev"
+  ) => {
+    if (vehicle.powertrain === powertrain) return;
+    setSavingId(vehicle.id);
+    setActionError("");
+    try {
+      const updated = await setVehiclePowertrain(
+        vehicle.id,
+        powertrain,
+        getStoredOfficePin()
+      );
+      setVehicles((prev) =>
+        prev.map((item) => (item.id === updated.id ? updated : item))
+      );
+    } catch (err) {
+      setActionError(
+        err instanceof Error ? err.message : "Could not update this unit."
+      );
+    } finally {
+      setSavingId(null);
+    }
+  };
+
   const handleToggle = async (vehicle: SharedVehicle) => {
     const archived = !isVehicleArchived(vehicle);
     const label = formatUnitLabel(vehicle.unitNumber, vehicle.plate);
@@ -118,9 +144,9 @@ export default function OfficeUnitsPage() {
           <div>
             <h2 className="text-xl font-bold text-gray-900">Units</h2>
             <p className="text-sm text-gray-500">
-              Archive vans that are no longer in service. Checkout and Office
-              unit pickers hide archived units. Past checkout reports stay
-              visible.
+              Archive vans that are no longer in service. Mark EV vs Gas so
+              Precheck skips Oil and Fuel. Checkout hides archived units. Past
+              checkout reports stay visible.
             </p>
             <p className="text-xs text-gray-400 mt-1">
               {vehicles.length} units · {archivedCount} archived · PIN-gated
@@ -207,6 +233,32 @@ export default function OfficeUnitsPage() {
                         Out of service since {formatDate(vehicle.archivedAt)}
                       </p>
                     )}
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        disabled={savingId === vehicle.id}
+                        onClick={() => handlePowertrain(vehicle, "gas")}
+                        className={`min-h-[40px] rounded-xl border text-sm font-semibold ${
+                          vehicle.powertrain !== "ev"
+                            ? "border-amber-600 bg-amber-50 text-amber-900"
+                            : "border-gray-200 bg-white text-gray-700"
+                        }`}
+                      >
+                        Gas
+                      </button>
+                      <button
+                        type="button"
+                        disabled={savingId === vehicle.id}
+                        onClick={() => handlePowertrain(vehicle, "ev")}
+                        className={`min-h-[40px] rounded-xl border text-sm font-semibold ${
+                          vehicle.powertrain === "ev"
+                            ? "border-sky-600 bg-sky-50 text-sky-800"
+                            : "border-gray-200 bg-white text-gray-700"
+                        }`}
+                      >
+                        EV
+                      </button>
+                    </div>
                     <div className="flex flex-col sm:flex-row gap-2">
                       <Button
                         type="button"
