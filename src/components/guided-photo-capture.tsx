@@ -159,7 +159,7 @@ export function GuidedPhotoCapture({
         </p>
       )}
 
-      <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden shadow-lg">
+      <div className="photo-step-card bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden shadow-lg">
         {cameraOpen ? (
           <CameraCaptureModal
             open={cameraOpen}
@@ -234,7 +234,11 @@ export function GuidedPhotoCapture({
                   Retake This Photo
                 </Button>
                 {testingBrowseMode && (
-                  <Button size="lg" className="w-full" onClick={advanceWithoutPhoto}>
+                  <Button
+                    size="lg"
+                    className="photo-step-testing-next w-full"
+                    onClick={advanceWithoutPhoto}
+                  >
                     {isLastStep ? testingFinishLabel : "Next step"}
                     <ChevronRight className="h-5 w-5 ml-1" />
                   </Button>
@@ -259,7 +263,11 @@ export function GuidedPhotoCapture({
                   )}
 
                   {testingBrowseMode && (
-                    <Button size="lg" className="w-full" onClick={advanceWithoutPhoto}>
+                    <Button
+                      size="lg"
+                      className="photo-step-testing-next w-full"
+                      onClick={advanceWithoutPhoto}
+                    >
                       {isLastStep ? testingFinishLabel : "Next step (no photo)"}
                       <ChevronRight className="h-5 w-5 ml-1" />
                     </Button>
@@ -284,13 +292,14 @@ export function GuidedPhotoCapture({
                     className="photo-live-btn w-full h-12 rounded-xl border border-amber-700/60 bg-amber-950/30 text-amber-100 text-sm font-semibold hover:bg-amber-950/50 transition-colors flex items-center justify-center gap-2"
                   >
                     <Video className="h-4 w-4" />
-                    Live preview + flashlight
+                    <span className="photo-live-label-full">Live preview + flashlight</span>
+                    <span className="photo-live-label-short hidden">Live preview</span>
                   </button>
                   <button
                     type="button"
                     onClick={openGallery}
                     disabled={busy}
-                    className="w-full text-gray-400 text-sm underline py-1 flex items-center justify-center gap-1.5"
+                    className="photo-library-btn w-full text-gray-400 text-sm underline py-1 flex items-center justify-center gap-1.5"
                   >
                     <ImageIcon className="h-3.5 w-3.5" />
                     Choose from library

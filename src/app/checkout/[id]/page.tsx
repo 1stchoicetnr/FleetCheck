@@ -493,7 +493,7 @@ export default function CheckoutCapturePage() {
             type="button"
             variant="outline"
             size="md"
-            className="w-full"
+            className="checkout-photos-testing-extra w-full"
             onClick={() => {
               const filled: Partial<Record<PhotoAngle, string>> = {};
               for (const step of required) {
@@ -508,7 +508,7 @@ export default function CheckoutCapturePage() {
         )}
 
         {photosComplete && (
-          <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
+          <div className="checkout-photos-signature bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
             <div>
               <h3 className="text-base font-bold text-gray-900">
                 Driver signature

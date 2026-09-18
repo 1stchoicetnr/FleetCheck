@@ -87,6 +87,16 @@
  * on-screen. Portrait is unchanged (this query requires a short height).
  */
 @media (orientation: landscape) and (max-height: 640px) {
+  .checkout-photos-phase {
+    height: 100dvh;
+    max-height: 100dvh;
+    overflow: hidden;
+  }
+
+  .checkout-photos-phase header {
+    flex-shrink: 0;
+  }
+
   .checkout-photos-phase header .max-w-lg {
     padding-top: 0.35rem;
     padding-bottom: 0.35rem;
@@ -102,29 +112,51 @@
   }
 
   .checkout-photos-phase .checkout-photos-content {
-    padding-top: 0.5rem;
-    padding-bottom: 0.5rem;
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding-top: 0.4rem;
+    padding-bottom: 0;
   }
 
   .checkout-photos-phase .checkout-photos-content > :not([hidden]) ~ :not([hidden]) {
-    margin-top: 0.5rem !important;
+    margin-top: 0.4rem !important;
   }
 
   .checkout-photos-phase .checkout-unit-card,
-  .checkout-photos-phase .checkout-phase-tabs {
-    display: none;
+  .checkout-photos-phase .checkout-phase-tabs,
+  .checkout-photos-phase .checkout-photos-testing-extra,
+  .checkout-photos-phase:has(.photo-capture-body) .checkout-photos-signature,
+  .checkout-photos-phase:has(.camera-panel) .checkout-photos-signature,
+  .photo-step-testing-banner,
+  .photo-step-testing-next {
+    display: none !important;
+  }
+
+  .checkout-photos-phase:has(.checkout-photos-signature):not(:has(.photo-capture-body)):not(:has(.camera-panel)) {
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .checkout-photos-phase:has(.checkout-photos-signature):not(:has(.photo-capture-body)):not(:has(.camera-panel))
+    .checkout-photos-content {
+    overflow: visible;
+    height: auto;
   }
 
   .photo-step-shell {
-    gap: 0.5rem;
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
   }
 
   .photo-step-shell > :not([hidden]) ~ :not([hidden]) {
-    margin-top: 0.5rem !important;
-  }
-
-  .photo-step-testing-banner {
-    display: none;
+    margin-top: 0.4rem !important;
   }
 
   .photo-step-progress .photo-step-progress-meta,
@@ -133,17 +165,25 @@
   }
 
   .photo-step-progress .h-3 {
-    height: 0.4rem;
+    height: 0.35rem;
+  }
+
+  .photo-step-card {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
   }
 
   .photo-step-heading {
-    padding: 0.5rem 0.75rem !important;
+    padding: 0.4rem 0.75rem !important;
+    flex-shrink: 0;
   }
 
   .photo-step-heading span {
     font-size: 0.7rem;
     padding: 0.15rem 0.5rem;
-    margin-bottom: 0.25rem;
+    margin-bottom: 0.2rem;
   }
 
   .photo-step-heading h2 {
@@ -157,7 +197,7 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
     font-size: 0.8rem !important;
-    margin-top: 0.25rem !important;
+    margin-top: 0.2rem !important;
   }
 
   .photo-step-helper {
@@ -165,11 +205,13 @@
   }
 
   .photo-capture-body {
+    flex: 1 1 auto;
+    min-height: 0;
     display: grid;
     grid-template-columns: minmax(0, 38%) minmax(0, 1fr);
     gap: 0.75rem;
     align-items: center;
-    padding: 0.75rem !important;
+    padding: 0.65rem !important;
   }
 
   .photo-capture-body > :not([hidden]) ~ :not([hidden]) {
@@ -179,6 +221,21 @@
   .photo-capture-hint,
   .photo-capture-flash-hint {
     display: none;
+  }
+
+  .photo-capture-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.45rem;
+    align-items: stretch;
+  }
+
+  .photo-capture-actions > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 0 !important;
+  }
+
+  .photo-library-btn {
+    grid-column: 1 / -1;
   }
 
   .photo-example-kicker {
@@ -195,62 +252,111 @@
   }
 
   .photo-accepted-frame {
-    min-height: 96px !important;
-    max-height: 120px !important;
+    min-height: 72px !important;
+    max-height: 110px !important;
   }
 
   .photo-accepted-frame img {
-    max-height: 120px !important;
+    max-height: 110px !important;
   }
 
   .photo-take-btn {
     height: 2.75rem !important;
-    font-size: 1rem !important;
+    font-size: 0.95rem !important;
   }
 
-  .photo-live-btn {
-    height: 2.5rem !important;
+  .photo-live-label-full {
+    display: none !important;
+  }
+
+  .photo-live-label-short {
+    display: inline !important;
+  }
+
+  .photo-take-btn svg,
+  .photo-live-btn svg {
+    width: 1.1rem;
+    height: 1.1rem;
   }
 
   .photo-step-nav {
-    position: sticky;
-    bottom: 4.5rem;
-    z-index: 44;
+    position: static;
+    flex-shrink: 0;
     margin-left: -1rem;
     margin-right: -1rem;
-    padding: 0.4rem 1rem;
-    background: rgb(249 250 251 / 0.96);
+    padding: 0.3rem 1rem 0.15rem;
+    background: rgb(249 250 251);
     border-top: 1px solid rgb(229 231 235);
   }
 
   .photo-step-submit-dock {
-    padding-top: 0.35rem !important;
-    padding-bottom: max(0.35rem, env(safe-area-inset-bottom, 0px)) !important;
+    position: static;
+    flex-shrink: 0;
+    margin-top: 0 !important;
+    padding-top: 0.3rem !important;
+    padding-bottom: max(0.3rem, env(safe-area-inset-bottom, 0px)) !important;
   }
 
   .photo-step-submit-btn {
     min-height: 44px !important;
-    padding-top: 0.5rem !important;
-    padding-bottom: 0.5rem !important;
+    padding-top: 0.45rem !important;
+    padding-bottom: 0.45rem !important;
     font-size: 0.95rem !important;
   }
 
+  .photo-step-card > .camera-panel {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
   .camera-panel-stage {
-    height: min(32vh, 120px);
+    flex: 0 0 auto;
+    height: 92px;
+    min-height: 92px;
+    max-height: 92px;
   }
 
   .camera-panel-chrome {
     padding-top: 0.35rem !important;
     padding-bottom: 0.2rem !important;
+    flex-shrink: 0;
   }
 
   .camera-panel-controls {
-    padding-top: 0.3rem !important;
-    padding-bottom: 0.4rem !important;
+    padding-top: 0.25rem !important;
+    padding-bottom: 0.35rem !important;
+    flex-shrink: 0;
+  }
+
+  .camera-live-actions {
+    flex-wrap: nowrap;
+    gap: 0.4rem !important;
+  }
+
+  .camera-live-actions button {
+    min-height: 36px !important;
+    height: 36px !important;
+    font-size: 0.8rem !important;
+    padding-left: 0.7rem !important;
+    padding-right: 0.7rem !important;
+  }
+
+  .camera-torch-fallback {
+    max-width: 8.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.65rem !important;
+  }
+
+  .camera-native-fallback {
+    display: none;
   }
 
   .camera-shutter-btn {
-    height: 2.5rem !important;
+    height: 2.25rem !important;
     font-size: 0.95rem !important;
   }
 

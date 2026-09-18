@@ -49,7 +49,7 @@ function FlashlightControl({
 }) {
   if (!available) {
     return (
-      <p className="text-center text-xs text-white/75 leading-snug px-2">
+      <p className="camera-torch-fallback text-center text-xs text-white/75 leading-snug px-2 max-w-[14rem]">
         {describeTorchUnavailable()}
       </p>
     );
@@ -573,7 +573,7 @@ export function CameraCaptureModal({
 
         {phase === "live" && (
           <>
-            <div className="flex flex-wrap items-center justify-center gap-2">
+            <div className="camera-live-actions flex flex-wrap items-center justify-center gap-2">
               <button
                 type="button"
                 onClick={flipCamera}
@@ -587,19 +587,19 @@ export function CameraCaptureModal({
                 available={flashlightUsable}
                 onToggle={() => void toggleTorch()}
               />
+              <button
+                type="button"
+                onClick={capturePhoto}
+                disabled={capturing}
+                className="camera-shutter-btn w-full h-12 rounded-xl bg-white text-gray-900 font-bold text-base disabled:opacity-50 px-6"
+              >
+                Capture
+              </button>
             </div>
             <button
               type="button"
-              onClick={capturePhoto}
-              disabled={capturing}
-              className="camera-shutter-btn w-full h-12 rounded-xl bg-white text-gray-900 font-bold text-base disabled:opacity-50"
-            >
-              Capture
-            </button>
-            <button
-              type="button"
               onClick={openNativeCamera}
-              className="block w-full text-center text-white/70 text-xs underline py-1"
+              className="camera-native-fallback block w-full text-center text-white/70 text-xs underline py-1"
             >
               Take photo instead
             </button>
