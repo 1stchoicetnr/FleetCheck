@@ -67,6 +67,12 @@ export function GuidedPhotoCapture({
   const allComplete = acceptedCount === requiredPhotos.length;
   const value = current ? photos[current.angle] : undefined;
   const isLastStep = currentIndex === requiredPhotos.length - 1;
+  const canGoPrev = currentIndex > 0;
+  const canGoNext =
+    currentIndex < requiredPhotos.length - 1 &&
+    (testingBrowseMode ||
+      !!photos[requiredPhotos[currentIndex + 1]?.angle] ||
+      currentIndex + 1 === firstIncompleteIndex);
 
   const handleAccept = (dataUrl: string) => {
     if (!current) return;
@@ -125,161 +131,183 @@ export function GuidedPhotoCapture({
     setPickError("");
   };
 
+  const goToStep = (index: number) => {
+    setCameraOpen(false);
+    setViewIndex(index);
+  };
+
   if (!current) return null;
 
   return (
-    <div className="space-y-5">
-      <ProgressBar
-        current={testingBrowseMode ? currentIndex + 1 : acceptedCount}
-        total={requiredPhotos.length}
-        label={
-          testingBrowseMode
-            ? `Preview — step ${currentIndex + 1} of ${requiredPhotos.length}`
-            : `Photos — ${acceptedCount} of ${requiredPhotos.length} accepted`
-        }
-      />
+    <div className="photo-step-shell space-y-5">
+      <div className="photo-step-progress">
+        <ProgressBar
+          current={testingBrowseMode ? currentIndex + 1 : acceptedCount}
+          total={requiredPhotos.length}
+          label={
+            testingBrowseMode
+              ? `Preview — step ${currentIndex + 1} of ${requiredPhotos.length}`
+              : `Photos — ${acceptedCount} of ${requiredPhotos.length} accepted`
+          }
+        />
+      </div>
 
       {testingBrowseMode && (
-        <p className="text-center text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg py-2 px-3">
+        <p className="photo-step-testing-banner text-center text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg py-2 px-3">
           <strong>For testing only.</strong> Browse all 30 steps — tap{" "}
           <strong>Next step (no photo)</strong> or jump using the numbers below.
         </p>
       )}
 
       <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden shadow-lg">
-        <div className="px-5 pt-5 pb-4 border-b border-gray-800">
-          <span className="inline-block bg-emerald-500/15 text-emerald-300 text-sm font-bold px-3 py-1 rounded-full mb-2">
-            Photo {currentIndex + 1} of {requiredPhotos.length}
-          </span>
-          <h2 className="text-xl font-bold text-white">{current.label}</h2>
-          <p className="text-base text-gray-300 mt-2 leading-relaxed">
-            {current.instruction}
-          </p>
-            {current.helper && (
-            <p className="mt-2 text-sm text-amber-200/90 leading-relaxed bg-amber-950/40 border border-amber-700/40 rounded-lg px-3 py-2">
-              {current.helper}
-            </p>
-          )}
-        </div>
-
-        {value ? (
-          <div className="p-4 space-y-4">
-            <div className="relative rounded-xl overflow-hidden border-2 border-emerald-500/60 bg-black flex items-center justify-center min-h-[180px] max-h-[min(55vh,360px)]">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={value}
-                alt={current.label}
-                className="w-full h-full max-h-[min(55vh,360px)] object-contain"
-              />
-              <div className="absolute top-3 left-3 bg-emerald-600 text-white rounded-full px-3 py-1.5 text-sm font-semibold flex items-center gap-1.5 shadow">
-                <Check className="h-4 w-4" />
-                Accepted
-              </div>
-              {photoFlags?.[current.angle]?.flaggedDamage && (
-                <div className="absolute top-3 right-3 bg-red-600 text-white rounded-full px-3 py-1.5 text-sm font-semibold shadow">
-                  DAMAGE
-                </div>
+        {cameraOpen ? (
+          <CameraCaptureModal
+            open={cameraOpen}
+            photoStep={current}
+            photoNumber={currentIndex + 1}
+            totalPhotos={requiredPhotos.length}
+            onClose={() => setCameraOpen(false)}
+            onAccept={handleAccept}
+          />
+        ) : (
+          <>
+            <div className="photo-step-heading px-5 pt-5 pb-4 border-b border-gray-800">
+              <span className="inline-block bg-emerald-500/15 text-emerald-300 text-sm font-bold px-3 py-1 rounded-full mb-2">
+                Photo {currentIndex + 1} of {requiredPhotos.length}
+              </span>
+              <h2 className="text-xl font-bold text-white">{current.label}</h2>
+              <p className="photo-step-instruction text-base text-gray-300 mt-2 leading-relaxed">
+                {current.instruction}
+              </p>
+              {current.helper && (
+                <p className="photo-step-helper mt-2 text-sm text-amber-200/90 leading-relaxed bg-amber-950/40 border border-amber-700/40 rounded-lg px-3 py-2">
+                  {current.helper}
+                </p>
               )}
             </div>
-            {onFlagDamage && (
-              <button
-                type="button"
-                onClick={() =>
-                  onFlagDamage(
-                    current.angle,
-                    !photoFlags?.[current.angle]?.flaggedDamage
-                  )
-                }
-                className={`w-full min-h-[48px] rounded-xl border-2 text-sm font-semibold ${
-                  photoFlags?.[current.angle]?.flaggedDamage
-                    ? "border-red-500 bg-red-950/40 text-red-100"
-                    : "border-gray-600 bg-gray-800 text-gray-200"
-                }`}
-              >
-                {photoFlags?.[current.angle]?.flaggedDamage
-                  ? "DAMAGE flagged — tap to clear"
-                  : "Mark this angle as DAMAGE / new damage"}
-              </button>
-            )}
-            <Button
-              variant="outline"
-              size="lg"
-              className="w-full border-red-400/50 text-red-300 bg-red-950/30 hover:bg-red-950/50"
-              onClick={retakeAccepted}
-            >
-              Retake This Photo
-            </Button>
-            {testingBrowseMode && (
-              <Button size="lg" className="w-full" onClick={advanceWithoutPhoto}>
-                {isLastStep ? testingFinishLabel : "Next step"}
-                <ChevronRight className="h-5 w-5 ml-1" />
-              </Button>
-            )}
-          </div>
-        ) : (
-          <div className="p-4 space-y-4">
-            <PhotoExampleCard
-              angle={current.angle}
-              label={current.label}
-              category={current.category}
-            />
-            <p className="text-center text-xs text-gray-500">
-              Match the example, then take the photo with your phone camera
-            </p>
 
-            {pickError && (
-              <p className="text-center text-sm text-red-300 font-medium">
-                {pickError}
-              </p>
-            )}
+            {value ? (
+              <div className="p-4 space-y-4">
+                <div className="photo-accepted-frame relative rounded-xl overflow-hidden border-2 border-emerald-500/60 bg-black flex items-center justify-center min-h-[180px] max-h-[min(55vh,360px)]">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={value}
+                    alt={current.label}
+                    className="w-full h-full max-h-[min(55vh,360px)] object-contain"
+                  />
+                  <div className="absolute top-3 left-3 bg-emerald-600 text-white rounded-full px-3 py-1.5 text-sm font-semibold flex items-center gap-1.5 shadow">
+                    <Check className="h-4 w-4" />
+                    Accepted
+                  </div>
+                  {photoFlags?.[current.angle]?.flaggedDamage && (
+                    <div className="absolute top-3 right-3 bg-red-600 text-white rounded-full px-3 py-1.5 text-sm font-semibold shadow">
+                      DAMAGE
+                    </div>
+                  )}
+                </div>
+                {onFlagDamage && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onFlagDamage(
+                        current.angle,
+                        !photoFlags?.[current.angle]?.flaggedDamage
+                      )
+                    }
+                    className={`w-full min-h-[48px] rounded-xl border-2 text-sm font-semibold ${
+                      photoFlags?.[current.angle]?.flaggedDamage
+                        ? "border-red-500 bg-red-950/40 text-red-100"
+                        : "border-gray-600 bg-gray-800 text-gray-200"
+                    }`}
+                  >
+                    {photoFlags?.[current.angle]?.flaggedDamage
+                      ? "DAMAGE flagged — tap to clear"
+                      : "Mark this angle as DAMAGE / new damage"}
+                  </button>
+                )}
+                <Button
+                  variant="outline"
+                  size="lg"
+                  className="w-full border-red-400/50 text-red-300 bg-red-950/30 hover:bg-red-950/50"
+                  onClick={retakeAccepted}
+                >
+                  Retake This Photo
+                </Button>
+                {testingBrowseMode && (
+                  <Button size="lg" className="w-full" onClick={advanceWithoutPhoto}>
+                    {isLastStep ? testingFinishLabel : "Next step"}
+                    <ChevronRight className="h-5 w-5 ml-1" />
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <div className="photo-capture-body p-4 space-y-4">
+                <PhotoExampleCard
+                  angle={current.angle}
+                  label={current.label}
+                  category={current.category}
+                />
+                <div className="photo-capture-actions space-y-3">
+                  <p className="photo-capture-hint text-center text-xs text-gray-500">
+                    Match the example, then take the photo with your phone camera
+                  </p>
 
-            {testingBrowseMode && (
-              <Button size="lg" className="w-full" onClick={advanceWithoutPhoto}>
-                {isLastStep ? testingFinishLabel : "Next step (no photo)"}
-                <ChevronRight className="h-5 w-5 ml-1" />
-              </Button>
-            )}
+                  {pickError && (
+                    <p className="text-center text-sm text-red-300 font-medium">
+                      {pickError}
+                    </p>
+                  )}
 
-            <button
-              type="button"
-              onClick={openNativeCamera}
-              disabled={busy}
-              className="w-full h-16 rounded-2xl bg-brand-600 hover:bg-brand-500 active:scale-[0.98] transition-all shadow-lg flex items-center justify-center gap-3 text-white font-bold text-lg disabled:opacity-60"
-            >
-              <Camera className="h-7 w-7" />
-              {busy ? "Saving photo…" : "Take photo"}
-            </button>
-            <p className="text-center text-xs text-gray-400 leading-snug px-1">
-              Dark shot? Take photo can use your phone’s flash, but not a
-              flashlight. Open Live preview for a continuous flashlight.
-            </p>
-            <button
-              type="button"
-              onClick={openLivePreview}
-              className="w-full h-12 rounded-xl border border-amber-700/60 bg-amber-950/30 text-amber-100 text-sm font-semibold hover:bg-amber-950/50 transition-colors flex items-center justify-center gap-2"
-            >
-              <Video className="h-4 w-4" />
-              Live preview + flashlight
-            </button>
-            <button
-              type="button"
-              onClick={openGallery}
-              disabled={busy}
-              className="w-full text-gray-400 text-sm underline py-1 flex items-center justify-center gap-1.5"
-            >
-              <ImageIcon className="h-3.5 w-3.5" />
-              Choose from library
-            </button>
-          </div>
+                  {testingBrowseMode && (
+                    <Button size="lg" className="w-full" onClick={advanceWithoutPhoto}>
+                      {isLastStep ? testingFinishLabel : "Next step (no photo)"}
+                      <ChevronRight className="h-5 w-5 ml-1" />
+                    </Button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={openNativeCamera}
+                    disabled={busy}
+                    className="photo-take-btn w-full h-16 rounded-2xl bg-brand-600 hover:bg-brand-500 active:scale-[0.98] transition-all shadow-lg flex items-center justify-center gap-3 text-white font-bold text-lg disabled:opacity-60"
+                  >
+                    <Camera className="h-7 w-7" />
+                    {busy ? "Saving photo…" : "Take photo"}
+                  </button>
+                  <p className="photo-capture-flash-hint text-center text-xs text-gray-400 leading-snug px-1">
+                    Dark shot? Take photo can use your phone’s flash, but not a
+                    flashlight. Open Live preview for a continuous flashlight.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={openLivePreview}
+                    className="photo-live-btn w-full h-12 rounded-xl border border-amber-700/60 bg-amber-950/30 text-amber-100 text-sm font-semibold hover:bg-amber-950/50 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Video className="h-4 w-4" />
+                    Live preview + flashlight
+                  </button>
+                  <button
+                    type="button"
+                    onClick={openGallery}
+                    disabled={busy}
+                    className="w-full text-gray-400 text-sm underline py-1 flex items-center justify-center gap-1.5"
+                  >
+                    <ImageIcon className="h-3.5 w-3.5" />
+                    Choose from library
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
 
-      <div className="flex items-center gap-2">
-        {(currentIndex > 0 || testingBrowseMode) && currentIndex > 0 && (
+      <div className="photo-step-nav flex items-center gap-2">
+        {canGoPrev && (
           <Button
             variant="ghost"
             size="md"
-            onClick={() => setViewIndex(currentIndex - 1)}
+            onClick={() => goToStep(currentIndex - 1)}
             aria-label="Previous photo"
           >
             <ChevronLeft className="h-5 w-5" />
@@ -298,7 +326,7 @@ export function GuidedPhotoCapture({
                 key={p.angle}
                 type="button"
                 disabled={!canView}
-                onClick={() => canView && setViewIndex(i)}
+                onClick={() => canView && goToStep(i)}
                 title={p.label}
                 className={`flex-shrink-0 min-w-[32px] h-8 px-1.5 rounded-md text-[10px] font-bold transition-colors ${
                   damaged
@@ -318,11 +346,11 @@ export function GuidedPhotoCapture({
           })}
         </div>
 
-        {testingBrowseMode && !isLastStep && (
+        {canGoNext && (
           <Button
             variant="ghost"
             size="md"
-            onClick={() => setViewIndex(currentIndex + 1)}
+            onClick={() => goToStep(currentIndex + 1)}
             aria-label="Next photo"
           >
             <ChevronRight className="h-5 w-5" />
@@ -358,15 +386,6 @@ export function GuidedPhotoCapture({
           if (file) void handlePickedFile(file);
           e.target.value = "";
         }}
-      />
-
-      <CameraCaptureModal
-        open={cameraOpen}
-        photoStep={current}
-        photoNumber={currentIndex + 1}
-        totalPhotos={requiredPhotos.length}
-        onClose={() => setCameraOpen(false)}
-        onAccept={handleAccept}
       />
     </div>
   );

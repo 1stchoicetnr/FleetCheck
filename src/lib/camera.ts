@@ -12,6 +12,13 @@ type TorchCapability = MediaTrackCapabilities & { torch?: boolean };
 type TorchConstraint = MediaTrackConstraintSet & { torch?: boolean };
 type TorchSettings = MediaTrackSettings & { torch?: boolean };
 
+type ImageCaptureLike = {
+  getPhotoCapabilities: () => Promise<{
+    fillLightMode?: string[];
+    torch?: boolean;
+  }>;
+};
+
 /** Rear / environment-facing is the default for every checklist step. */
 export function getSessionCameraFacing(): CameraFacing {
   if (typeof window === "undefined") return "environment";
@@ -38,36 +45,109 @@ export function isLikelyIOS(): boolean {
   return /iP(hone|ad|od)/.test(navigator.userAgent);
 }
 
+export function isLikelyAndroid(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return /Android/i.test(navigator.userAgent);
+}
+
+function makeImageCapture(
+  track: MediaStreamTrack | null
+): ImageCaptureLike | null {
+  if (!track || typeof window === "undefined") return null;
+  const Ctor = (
+    window as unknown as {
+      ImageCapture?: new (t: MediaStreamTrack) => ImageCaptureLike;
+    }
+  ).ImageCapture;
+  if (!Ctor) return null;
+  try {
+    return new Ctor(track);
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Keep facingMode as *ideal* only (never exact) and skip aspectRatio.
- * Exact facing + portrait/landscape size locks have been seen to fight the
- * torch constraint and restart the track (black live preview).
+ * Keep facingMode as *ideal* only. Skip width/height on the rear camera —
+ * size locks pick profiles that hide torch on many Android Chrome builds.
  */
 export function videoConstraintsForFacing(
   facing: CameraFacing
 ): MediaTrackConstraints {
-  return {
-    facingMode: { ideal: facing },
-    width: { ideal: 1920 },
-    height: { ideal: 1080 },
-  };
+  if (facing === "environment") {
+    return { facingMode: { ideal: "environment" } };
+  }
+  return { facingMode: { ideal: "user" } };
 }
 
-/** Prefer the requested lens; fall back to a bare facingMode if the device rejects size. */
+function stopTracks(stream: MediaStream) {
+  stream.getTracks().forEach((t) => t.stop());
+}
+
+function looksLikeRearCamera(label: string): boolean {
+  const text = label.toLowerCase();
+  if (/front|user|face|selfie/.test(text)) return false;
+  if (/back|rear|environment|world/.test(text)) return true;
+  return label.length === 0;
+}
+
+/** Prefer the requested lens; fall back to a bare facingMode if the device rejects extras. */
 export async function openCameraStream(
   facing: CameraFacing
 ): Promise<MediaStream> {
-  try {
-    return await navigator.mediaDevices.getUserMedia({
-      video: videoConstraintsForFacing(facing),
-      audio: false,
-    });
-  } catch {
-    return await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: facing } },
-      audio: false,
-    });
+  if (facing === "user") {
+    try {
+      return await navigator.mediaDevices.getUserMedia({
+        video: videoConstraintsForFacing("user"),
+        audio: false,
+      });
+    } catch {
+      return await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: false,
+      });
+    }
   }
+
+  let stream = await navigator.mediaDevices.getUserMedia({
+    video: videoConstraintsForFacing("environment"),
+    audio: false,
+  });
+
+  const first = stream.getVideoTracks()[0] ?? null;
+  if (await probeTorchSupport(first)) return stream;
+
+  let devices: MediaDeviceInfo[] = [];
+  try {
+    devices = await navigator.mediaDevices.enumerateDevices();
+  } catch {
+    return stream;
+  }
+
+  const currentId = first?.getSettings?.().deviceId;
+  const candidates = devices.filter((device) => {
+    if (device.kind !== "videoinput") return false;
+    if (currentId && device.deviceId === currentId) return false;
+    return looksLikeRearCamera(device.label);
+  });
+
+  for (const device of candidates) {
+    try {
+      const next = await navigator.mediaDevices.getUserMedia({
+        video: { deviceId: { exact: device.deviceId } },
+        audio: false,
+      });
+      if (await probeTorchSupport(next.getVideoTracks()[0] ?? null)) {
+        stopTracks(stream);
+        return next;
+      }
+      stopTracks(next);
+    } catch {
+      /* try the next rear camera */
+    }
+  }
+
+  return stream;
 }
 
 export function getStreamVideoTrack(
@@ -76,8 +156,7 @@ export function getStreamVideoTrack(
   return stream?.getVideoTracks()[0] ?? null;
 }
 
-/** True only when the live track advertises a torch. iOS Safari typically does not. */
-export function trackSupportsTorch(track: MediaStreamTrack | null): boolean {
+function capabilitiesSayTorch(track: MediaStreamTrack | null): boolean {
   if (!track || track.readyState !== "live") return false;
   if (typeof track.getCapabilities !== "function") return false;
   try {
@@ -85,6 +164,27 @@ export function trackSupportsTorch(track: MediaStreamTrack | null): boolean {
     return caps?.torch === true;
   } catch {
     return false;
+  }
+}
+
+/** True when the live track (or ImageCapture) advertises a continuous torch. */
+export function trackSupportsTorch(track: MediaStreamTrack | null): boolean {
+  return capabilitiesSayTorch(track);
+}
+
+async function imageCaptureSeesTorch(
+  track: MediaStreamTrack | null
+): Promise<boolean> {
+  if (capabilitiesSayTorch(track)) return true;
+  const capture = makeImageCapture(track);
+  if (!capture) return false;
+  try {
+    const caps = await capture.getPhotoCapabilities();
+    if (caps?.torch === true) return true;
+    // Constructing ImageCapture often fills track.getCapabilities().torch on Chromium.
+    return capabilitiesSayTorch(track);
+  } catch {
+    return capabilitiesSayTorch(track);
   }
 }
 
@@ -141,13 +241,13 @@ export async function waitForElement<T>(
  */
 export async function probeTorchSupport(
   track: MediaStreamTrack | null,
-  attempts = 10
+  attempts = 24
 ): Promise<boolean> {
   for (let i = 0; i < attempts; i++) {
-    if (trackSupportsTorch(track)) return true;
+    if (await imageCaptureSeesTorch(track)) return true;
     await new Promise((resolve) => requestAnimationFrame(resolve));
   }
-  return trackSupportsTorch(track);
+  return imageCaptureSeesTorch(track);
 }
 
 /**
@@ -208,32 +308,41 @@ export function describeTorchUnavailable(): string {
 }
 
 /**
- * Continuous torch only. Do not mix facingMode/size into this call, and do not
- * use ImageCapture fillLightMode "flash" (that is a one-shot photo flash and
- * can black out the live preview).
+ * Continuous torch. Try ImageCapture-backed capabilities first, then
+ * applyConstraints in both the advanced and simple shapes Android Chrome uses.
  */
 export async function setTrackTorch(
   track: MediaStreamTrack | null,
-  on: boolean
+  on: boolean,
+  opts?: { force?: boolean }
 ): Promise<boolean> {
   if (!track || track.readyState !== "live") return false;
-  if (on && !trackSupportsTorch(track)) return false;
+  const advertised = await imageCaptureSeesTorch(track);
+  if (on && !advertised && !opts?.force) return false;
 
-  try {
-    await track.applyConstraints({
-      advanced: [{ torch: on } as TorchConstraint],
-    });
-  } catch {
-    return false;
-  }
+  const attempts: MediaTrackConstraints[] = [
+    { advanced: [{ torch: on } as TorchConstraint] },
+    { torch: on } as MediaTrackConstraints,
+  ];
 
-  try {
-    const settings = track.getSettings() as TorchSettings;
-    if (typeof settings.torch === "boolean") return settings.torch === on;
-  } catch {
-    /* some engines omit torch from getSettings even when the LED is on */
+  for (const constraints of attempts) {
+    try {
+      await track.applyConstraints(constraints);
+      try {
+        const settings = track.getSettings() as TorchSettings;
+        if (typeof settings.torch === "boolean") {
+          if (settings.torch === on) return true;
+          continue;
+        }
+      } catch {
+        /* some engines omit torch from getSettings even when the LED is on */
+      }
+      return true;
+    } catch {
+      /* try the next constraint shape */
+    }
   }
-  return true;
+  return false;
 }
 
 /** Apply session torch after a genuine stream restart (flip / track ended). */
@@ -242,20 +351,21 @@ export async function applyDesiredTorch(
   desired: boolean
 ): Promise<{ supported: boolean; on: boolean }> {
   const supported = await probeTorchSupport(track);
+  const force = !supported && isLikelyAndroid();
   if (!desired) {
-    if (supported && trackTorchIsOn(track)) {
-      await setTrackTorch(track, false);
+    if ((supported || force) && trackTorchIsOn(track)) {
+      await setTrackTorch(track, false, { force: true });
     }
-    return { supported, on: false };
+    return { supported: supported || force, on: false };
   }
-  if (!supported) return { supported: false, on: false };
-  const ok = await setTrackTorch(track, true);
-  return { supported: true, on: ok };
+  const ok = await setTrackTorch(track, true, { force });
+  return { supported: supported || ok, on: ok };
 }
 
 /**
  * After torch on/off, recover a black <video> without stopping the track.
  * If the preview cannot be recovered with torch on, turn torch off and recover.
+ * Skip remount when the preview is still live — remount can drop the torch.
  */
 export async function applyTorchAndKeepPreview(
   track: MediaStreamTrack | null,
@@ -268,18 +378,35 @@ export async function applyTorchAndKeepPreview(
   supported: boolean;
   rolledBack: boolean;
 }> {
-  const supported = trackSupportsTorch(track);
-  if (!track || !supported) {
+  if (!track) {
     const previewLive = await bindStreamToVideo(video, stream);
     return { applied: false, previewLive, supported: false, rolledBack: false };
   }
 
-  const applied = await setTrackTorch(track, on);
+  const advertised = await imageCaptureSeesTorch(track);
+  const force = advertised || isLikelyAndroid();
+  if (on && !force) {
+    const previewLive = await bindStreamToVideo(video, stream);
+    return { applied: false, previewLive, supported: false, rolledBack: false };
+  }
+
+  const wasLive = isPreviewLive(video);
+  const applied = await setTrackTorch(track, on, { force: true });
+
+  if (wasLive && isPreviewLive(video)) {
+    return {
+      applied,
+      previewLive: true,
+      supported: advertised || applied,
+      rolledBack: false,
+    };
+  }
+
   await new Promise((resolve) => requestAnimationFrame(resolve));
   let previewLive = await bindStreamToVideo(video, stream, true);
 
   if (on && applied && !previewLive) {
-    await setTrackTorch(track, false);
+    await setTrackTorch(track, false, { force: true });
     previewLive = await bindStreamToVideo(video, stream, true);
     return { applied: false, previewLive, supported: true, rolledBack: true };
   }
@@ -288,5 +415,10 @@ export async function applyTorchAndKeepPreview(
     previewLive = await bindStreamToVideo(video, stream, true);
   }
 
-  return { applied, previewLive, supported: true, rolledBack: false };
+  return {
+    applied,
+    previewLive,
+    supported: advertised || applied,
+    rolledBack: false,
+  };
 }

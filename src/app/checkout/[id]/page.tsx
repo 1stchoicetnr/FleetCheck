@@ -331,13 +331,17 @@ export default function CheckoutCapturePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div
+      className={`min-h-screen bg-gray-50 flex flex-col ${
+        phase === "photos" ? "checkout-photos-phase" : ""
+      }`}
+    >
       <AppHeader
         title={`${draft.type === "check_out" ? "Check out" : "Check in"} · ${formatUnitLabel(vehicle.unitNumber, vehicle.plate)}`}
         backHref="/checkout"
       />
-      <div className="max-w-lg mx-auto px-4 py-4 flex-1 w-full space-y-4">
-        <div className="bg-white rounded-2xl border border-gray-200 p-4 text-sm space-y-1">
+      <div className="checkout-photos-content max-w-lg mx-auto px-4 py-4 flex-1 w-full space-y-4">
+        <div className="checkout-unit-card bg-white rounded-2xl border border-gray-200 p-4 text-sm space-y-1">
           <p className="font-semibold text-gray-900">
             {company?.name ?? "Company"} · {formatUnitLabel(vehicle.unitNumber)}
           </p>
@@ -363,7 +367,7 @@ export default function CheckoutCapturePage() {
           </p>
         </div>
 
-        <div className="flex gap-2">
+        <div className="checkout-phase-tabs flex gap-2">
           <Button
             type="button"
             size="sm"
@@ -531,10 +535,10 @@ export default function CheckoutCapturePage() {
           <p className="text-sm text-red-600 font-medium">{submitError}</p>
         )}
 
-        <div className="sticky bottom-0 -mx-4 px-4 pt-3 pb-6 safe-bottom bg-gray-50/95 border-t border-gray-200">
+        <div className="photo-step-submit-dock sticky bottom-0 -mx-4 px-4 pt-3 pb-6 safe-bottom bg-gray-50/95 border-t border-gray-200">
           <Button
             size="xl"
-            className="w-full"
+            className="w-full photo-step-submit-btn"
             onClick={handleSubmit}
             disabled={submitting || !canSubmit}
           >

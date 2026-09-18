@@ -19,43 +19,38 @@
     padding-bottom: env(safe-area-inset-bottom, 0);
   }
 
-  /* Full-screen camera shell in the device visual viewport — no rotate, no landscape lock */
-  .camera-viewport {
-    position: fixed;
-    inset: 0;
-    z-index: 200;
+  /*
+   * Live Preview is an in-app panel inside the checkout photo card.
+   * Never use position:fixed / 100vw / 100vh here — Android Chrome treats a
+   * fullscreen <video> like a landscape movie player.
+   */
+  .camera-panel {
+    position: relative;
     width: 100%;
-    height: 100%;
-    height: 100dvh;
-    overflow: hidden;
-    touch-action: none;
-    background: #000;
+    background: #0b1220;
     transform: none;
   }
 
-  .camera-media {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
+  .camera-panel-stage {
+    position: relative;
+    width: 100%;
+    height: min(42vh, 280px);
+    overflow: hidden;
+    background: #000;
+  }
+
+  .camera-panel-video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
     object-fit: cover;
     object-position: center;
+    background: #000;
   }
 
   .camera-media-mirror {
     transform: scaleX(-1);
-  }
-
-  .camera-preview-media {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    object-fit: contain;
-    object-position: center;
-    background: #000;
   }
 
   /* Office photo inspect — same fullscreen shell as the camera, above page chrome */
@@ -84,5 +79,182 @@
     -webkit-user-drag: none;
     transform-origin: center center;
     will-change: transform;
+  }
+}
+
+/*
+ * Landscape / short viewport: keep capture actions + step chips + submit
+ * on-screen. Portrait is unchanged (this query requires a short height).
+ */
+@media (orientation: landscape) and (max-height: 640px) {
+  .checkout-photos-phase header .max-w-lg {
+    padding-top: 0.35rem;
+    padding-bottom: 0.35rem;
+  }
+
+  .checkout-photos-phase header h1 {
+    font-size: 0.95rem;
+    line-height: 1.2;
+  }
+
+  .checkout-photos-phase header p {
+    display: none;
+  }
+
+  .checkout-photos-phase .checkout-photos-content {
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+  }
+
+  .checkout-photos-phase .checkout-photos-content > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 0.5rem !important;
+  }
+
+  .checkout-photos-phase .checkout-unit-card,
+  .checkout-photos-phase .checkout-phase-tabs {
+    display: none;
+  }
+
+  .photo-step-shell {
+    gap: 0.5rem;
+  }
+
+  .photo-step-shell > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 0.5rem !important;
+  }
+
+  .photo-step-testing-banner {
+    display: none;
+  }
+
+  .photo-step-progress .photo-step-progress-meta,
+  .photo-step-progress .photo-step-progress-pct {
+    display: none;
+  }
+
+  .photo-step-progress .h-3 {
+    height: 0.4rem;
+  }
+
+  .photo-step-heading {
+    padding: 0.5rem 0.75rem !important;
+  }
+
+  .photo-step-heading span {
+    font-size: 0.7rem;
+    padding: 0.15rem 0.5rem;
+    margin-bottom: 0.25rem;
+  }
+
+  .photo-step-heading h2 {
+    font-size: 1rem !important;
+    line-height: 1.25 !important;
+  }
+
+  .photo-step-instruction {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    font-size: 0.8rem !important;
+    margin-top: 0.25rem !important;
+  }
+
+  .photo-step-helper {
+    display: none;
+  }
+
+  .photo-capture-body {
+    display: grid;
+    grid-template-columns: minmax(0, 38%) minmax(0, 1fr);
+    gap: 0.75rem;
+    align-items: center;
+    padding: 0.75rem !important;
+  }
+
+  .photo-capture-body > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 0 !important;
+  }
+
+  .photo-capture-hint,
+  .photo-capture-flash-hint {
+    display: none;
+  }
+
+  .photo-example-kicker {
+    display: none;
+  }
+
+  .photo-example-frame {
+    max-height: 104px;
+    aspect-ratio: 16 / 9 !important;
+  }
+
+  .photo-example-caption {
+    display: none;
+  }
+
+  .photo-accepted-frame {
+    min-height: 96px !important;
+    max-height: 120px !important;
+  }
+
+  .photo-accepted-frame img {
+    max-height: 120px !important;
+  }
+
+  .photo-take-btn {
+    height: 2.75rem !important;
+    font-size: 1rem !important;
+  }
+
+  .photo-live-btn {
+    height: 2.5rem !important;
+  }
+
+  .photo-step-nav {
+    position: sticky;
+    bottom: 4.5rem;
+    z-index: 44;
+    margin-left: -1rem;
+    margin-right: -1rem;
+    padding: 0.4rem 1rem;
+    background: rgb(249 250 251 / 0.96);
+    border-top: 1px solid rgb(229 231 235);
+  }
+
+  .photo-step-submit-dock {
+    padding-top: 0.35rem !important;
+    padding-bottom: max(0.35rem, env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  .photo-step-submit-btn {
+    min-height: 44px !important;
+    padding-top: 0.5rem !important;
+    padding-bottom: 0.5rem !important;
+    font-size: 0.95rem !important;
+  }
+
+  .camera-panel-stage {
+    height: min(32vh, 120px);
+  }
+
+  .camera-panel-chrome {
+    padding-top: 0.35rem !important;
+    padding-bottom: 0.2rem !important;
+  }
+
+  .camera-panel-controls {
+    padding-top: 0.3rem !important;
+    padding-bottom: 0.4rem !important;
+  }
+
+  .camera-shutter-btn {
+    height: 2.5rem !important;
+    font-size: 0.95rem !important;
+  }
+
+  .checkout-photos-phase:has(.camera-panel) .photo-step-progress {
+    display: none;
   }
 }

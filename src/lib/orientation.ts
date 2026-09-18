@@ -4,7 +4,7 @@
  * Android Chrome treats element.requestFullscreen() on a <video> like a
  * landscape movie player, which rotates the whole page ~90° while the device
  * is still held portrait. We never lock landscape and we never enter native
- * fullscreen for capture — the camera shell is position:fixed instead.
+ * fullscreen for capture — Live Preview stays an in-app panel in the photo step.
  */
 
 export async function exitLeftoverFullscreen(): Promise<void> {

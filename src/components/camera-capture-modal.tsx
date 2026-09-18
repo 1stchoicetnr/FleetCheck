@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import {
   X,
   Camera,
@@ -12,7 +11,6 @@ import {
   FlashlightOff,
 } from "lucide-react";
 import { Button } from "./ui/button";
-import { PhotoExampleThumb } from "./photo-example-image";
 import { PhotoStep } from "@/lib/types";
 import { compressUploadPhoto, fileToDataUrl } from "@/lib/utils";
 import { checkPhotoQuality, sampleVideoLowLight } from "@/lib/photo-quality";
@@ -27,12 +25,12 @@ import {
   describeTorchUnavailable,
   getSessionCameraFacing,
   getStreamVideoTrack,
+  isLikelyAndroid,
   isLikelyIOS,
   isPreviewLive,
   openCameraStream,
   probeTorchSupport,
   setSessionCameraFacing,
-  trackSupportsTorch,
   waitForElement,
   waitForVideoFrame,
 } from "@/lib/camera";
@@ -40,211 +38,39 @@ import { restoreNaturalOrientation } from "@/lib/orientation";
 
 type Phase = "native" | "live" | "preview";
 
-const LIVE_MEDIA_STYLE: React.CSSProperties = {
-  width: "100vw",
-  height: "100vh",
-  objectFit: "cover",
-  objectPosition: "center",
-};
-
-const PREVIEW_MEDIA_STYLE: React.CSSProperties = {
-  width: "100vw",
-  height: "100vh",
-  objectFit: "contain",
-  objectPosition: "center",
-};
-
-function FlipCameraButton({
-  facingMode,
-  onFlip,
-  compact = false,
+function FlashlightControl({
+  on,
+  available,
+  onToggle,
 }: {
-  facingMode: CameraFacing;
-  onFlip: () => void;
-  compact?: boolean;
+  on: boolean;
+  available: boolean;
+  onToggle: () => void;
 }) {
-  const label =
-    facingMode === "environment" ? "Flip to front camera" : "Flip to rear camera";
+  if (!available) {
+    return (
+      <p className="text-center text-xs text-white/75 leading-snug px-2">
+        {describeTorchUnavailable()}
+      </p>
+    );
+  }
+
+  const Icon = on ? Flashlight : FlashlightOff;
   return (
     <button
       type="button"
-      onClick={onFlip}
-      aria-label={label}
-      className={
-        compact
-          ? "flex flex-col items-center justify-center gap-1 min-h-[52px] min-w-[52px] px-1 text-white drop-shadow"
-          : "inline-flex items-center justify-center gap-2 min-h-[48px] px-4 rounded-full bg-black/60 text-white border border-white/35 backdrop-blur-sm font-semibold text-sm active:scale-[0.98]"
-      }
+      onClick={onToggle}
+      aria-pressed={on}
+      aria-label={on ? "Turn flashlight off" : "Turn flashlight on"}
+      className={`inline-flex items-center justify-center gap-2 min-h-[44px] px-4 rounded-full border font-semibold text-sm ${
+        on
+          ? "bg-amber-400 text-black border-amber-200"
+          : "bg-black/50 text-white border-white/35"
+      }`}
     >
-      <SwitchCamera className={compact ? "h-7 w-7" : "h-5 w-5"} />
-      <span className={compact ? "text-[11px] font-semibold leading-tight text-center" : ""}>
-        Flip Camera
-      </span>
+      <Icon className="h-5 w-5" />
+      {on ? "Flashlight on" : "Flashlight"}
     </button>
-  );
-}
-
-function FlashlightButton({
-  on,
-  supported,
-  onToggle,
-  compact = false,
-  unavailableHint,
-}: {
-  on: boolean;
-  supported: boolean;
-  onToggle: () => void;
-  compact?: boolean;
-  unavailableHint?: string;
-}) {
-  const Icon = on ? Flashlight : FlashlightOff;
-  return (
-    <div className="flex flex-col items-center gap-1">
-      <button
-        type="button"
-        onClick={onToggle}
-        disabled={!supported}
-        aria-pressed={on}
-        aria-label={
-          supported
-            ? on
-              ? "Turn flashlight off"
-              : "Turn flashlight on"
-            : "Flashlight not available"
-        }
-        className={
-          compact
-            ? `flex flex-col items-center justify-center gap-1 min-h-[52px] min-w-[52px] px-1 drop-shadow ${
-                supported
-                  ? on
-                    ? "text-amber-300"
-                    : "text-white"
-                  : "text-white/40"
-              }`
-            : `inline-flex items-center justify-center gap-2 min-h-[48px] px-4 rounded-full border backdrop-blur-sm font-semibold text-sm active:scale-[0.98] ${
-                supported
-                  ? on
-                    ? "bg-amber-400 text-black border-amber-200"
-                    : "bg-black/60 text-white border-white/35"
-                  : "bg-black/40 text-white/45 border-white/15 cursor-not-allowed"
-              }`
-        }
-      >
-        <Icon className={compact ? "h-7 w-7" : "h-5 w-5"} />
-        <span className={compact ? "text-[11px] font-semibold leading-tight text-center" : ""}>
-          Flashlight
-        </span>
-      </button>
-      {!supported && (
-        <p className="text-[11px] text-white/70 text-center max-w-[14rem] leading-tight px-1">
-          {unavailableHint ||
-            (compact ? "Not available" : "Flashlight not available on this phone")}
-        </p>
-      )}
-    </div>
-  );
-}
-
-function PreviewActions({
-  onRetake,
-  onAccept,
-  disabled,
-  failed,
-  accepting,
-}: {
-  onRetake: () => void;
-  onAccept: () => void;
-  disabled: boolean;
-  failed: boolean;
-  accepting: boolean;
-}) {
-  if (accepting) {
-    return (
-      <div className="absolute bottom-0 left-0 right-0 z-20 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-10 px-4 bg-gradient-to-t from-black/95 via-black/70 to-transparent">
-        <div className="flex items-center justify-center gap-2 max-w-lg mx-auto h-16 rounded-2xl bg-green-600/90 text-white text-lg font-bold">
-          <Check className="h-6 w-6" />
-          Photo accepted — next step...
-        </div>
-      </div>
-    );
-  }
-
-  if (failed) {
-    return (
-      <div className="absolute bottom-0 left-0 right-0 z-20 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-10 px-4 bg-gradient-to-t from-black/95 via-black/70 to-transparent">
-        <button
-          type="button"
-          onClick={onRetake}
-          className="w-full max-w-lg mx-auto h-16 rounded-2xl border-2 border-red-400 bg-red-950/70 text-red-300 text-lg font-bold active:scale-[0.98] transition-transform"
-        >
-          Retake Photo
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="absolute bottom-0 left-0 right-0 z-20 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-10 px-4 bg-gradient-to-t from-black/95 via-black/70 to-transparent">
-      <div className="grid grid-cols-2 gap-3 max-w-lg mx-auto">
-        <button
-          type="button"
-          onClick={onRetake}
-          className="h-16 rounded-2xl border-2 border-red-400 bg-red-950/70 text-red-300 text-lg font-bold active:scale-[0.98] transition-transform"
-        >
-          Retake
-        </button>
-        <button
-          type="button"
-          onClick={onAccept}
-          disabled={disabled}
-          className="h-16 rounded-2xl bg-green-600 text-white text-lg font-bold active:scale-[0.98] transition-transform disabled:opacity-40 disabled:cursor-not-allowed shadow-lg"
-        >
-          Use Photo
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function CameraHeader({
-  photoNumber,
-  totalPhotos,
-  label,
-  instruction,
-  onClose,
-}: {
-  photoNumber: number;
-  totalPhotos: number;
-  label: string;
-  instruction?: string;
-  onClose: () => void;
-}) {
-  return (
-    <div className="absolute top-0 left-0 right-0 z-30 pointer-events-none bg-gradient-to-b from-black/90 via-black/55 to-transparent px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-6">
-      <div className="flex items-start gap-2 pointer-events-auto">
-        <div className="flex-1 min-w-0 pr-2">
-          <p className="text-brand-300 text-xs font-bold tracking-wide uppercase">
-            Photo {photoNumber} / {totalPhotos}
-          </p>
-          <h2 className="text-white text-lg sm:text-xl font-bold leading-tight drop-shadow-md">
-            {label}
-          </h2>
-          {instruction && (
-            <p className="text-white/90 text-sm mt-1 leading-snug drop-shadow max-w-[95%]">
-              {instruction}
-            </p>
-          )}
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="flex-shrink-0 p-2.5 rounded-full bg-black/40 text-white backdrop-blur-sm"
-          aria-label="Close"
-        >
-          <X className="h-6 w-6" />
-        </button>
-      </div>
-    </div>
   );
 }
 
@@ -265,19 +91,15 @@ export function CameraCaptureModal({
   onClose,
   onAccept,
 }: CameraCaptureModalProps) {
-  const viewportRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const previewRef = useRef<HTMLImageElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const galleryInputRef = useRef<HTMLInputElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  /** Session torch intent — survives orientation until close or toggle-off. */
   const torchDesiredRef = useRef(false);
   const startGenRef = useRef(0);
   const startCameraRef = useRef<() => Promise<void>>(async () => {});
   const openRef = useRef(open);
 
-  const [mounted, setMounted] = useState(false);
   const [phase, setPhase] = useState<Phase>("native");
   const [liveError, setLiveError] = useState("");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -288,55 +110,41 @@ export function CameraCaptureModal({
   const [capturing, setCapturing] = useState(false);
   const [autoAccepting, setAutoAccepting] = useState(false);
   const [liveLowLight, setLiveLowLight] = useState(false);
-
-  const { version: orientationVersion } = useDeviceOrientation();
-
   const [facingMode, setFacingMode] = useState<CameraFacing>("environment");
   const [torchOn, setTorchOn] = useState(false);
-  const [torchSupported, setTorchSupported] = useState(false);
+  /** null = still probing / Android may still toggle; false = show fallback */
+  const [torchAvailable, setTorchAvailable] = useState<boolean | null>(null);
 
+  const { version: orientationVersion } = useDeviceOrientation();
   openRef.current = open;
 
-  useEffect(() => setMounted(true), []);
-
-  const syncLiveLayout = useCallback(() => {
+  const fitMedia = useCallback(() => {
     const video = videoRef.current;
-    if (!video) return;
-    video.style.width = `${window.innerWidth}px`;
-    video.style.height = `${window.innerHeight}px`;
-    video.style.objectFit = "cover";
-    video.style.objectPosition = "center";
-    void video.offsetHeight;
-  }, []);
-
-  const syncPreviewLayout = useCallback(() => {
+    if (video) {
+      video.style.width = "100%";
+      video.style.height = "100%";
+      video.style.objectFit = "cover";
+    }
     const img = previewRef.current;
-    if (!img) return;
-    img.style.width = "100vw";
-    img.style.height = "100vh";
-    img.style.objectFit = "contain";
-    img.style.objectPosition = "center";
+    if (img) {
+      img.style.width = "100%";
+      img.style.height = "100%";
+      img.style.objectFit = "contain";
+    }
   }, []);
 
   useEffect(() => {
     if (!open) return;
-
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
     void restoreNaturalOrientation();
-
     return () => {
-      document.body.style.overflow = prevOverflow;
       void restoreNaturalOrientation();
     };
   }, [open]);
 
   useEffect(() => {
     if (!open) return;
-    if (phase === "live") syncLiveLayout();
-    if (phase === "preview") syncPreviewLayout();
-  }, [open, phase, orientationVersion, syncLiveLayout, syncPreviewLayout]);
+    fitMedia();
+  }, [open, phase, orientationVersion, fitMedia]);
 
   const stopStream = useCallback((opts?: { resetTorch?: boolean }) => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -345,7 +153,7 @@ export function CameraCaptureModal({
     if (opts?.resetTorch) {
       torchDesiredRef.current = false;
       setTorchOn(false);
-      setTorchSupported(false);
+      setTorchAvailable(null);
     }
   }, []);
 
@@ -361,7 +169,7 @@ export function CameraCaptureModal({
     const result = await checkPhotoQuality(compressed, photoStep.category);
     setQualityWarnings(result.passed ? result.warnings : result.messages);
     setCheckingQuality(false);
-    requestAnimationFrame(syncPreviewLayout);
+    requestAnimationFrame(fitMedia);
     window.setTimeout(() => onAccept(compressed), 450);
   };
 
@@ -373,6 +181,7 @@ export function CameraCaptureModal({
     if (!canUseBrowserCamera()) {
       setLiveError(describeGetUserMediaError(undefined));
       setPhase("native");
+      setTorchAvailable(false);
       return;
     }
 
@@ -396,9 +205,11 @@ export function CameraCaptureModal({
       }
 
       const previewOk = await bindStreamToVideo(video, stream);
-      syncLiveLayout();
+      fitMedia();
       if (!previewOk) {
-        setLiveError("Couldn't show the camera preview. Try Live preview again, or use Take photo.");
+        setLiveError(
+          "Couldn't show the camera preview. Try Live preview again, or use Take photo."
+        );
       }
 
       const track = getStreamVideoTrack(stream);
@@ -418,16 +229,27 @@ export function CameraCaptureModal({
         void startCameraRef.current();
       });
 
-      const torchOk =
+      const advertised =
         facing === "environment" && (await probeTorchSupport(track));
       if (gen !== startGenRef.current) return;
-      setTorchSupported(torchOk);
 
-      if (torchDesiredRef.current && torchOk) {
+      if (facing !== "environment") {
+        setTorchAvailable(false);
+        setTorchOn(false);
+      } else if (advertised) {
+        setTorchAvailable(true);
+      } else if (isLikelyAndroid()) {
+        setTorchAvailable(true);
+      } else {
+        setTorchAvailable(false);
+      }
+
+      if (torchDesiredRef.current && facing === "environment") {
         const result = await applyDesiredTorch(track, true);
         if (gen !== startGenRef.current) return;
         setTorchOn(result.on);
-        await bindStreamToVideo(videoRef.current, stream, true);
+        setTorchAvailable(result.supported || result.on);
+        await bindStreamToVideo(videoRef.current, stream, !isPreviewLive(videoRef.current));
         if (!isPreviewLive(videoRef.current)) {
           torchDesiredRef.current = false;
           setTorchOn(false);
@@ -457,10 +279,10 @@ export function CameraCaptureModal({
       if (gen !== startGenRef.current) return;
       setLiveError(describeGetUserMediaError(err));
       setPhase("native");
-      setTorchSupported(false);
+      setTorchAvailable(false);
       setTorchOn(false);
     }
-  }, [stopStream, syncLiveLayout]);
+  }, [stopStream, fitMedia]);
 
   startCameraRef.current = startCamera;
 
@@ -473,8 +295,8 @@ export function CameraCaptureModal({
       video.srcObject = stream;
       void video.play().catch(() => {});
     }
-    syncLiveLayout();
-  }, [phase, syncLiveLayout]);
+    fitMedia();
+  }, [phase, fitMedia]);
 
   useEffect(() => {
     if (!open) {
@@ -508,7 +330,7 @@ export function CameraCaptureModal({
     if (next === "user") {
       torchDesiredRef.current = false;
       setTorchOn(false);
-      setTorchSupported(false);
+      setTorchAvailable(false);
     }
     setSessionCameraFacing(next);
     setFacingMode(next);
@@ -522,9 +344,8 @@ export function CameraCaptureModal({
     const track = getStreamVideoTrack(stream);
     const video = videoRef.current;
     if (!stream || !track) return;
-
-    if (facingMode === "user" || !trackSupportsTorch(track)) {
-      setTorchSupported(false);
+    if (facingMode === "user") {
+      setTorchAvailable(false);
       torchDesiredRef.current = false;
       setTorchOn(false);
       return;
@@ -536,21 +357,25 @@ export function CameraCaptureModal({
 
     if (result.applied && result.previewLive) {
       setTorchOn(next);
-      setTorchSupported(true);
+      setTorchAvailable(true);
       setLiveError("");
       return;
     }
 
     torchDesiredRef.current = false;
     setTorchOn(false);
-    setTorchSupported(result.supported);
+    if (!result.applied) {
+      setTorchAvailable(false);
+    }
     if (!result.previewLive) {
       await bindStreamToVideo(video, stream, true);
       if (!isPreviewLive(videoRef.current)) {
         setPhase("native");
         startGenRef.current += 1;
         stopStream();
-        setLiveError("Live preview stopped after flashlight. Use Take photo instead.");
+        setLiveError(
+          "Live preview stopped after flashlight. Use Take photo instead."
+        );
         return;
       }
       setLiveError(
@@ -567,13 +392,13 @@ export function CameraCaptureModal({
 
   useEffect(() => {
     if (!open || phase !== "live") return;
-    syncLiveLayout();
+    fitMedia();
     const video = videoRef.current;
     const stream = streamRef.current;
     if (!video || !stream) return;
     if (video.srcObject !== stream) video.srcObject = stream;
     if (video.paused) void video.play().catch(() => {});
-  }, [open, phase, orientationVersion, syncLiveLayout]);
+  }, [open, phase, orientationVersion, fitMedia]);
 
   const capturePhoto = async () => {
     const video = videoRef.current;
@@ -626,20 +451,14 @@ export function CameraCaptureModal({
 
   useEffect(() => {
     if (!open || phase !== "live") return;
-
     const interval = setInterval(() => {
       const video = videoRef.current;
       if (video && video.readyState >= 2) {
         setLiveLowLight(sampleVideoLowLight(video));
       }
     }, 2000);
-
     return () => clearInterval(interval);
   }, [open, phase, photoStep.angle]);
-
-  const accept = () => {
-    if (previewUrl && qualityPassed) onAccept(previewUrl);
-  };
 
   const handleClose = () => {
     void restoreNaturalOrientation();
@@ -648,248 +467,192 @@ export function CameraCaptureModal({
 
   const openNativeCamera = () => fileInputRef.current?.click();
 
-  if (!open || !mounted) return null;
+  if (!open) return null;
 
-  const content = (
+  const flashlightUsable =
+    facingMode === "environment" && torchAvailable !== false;
+
+  return (
     <div
-      ref={viewportRef}
-      className="camera-viewport"
+      className="camera-panel"
       data-camera-facing={facingMode}
       data-capture-phase={phase}
-      data-torch-supported={torchSupported ? "true" : "false"}
+      data-overlay="none"
       data-torch-on={torchOn ? "true" : "false"}
     >
-      {phase !== "preview" && (
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted
-          controls={false}
-          disablePictureInPicture
-          className={`camera-media z-0 ${
-            facingMode === "user" ? "camera-media-mirror" : ""
-          }`}
-          style={{
-            ...LIVE_MEDIA_STYLE,
-            opacity: phase === "live" ? 1 : 0,
-            pointerEvents: "none",
-          }}
-        />
-      )}
+      <div className="camera-panel-chrome flex items-start justify-between gap-2 px-3 pt-3 pb-2">
+        <div className="min-w-0">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-brand-300">
+            Live preview · Photo {photoNumber} / {totalPhotos}
+          </p>
+          <h3 className="text-white text-base font-bold leading-tight truncate">
+            {photoStep.label}
+          </h3>
+        </div>
+        <button
+          type="button"
+          onClick={handleClose}
+          className="flex-shrink-0 p-2 rounded-full bg-white/10 text-white"
+          aria-label="Close live preview"
+        >
+          <X className="h-5 w-5" />
+        </button>
+      </div>
 
-      {phase === "live" && (
-        <PhotoExampleThumb
-          angle={photoStep.angle}
-          label={photoStep.label}
-          className="absolute z-20 w-[7.5rem] h-[4.25rem] left-3 bottom-[calc(max(7rem,env(safe-area-inset-bottom))+1rem)]"
-        />
-      )}
-
-      {phase === "preview" && previewUrl && (
-        <>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
+      <div className="camera-panel-stage">
+        {phase !== "preview" && (
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            controls={false}
+            disablePictureInPicture
+            controlsList="nofullscreen nodownload noremoteplayback"
+            className={`camera-panel-video ${
+              facingMode === "user" ? "camera-media-mirror" : ""
+            }`}
+            style={{ opacity: phase === "live" ? 1 : 0 }}
+            {...{ "webkit-playsinline": "true" }}
+          />
+        )}
+        {phase === "preview" && previewUrl && (
+          /* eslint-disable-next-line @next/next/no-img-element */
           <img
             ref={previewRef}
             src={previewUrl}
             alt="Preview"
-            className="camera-preview-media z-0"
-            style={PREVIEW_MEDIA_STYLE}
+            className="camera-panel-video object-contain"
           />
-          {checkingQuality && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10">
-              <p className="text-white text-lg font-medium">Saving photo…</p>
-            </div>
-          )}
-        </>
-      )}
+        )}
+        {phase === "native" && (
+          <div className="absolute inset-0 bg-[#0b1220] flex items-center justify-center px-4">
+            <p className="text-center text-sm text-white/80">
+              {liveError || "Starting camera…"}
+            </p>
+          </div>
+        )}
+        {checkingQuality && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+            <p className="text-white text-sm font-medium">Saving photo…</p>
+          </div>
+        )}
+      </div>
 
-      {phase === "live" && liveError && (
-        <div className="absolute left-3 right-3 z-30 top-[max(5.5rem,env(safe-area-inset-top))]">
-          <div className="flex items-start gap-2 mx-auto max-w-sm bg-red-950/90 backdrop-blur-sm rounded-xl px-4 py-2.5 border border-red-500/40">
+      <div className="camera-panel-controls px-3 pb-3 pt-2 space-y-2">
+        {liveError && phase === "live" && (
+          <div className="flex items-start gap-2 bg-red-950/90 rounded-xl px-3 py-2 border border-red-500/40">
             <AlertTriangle className="h-4 w-4 text-red-300 flex-shrink-0 mt-0.5" />
-            <p className="text-red-50 text-sm leading-snug">{liveError}</p>
+            <p className="text-red-50 text-xs leading-snug">{liveError}</p>
           </div>
-        </div>
-      )}
-
-      {phase === "native" && !previewUrl && (
-        <>
-          <div className="absolute inset-0 bg-[#060a08] z-0" />
-          <PhotoExampleThumb
-            angle={photoStep.angle}
-            label={photoStep.label}
-            className="absolute z-20 w-[7.5rem] h-[4.25rem] left-3 bottom-[calc(max(7.5rem,env(safe-area-inset-bottom))+5rem)]"
-          />
-          <CameraHeader
-            photoNumber={photoNumber}
-            totalPhotos={totalPhotos}
-            label={photoStep.label}
-            instruction={photoStep.instruction}
-            onClose={handleClose}
-          />
-
-          <div className="absolute bottom-0 left-0 right-0 z-30 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-8 px-4 bg-gradient-to-t from-black/95 via-black/70 to-transparent">
-            {liveError && (
-              <p className="text-center text-red-200 text-sm font-medium mb-3 px-2">
-                {liveError}
-              </p>
-            )}
-            <p className="text-center text-emerald-400/50 text-xs mb-3">
-              Match the example, then take the photo
-            </p>
-            <Button
-              size="xl"
-              className="w-full max-w-lg mx-auto h-16 text-lg bg-brand-600 shadow-lg"
-              onClick={openNativeCamera}
-              disabled={capturing}
-            >
-              <Camera className="h-6 w-6 mr-2" />
-              Take photo
-            </Button>
-            <p className="text-center text-white/70 text-xs mt-3 mb-1 px-2 leading-snug">
-              Need a continuous flashlight? Use Live preview.
-            </p>
-            <button
-              type="button"
-              onClick={() => void startCamera()}
-              className="flex items-center justify-center gap-2 mx-auto mt-2 min-h-[44px] px-4 rounded-full bg-black/50 text-amber-200 border border-amber-400/40 text-sm font-semibold"
-            >
-              <Flashlight className="h-4 w-4" />
-              Live preview + flashlight
-            </button>
-            <button
-              type="button"
-              onClick={() => galleryInputRef.current?.click()}
-              className="block mx-auto mt-3 text-white/45 text-sm underline"
-            >
-              Choose from library
-            </button>
-          </div>
-        </>
-      )}
-
-      {phase === "live" && (
-        <CameraHeader
-          photoNumber={photoNumber}
-          totalPhotos={totalPhotos}
-          label={photoStep.label}
-          instruction={photoStep.instruction}
-          onClose={handleClose}
-        />
-      )}
-
-      {phase === "preview" && (
-        <CameraHeader
-          photoNumber={photoNumber}
-          totalPhotos={totalPhotos}
-          label={photoStep.label}
-          onClose={handleClose}
-        />
-      )}
-
-      {phase === "live" && liveLowLight && (
-        <div className="absolute left-3 right-3 z-20 top-[max(5.5rem,env(safe-area-inset-top))] pointer-events-none">
-          <div className="flex items-center gap-2 mx-auto max-w-sm bg-amber-950/75 backdrop-blur-sm rounded-xl px-4 py-2.5 border border-amber-500/30">
-            <AlertTriangle className="h-4 w-4 text-amber-400 flex-shrink-0" />
-            <p className="text-amber-100 text-sm leading-snug">
-              {torchSupported
-                ? "Low light — turn on Flashlight"
-                : isLikelyIOS()
-                  ? "Low light — use Take photo and Camera flash, or the Control Center torch"
-                  : "Low light — use Take photo and Camera flash if flashlight isn’t available"}
-            </p>
-          </div>
-        </div>
-      )}
-
-      {phase === "preview" && !qualityPassed && !checkingQuality && (
-        <div className="absolute top-[max(4.5rem,env(safe-area-inset-top))] left-3 right-3 z-20 bg-red-600/95 text-white rounded-xl px-4 py-3 flex items-start gap-3 shadow-xl">
-          <AlertTriangle className="h-5 w-5 flex-shrink-0 mt-0.5" />
-          <div>
+        )}
+        {phase === "live" && liveLowLight && (
+          <p className="text-center text-xs text-amber-200">
+            {flashlightUsable
+              ? "Low light — turn on Flashlight"
+              : isLikelyIOS()
+                ? "Low light — use Take photo and Camera flash"
+                : "Low light — use Take photo for a single flash"}
+          </p>
+        )}
+        {phase === "preview" && !qualityPassed && !checkingQuality && (
+          <div className="bg-red-600/95 text-white rounded-xl px-3 py-2 text-sm">
             <p className="font-bold">Photo did not pass quality check</p>
             {qualityMessages.map((msg) => (
-              <p key={msg} className="text-sm text-red-100 mt-1">
+              <p key={msg} className="text-xs text-red-100 mt-1">
                 {msg}
               </p>
             ))}
-            <p className="text-sm text-red-100 mt-2 font-medium">Please retake.</p>
-          </div>
-        </div>
-      )}
-
-      {phase === "preview" &&
-        qualityWarnings.length > 0 &&
-        !checkingQuality && (
-          <div className="absolute top-[max(4.5rem,env(safe-area-inset-top))] left-3 right-3 z-20 bg-amber-950/85 text-amber-100 rounded-xl px-4 py-3 flex items-start gap-3 shadow-xl border border-amber-500/25">
-            <AlertTriangle className="h-5 w-5 flex-shrink-0 mt-0.5 text-amber-400" />
-            <div>
-              {qualityWarnings.map((msg) => (
-                <p key={msg} className="text-sm">
-                  {msg}
-                </p>
-              ))}
-            </div>
           </div>
         )}
-
-      {phase === "live" && (
-        <div className="absolute z-20 bottom-0 left-0 right-0 flex flex-col items-center gap-3 bg-gradient-to-t from-black/85 via-black/50 to-transparent pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-10 px-4">
-          <div className="flex flex-wrap items-start justify-center gap-2">
-            <FlipCameraButton
-              facingMode={facingMode}
-              onFlip={flipCamera}
-              compact={false}
-            />
-            <FlashlightButton
-              on={torchOn}
-              supported={torchSupported && facingMode === "environment"}
-              onToggle={() => void toggleTorch()}
-              compact={false}
-              unavailableHint={describeTorchUnavailable()}
-            />
-          </div>
-          <button
-            type="button"
-            onClick={capturePhoto}
-            disabled={capturing}
-            className="flex items-center justify-center w-[4.75rem] h-[4.75rem] rounded-full bg-white ring-4 ring-white/30 active:scale-95 transition-transform disabled:opacity-50 shadow-lg"
-            aria-label="Capture photo"
-          >
-            <div className="w-[3.75rem] h-[3.75rem] rounded-full border-[3px] border-gray-300 bg-white" />
-          </button>
-          <p className="text-center text-white font-semibold text-base mt-2 drop-shadow">
-            Capture
+        {phase === "preview" && qualityWarnings.length > 0 && !checkingQuality && (
+          <p className="text-xs text-amber-200 text-center">
+            {qualityWarnings.join(" · ")}
           </p>
-          <button
-            type="button"
-            onClick={openNativeCamera}
-            className="text-white/70 text-xs underline mt-1"
-          >
-            Use phone camera instead
-          </button>
-        </div>
-      )}
+        )}
 
-      {phase === "preview" && !autoAccepting && (
-        <PreviewActions
-          onRetake={retake}
-          onAccept={accept}
-          disabled={!qualityPassed || checkingQuality}
-          failed={!qualityPassed && !checkingQuality}
-          accepting={false}
-        />
-      )}
+        {phase === "live" && (
+          <>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <button
+                type="button"
+                onClick={flipCamera}
+                className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 rounded-full bg-black/50 text-white border border-white/35 font-semibold text-sm"
+              >
+                <SwitchCamera className="h-5 w-5" />
+                Flip camera
+              </button>
+              <FlashlightControl
+                on={torchOn}
+                available={flashlightUsable}
+                onToggle={() => void toggleTorch()}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={capturePhoto}
+              disabled={capturing}
+              className="camera-shutter-btn w-full h-12 rounded-xl bg-white text-gray-900 font-bold text-base disabled:opacity-50"
+            >
+              Capture
+            </button>
+            <button
+              type="button"
+              onClick={openNativeCamera}
+              className="block w-full text-center text-white/70 text-xs underline py-1"
+            >
+              Take photo instead
+            </button>
+          </>
+        )}
 
-      {phase === "preview" && autoAccepting && (
-        <PreviewActions
-          onRetake={retake}
-          onAccept={accept}
-          disabled
-          failed={false}
-          accepting
-        />
-      )}
+        {phase === "native" && (
+          <>
+            <Button
+              size="lg"
+              className="w-full h-12 text-base bg-brand-600"
+              onClick={openNativeCamera}
+              disabled={capturing}
+            >
+              <Camera className="h-5 w-5 mr-2" />
+              Take photo
+            </Button>
+            <button
+              type="button"
+              onClick={handleClose}
+              className="block w-full text-center text-white/70 text-xs underline py-1"
+            >
+              Close live preview
+            </button>
+          </>
+        )}
+
+        {phase === "preview" && autoAccepting && (
+          <div className="flex items-center justify-center gap-2 h-12 rounded-xl bg-green-600 text-white font-bold">
+            <Check className="h-5 w-5" />
+            Photo accepted
+          </div>
+        )}
+        {phase === "preview" && !autoAccepting && (
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={retake}
+              className="h-12 rounded-xl border-2 border-red-400 bg-red-950/70 text-red-100 font-bold"
+            >
+              Retake
+            </button>
+            <button
+              type="button"
+              onClick={() => previewUrl && qualityPassed && onAccept(previewUrl)}
+              disabled={!qualityPassed || checkingQuality}
+              className="h-12 rounded-xl bg-green-600 text-white font-bold disabled:opacity-40"
+            >
+              Use photo
+            </button>
+          </div>
+        )}
+      </div>
 
       <input
         ref={fileInputRef}
@@ -903,19 +666,6 @@ export function CameraCaptureModal({
           e.target.value = "";
         }}
       />
-      <input
-        ref={galleryInputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) void handlePickedFile(file);
-          e.target.value = "";
-        }}
-      />
     </div>
   );
-
-  return createPortal(content, document.body);
 }

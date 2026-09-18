@@ -35,16 +35,16 @@ export function PhotoExampleCard({
   const isDetail = category === "detail";
 
   return (
-    <div className={`space-y-1.5 ${className}`}>
-      <p className="text-xs font-semibold uppercase tracking-wide text-emerald-400/85">
+    <div className={`photo-example-card space-y-1.5 ${className}`}>
+      <p className="photo-example-kicker text-xs font-semibold uppercase tracking-wide text-emerald-400/85">
         Example — {label}
       </p>
       <div
-        className="relative overflow-hidden rounded-xl border border-gray-600/80 bg-[#0f172a] shadow-inner"
+        className="photo-example-frame relative overflow-hidden rounded-xl border border-gray-600/80 bg-[#0f172a] shadow-inner"
         style={{ aspectRatio: isInterior || isDetail ? "4/3" : "16/9" }}
       >
         <PhotoExampleImage angle={angle} className="h-full w-full" />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent pt-10 pb-2.5 px-3">
+        <div className="photo-example-caption pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent pt-10 pb-2.5 px-3">
           <p className="text-center text-[11px] text-gray-300 leading-snug">
             {category === "exterior"
               ? "Whole vehicle in frame · sharp focus · landscape not required"
