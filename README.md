@@ -24,9 +24,6 @@ After each accepted photo, drivers can mark that angle as **DAMAGE**. Office gal
 **Precheck**  
 Office detail and PDF page 1 show **Unit #** (the van) and **Clover serial (last digits)** (the borrowed card reader — not the vehicle), plus the traffic light (Green / Yellow / Red), tread rating, checklist results, optional notes, interior/exterior clean Y/N, side damage notes, additional comments, and issue flags. Red reports are flagged for Office / repairs and may have no photos.
 
-**Live preview silhouette**  
-Live preview + flashlight shows a per-angle ghost outline. Native **Take photo** cannot overlay a guide.
-
 Demo office PIN: **1357** (override with `OFFICE_PIN`)
 
 ## Shared backend (required for team beta)

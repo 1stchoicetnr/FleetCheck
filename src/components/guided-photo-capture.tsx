@@ -269,10 +269,6 @@ export function GuidedPhotoCapture({
               <Video className="h-4 w-4" />
               Live preview + flashlight
             </button>
-            <p className="text-center text-xs text-amber-200/80 leading-snug px-1">
-              Live preview shows a ghost silhouette to line up this angle. Take
-              photo (native camera) cannot show an overlay.
-            </p>
             <button
               type="button"
               onClick={openGallery}
