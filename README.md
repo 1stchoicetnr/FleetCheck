@@ -107,8 +107,21 @@ Walkaround order (photo slots after Precheck — tire-tread photos dropped; same
 - Dash / odometer: office mainly needs mileage readable.
 - Night interiors: turn the lights on.
 - **Take photo** opens the phone’s native rear camera. **Choose from library** is the backup. There is no in-app Live Preview or flashlight.
+- Checkout header has a **Feedback** pill (Bug / Glitch / Idea, optional note + screenshot) on start, Precheck, and photo walkaround. Mail goes to `ashley@warecovery.com` (or `FEEDBACK_TO_EMAIL`).
 - Super Admin **Add Vehicle** writes to the shared checkout unit list (not IndexedDB-only).
 - Super Admin can allow/deny **drivers adding vehicles** on Checkout (default off).
+
+## Feedback mailer (Vercel)
+
+The Feedback UI always opens. Real email needs these Vercel env vars, then a redeploy:
+
+| Var | Required | Notes |
+|---|---|---|
+| `RESEND_API_KEY` | yes for delivery | Resend API key |
+| `FEEDBACK_FROM_EMAIL` | yes for delivery | Verified Resend from-address, e.g. `FleetCheck <noreply@warecovery.com>` |
+| `FEEDBACK_TO_EMAIL` | no | Defaults to `ashley@warecovery.com` |
+
+If the mailer is not wired, submit shows a clear error (HTTP 503). Local `next dev` logs the report instead of emailing.
 
 ## PWA
 

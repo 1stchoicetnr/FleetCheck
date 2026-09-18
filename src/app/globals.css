@@ -77,6 +77,13 @@
     display: none;
   }
 
+  .checkout-photos-phase header button[aria-label="Send app feedback"] {
+    min-height: 36px;
+    padding-left: 0.55rem;
+    padding-right: 0.55rem;
+    font-size: 0.7rem;
+  }
+
   .checkout-photos-phase .checkout-photos-content {
     flex: 1 1 auto;
     min-height: 0;

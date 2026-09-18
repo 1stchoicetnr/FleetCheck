@@ -35,6 +35,7 @@ import {
 } from "@/lib/checkout-prefs";
 import { formatDateOnly, formatUnitLabel, normalizePlate } from "@/lib/utils";
 import { ClipboardCheck } from "lucide-react";
+import { useCheckoutFeedbackMeta } from "@/components/checkout-feedback";
 
 export default function CheckoutStartPage() {
   const { user, loading } = useAuth();
@@ -126,6 +127,16 @@ export default function CheckoutStartPage() {
     () => vehicles.find((v) => v.id === vehicleId),
     [vehicles, vehicleId]
   );
+
+  useCheckoutFeedbackMeta({
+    unitId: selected?.id,
+    unitNumber: addingUnit
+      ? newUnitNumber.trim() || newPlate.trim() || undefined
+      : selected?.unitNumber,
+    plate: addingUnit ? newPlate.trim() || undefined : selected?.plate,
+    pagePhase: "start",
+    driverName: driverName.trim() || user?.name,
+  });
 
   const inferredPowertrain = inferPowertrain(
     make,

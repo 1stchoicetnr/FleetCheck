@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Camera,
   Check,
@@ -13,6 +13,7 @@ import { ProgressBar } from "./ui/progress-bar";
 import { PhotoExampleCard } from "./photo-example-image";
 import { compressImageFile } from "@/lib/utils";
 import { PHOTO_ANGLES, PhotoAngle, PhotoStep, walkaroundPhotoSteps } from "@/lib/types";
+import { useCheckoutFeedback } from "@/components/checkout-feedback";
 
 interface GuidedPhotoCaptureProps {
   photos: Partial<Record<PhotoAngle, string>>;
@@ -125,6 +126,22 @@ export function GuidedPhotoCapture({
   const goToStep = (index: number) => {
     setViewIndex(index);
   };
+
+  const feedback = useCheckoutFeedback();
+  const photoStepLabel = current?.label;
+  const photoStepTotal = requiredPhotos.length;
+  useEffect(() => {
+    if (!photoStepLabel) {
+      feedback?.setPhotoStep(null);
+      return;
+    }
+    feedback?.setPhotoStep({
+      index: currentIndex + 1,
+      total: photoStepTotal,
+      label: photoStepLabel,
+    });
+    return () => feedback?.setPhotoStep(null);
+  }, [feedback, photoStepLabel, currentIndex, photoStepTotal]);
 
   if (!current) return null;
 

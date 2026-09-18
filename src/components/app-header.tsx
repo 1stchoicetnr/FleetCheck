@@ -1,5 +1,6 @@
 "use client";
 
+import { CheckoutFeedbackButton } from "@/components/checkout-feedback";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLE_LABELS } from "@/lib/types";
 import { ArrowLeft, Home, LogOut } from "lucide-react";
@@ -24,6 +25,7 @@ export function AppHeader({
   const router = useRouter();
   const pathname = usePathname();
   const onDashboard = pathname === "/dashboard" || title === "Dashboard";
+  const onCheckout = pathname.startsWith("/checkout");
 
   const shouldShowBack = showBack ?? (!!title && !onDashboard);
 
@@ -68,6 +70,8 @@ export function AppHeader({
             </p>
           )}
         </div>
+
+        {onCheckout && <CheckoutFeedbackButton />}
 
         {!onDashboard && (
           <button

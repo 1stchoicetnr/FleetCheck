@@ -50,6 +50,7 @@ import { PHOTO_EXAMPLE_PATHS } from "@/lib/photo-examples";
 import { InspectionFormFields } from "@/components/inspection-form-fields";
 import { Check } from "lucide-react";
 import { restoreNaturalOrientation } from "@/lib/orientation";
+import { useCheckoutFeedbackMeta } from "@/components/checkout-feedback";
 
 export default function CheckoutCapturePage() {
   const params = useParams();
@@ -77,6 +78,14 @@ export default function CheckoutCapturePage() {
   );
   const [phase, setPhase] = useState<"inspect" | "photos">("inspect");
   const [showPrecheckErrors, setShowPrecheckErrors] = useState(false);
+
+  useCheckoutFeedbackMeta({
+    unitId: vehicle?.id,
+    unitNumber: vehicle?.unitNumber,
+    plate: vehicle?.plate,
+    pagePhase: completed ? "complete" : phase,
+    driverName: draft?.driverName || user?.name,
+  });
 
   useEffect(() => {
     if (!loading && !user) router.replace("/");
