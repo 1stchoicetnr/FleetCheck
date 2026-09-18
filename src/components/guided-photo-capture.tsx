@@ -160,18 +160,7 @@ export function GuidedPhotoCapture({
       )}
 
       <div className="photo-step-card bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden shadow-lg">
-        {cameraOpen ? (
-          <CameraCaptureModal
-            open={cameraOpen}
-            photoStep={current}
-            photoNumber={currentIndex + 1}
-            totalPhotos={requiredPhotos.length}
-            onClose={() => setCameraOpen(false)}
-            onAccept={handleAccept}
-          />
-        ) : (
-          <>
-            <div className="photo-step-heading px-5 pt-5 pb-4 border-b border-gray-800">
+        <div className="photo-step-heading px-5 pt-5 pb-4 border-b border-gray-800">
               <span className="inline-block bg-emerald-500/15 text-emerald-300 text-sm font-bold px-3 py-1 rounded-full mb-2">
                 Photo {currentIndex + 1} of {requiredPhotos.length}
               </span>
@@ -307,9 +296,16 @@ export function GuidedPhotoCapture({
                 </div>
               </div>
             )}
-          </>
-        )}
       </div>
+
+      <CameraCaptureModal
+        open={cameraOpen}
+        photoStep={current}
+        photoNumber={currentIndex + 1}
+        totalPhotos={requiredPhotos.length}
+        onClose={() => setCameraOpen(false)}
+        onAccept={handleAccept}
+      />
 
       <div className="photo-step-nav flex items-center gap-2">
         {canGoPrev && (

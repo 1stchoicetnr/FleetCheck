@@ -20,26 +20,46 @@
   }
 
   /*
-   * Live Preview is an in-app panel inside the checkout photo card.
-   * Never use position:fixed / 100vw / 100vh here — Android Chrome treats a
-   * fullscreen <video> like a landscape movie player.
+   * Live Preview is an in-app overlay covering most of the viewport.
+   * The SHELL is position:fixed — the <video> is not. Never call
+   * requestFullscreen() (Android Chrome treats that as a landscape movie player).
    */
-  .camera-panel {
-    position: relative;
+  .camera-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    display: flex;
+    flex-direction: column;
     width: 100%;
-    background: #0b1220;
-    transform: none;
-  }
-
-  .camera-panel-stage {
-    position: relative;
-    width: 100%;
-    height: min(42vh, 280px);
-    overflow: hidden;
+    height: 100%;
+    height: 100dvh;
+    max-height: 100dvh;
     background: #000;
+    transform: none;
+    overflow: hidden;
   }
 
-  .camera-panel-video {
+  .camera-overlay-chrome {
+    flex-shrink: 0;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.65rem 0.85rem 0.5rem;
+    padding-top: max(0.65rem, env(safe-area-inset-top, 0px));
+    background: #0b1220;
+  }
+
+  .camera-overlay-stage {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    background: #000;
+    overflow: hidden;
+  }
+
+  .camera-overlay-video {
     position: absolute;
     inset: 0;
     width: 100%;
@@ -47,6 +67,70 @@
     object-fit: cover;
     object-position: center;
     background: #000;
+    transform: none;
+  }
+
+  .camera-overlay-controls {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.65rem 0.85rem;
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+    background: #0b1220;
+  }
+
+  .camera-live-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+  }
+
+  .camera-overlay-btn,
+  .camera-live-actions .camera-overlay-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    min-height: 44px;
+    padding: 0 1rem;
+    border-radius: 9999px;
+    background: rgba(0, 0, 0, 0.45);
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    font-weight: 600;
+    font-size: 0.875rem;
+  }
+
+  .camera-shutter-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 48px;
+    min-width: 8.5rem;
+    flex: 1 1 8.5rem;
+    padding: 0 1.25rem;
+    border-radius: 0.75rem;
+    background: #fff;
+    color: #111827;
+    font-weight: 700;
+    font-size: 1.05rem;
+  }
+
+  .camera-shutter-btn:disabled {
+    opacity: 0.5;
+  }
+
+  .camera-native-fallback {
+    display: block;
+    width: 100%;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.75rem;
+    text-decoration: underline;
+    padding: 0.25rem 0;
   }
 
   .camera-media-mirror {
@@ -129,19 +213,18 @@
   .checkout-photos-phase .checkout-phase-tabs,
   .checkout-photos-phase .checkout-photos-testing-extra,
   .checkout-photos-phase:has(.photo-capture-body) .checkout-photos-signature,
-  .checkout-photos-phase:has(.camera-panel) .checkout-photos-signature,
   .photo-step-testing-banner,
   .photo-step-testing-next {
     display: none !important;
   }
 
-  .checkout-photos-phase:has(.checkout-photos-signature):not(:has(.photo-capture-body)):not(:has(.camera-panel)) {
+  .checkout-photos-phase:has(.checkout-photos-signature):not(:has(.photo-capture-body)) {
     height: auto;
     max-height: none;
     overflow: visible;
   }
 
-  .checkout-photos-phase:has(.checkout-photos-signature):not(:has(.photo-capture-body)):not(:has(.camera-panel))
+  .checkout-photos-phase:has(.checkout-photos-signature):not(:has(.photo-capture-body))
     .checkout-photos-content {
     overflow: visible;
     height: auto;
@@ -304,63 +387,28 @@
     font-size: 0.95rem !important;
   }
 
-  .photo-step-card > .camera-panel {
-    flex: 1 1 auto;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
+  /* Overlay is portaled to body — compact chrome only, never shrink the feed. */
+  .camera-overlay-chrome {
+    padding-top: max(0.35rem, env(safe-area-inset-top, 0px)) !important;
+    padding-bottom: 0.3rem !important;
   }
 
-  .camera-panel-stage {
-    flex: 0 0 auto;
-    height: 92px;
-    min-height: 92px;
-    max-height: 92px;
-  }
-
-  .camera-panel-chrome {
-    padding-top: 0.35rem !important;
-    padding-bottom: 0.2rem !important;
-    flex-shrink: 0;
-  }
-
-  .camera-panel-controls {
-    padding-top: 0.25rem !important;
-    padding-bottom: 0.35rem !important;
-    flex-shrink: 0;
+  .camera-overlay-controls {
+    padding-top: 0.4rem !important;
+    padding-bottom: max(0.4rem, env(safe-area-inset-bottom, 0px)) !important;
   }
 
   .camera-live-actions {
     flex-wrap: nowrap;
-    gap: 0.4rem !important;
+    gap: 0.4rem;
   }
 
+  .camera-overlay-btn,
   .camera-live-actions button {
-    min-height: 36px !important;
-    height: 36px !important;
-    font-size: 0.8rem !important;
-    padding-left: 0.7rem !important;
-    padding-right: 0.7rem !important;
-  }
-
-  .camera-torch-fallback {
-    max-width: 8.5rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 0.65rem !important;
+    min-height: 44px !important;
   }
 
   .camera-native-fallback {
-    display: none;
-  }
-
-  .camera-shutter-btn {
-    height: 2.25rem !important;
-    font-size: 0.95rem !important;
-  }
-
-  .checkout-photos-phase:has(.camera-panel) .photo-step-progress {
     display: none;
   }
 }

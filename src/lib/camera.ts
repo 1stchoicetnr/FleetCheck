@@ -252,8 +252,9 @@ export async function probeTorchSupport(
 
 /**
  * Attach (or re-attach) a stream to the video element and wait for a frame.
- * Re-assigning srcObject is required after torch applyConstraints on many
- * Android Chrome builds — the track stays live but the <video> goes black.
+ * Prefer play() / re-assigning srcObject without nulling — nulling the
+ * srcObject after torch applyConstraints often leaves a black preview and
+ * can drop the LED on Android Chrome.
  */
 export async function bindStreamToVideo(
   video: HTMLVideoElement | null,
@@ -267,10 +268,17 @@ export async function bindStreamToVideo(
   video.muted = true;
   video.autoplay = true;
   video.playsInline = true;
+  try {
+    video.disableRemotePlayback = true;
+  } catch {
+    /* older engines */
+  }
 
   const alreadyBound = video.srcObject === stream;
-  if (remount || !alreadyBound) {
-    if (video.srcObject) video.srcObject = null;
+  if (!alreadyBound) {
+    video.srcObject = stream;
+  } else if (remount) {
+    /* Re-assign without going through null — keeps torch on many Androids. */
     video.srcObject = stream;
   }
 
@@ -281,6 +289,29 @@ export async function bindStreamToVideo(
   }
 
   return waitForVideoFrame(video);
+}
+
+/** True when the <video> is painting non-black pixels (vs a stalled decoder). */
+export function videoHasVisibleFrames(video: HTMLVideoElement | null): boolean {
+  if (!isPreviewLive(video) || !video) return false;
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = 24;
+    canvas.height = 24;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return true;
+    ctx.drawImage(video, 0, 0, 24, 24);
+    const data = ctx.getImageData(0, 0, 24, 24).data;
+    let max = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      const y = 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
+      if (y > max) max = y;
+    }
+    /* A stalled/black decoder is ~0. A dark room still has some noise > 2. */
+    return max >= 2.5;
+  } catch {
+    return true;
+  }
 }
 
 export function describeGetUserMediaError(err: unknown): string {
@@ -364,8 +395,8 @@ export async function applyDesiredTorch(
 
 /**
  * After torch on/off, recover a black <video> without stopping the track.
+ * Never null srcObject while torch is on — that blacks the preview on Android.
  * If the preview cannot be recovered with torch on, turn torch off and recover.
- * Skip remount when the preview is still live — remount can drop the torch.
  */
 export async function applyTorchAndKeepPreview(
   track: MediaStreamTrack | null,
@@ -390,10 +421,13 @@ export async function applyTorchAndKeepPreview(
     return { applied: false, previewLive, supported: false, rolledBack: false };
   }
 
-  const wasLive = isPreviewLive(video);
   const applied = await setTrackTorch(track, on, { force: true });
 
-  if (wasLive && isPreviewLive(video)) {
+  /* Give exposure a beat to catch up after the LED toggles. */
+  await new Promise((resolve) => window.setTimeout(resolve, 180));
+  let previewLive = await bindStreamToVideo(video, stream, false);
+
+  if (previewLive) {
     return {
       applied,
       previewLive: true,
@@ -402,17 +436,21 @@ export async function applyTorchAndKeepPreview(
     };
   }
 
-  await new Promise((resolve) => requestAnimationFrame(resolve));
-  let previewLive = await bindStreamToVideo(video, stream, true);
+  previewLive = await bindStreamToVideo(video, stream, true);
 
-  if (on && applied && !previewLive) {
+  if (previewLive) {
+    return {
+      applied,
+      previewLive: true,
+      supported: advertised || applied,
+      rolledBack: false,
+    };
+  }
+
+  if (on && applied) {
     await setTrackTorch(track, false, { force: true });
     previewLive = await bindStreamToVideo(video, stream, true);
     return { applied: false, previewLive, supported: true, rolledBack: true };
-  }
-
-  if (!previewLive) {
-    previewLive = await bindStreamToVideo(video, stream, true);
   }
 
   return {

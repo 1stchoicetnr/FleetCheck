@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   X,
   Camera,
@@ -136,7 +137,22 @@ export function CameraCaptureModal({
   useEffect(() => {
     if (!open) return;
     void restoreNaturalOrientation();
+    const prevBody = document.body.style.overflow;
+    const prevHtml = document.documentElement.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+
+    const kickNativeFullscreen = () => {
+      if (document.fullscreenElement) {
+        void document.exitFullscreen?.().catch(() => {});
+      }
+    };
+    document.addEventListener("fullscreenchange", kickNativeFullscreen);
+
     return () => {
+      document.body.style.overflow = prevBody;
+      document.documentElement.style.overflow = prevHtml;
+      document.removeEventListener("fullscreenchange", kickNativeFullscreen);
       void restoreNaturalOrientation();
     };
   }, [open]);
@@ -249,7 +265,7 @@ export function CameraCaptureModal({
         if (gen !== startGenRef.current) return;
         setTorchOn(result.on);
         setTorchAvailable(result.supported || result.on);
-        await bindStreamToVideo(videoRef.current, stream, !isPreviewLive(videoRef.current));
+        await bindStreamToVideo(videoRef.current, stream, false);
         if (!isPreviewLive(videoRef.current)) {
           torchDesiredRef.current = false;
           setTorchOn(false);
@@ -467,20 +483,23 @@ export function CameraCaptureModal({
 
   const openNativeCamera = () => fileInputRef.current?.click();
 
-  if (!open) return null;
+  if (!open || typeof document === "undefined") return null;
 
   const flashlightUsable =
     facingMode === "environment" && torchAvailable !== false;
 
-  return (
+  const overlay = (
     <div
-      className="camera-panel"
+      className="camera-overlay"
       data-camera-facing={facingMode}
       data-capture-phase={phase}
       data-overlay="none"
       data-torch-on={torchOn ? "true" : "false"}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Live preview"
     >
-      <div className="camera-panel-chrome flex items-start justify-between gap-2 px-3 pt-3 pb-2">
+      <div className="camera-overlay-chrome">
         <div className="min-w-0">
           <p className="text-[11px] font-bold uppercase tracking-wide text-brand-300">
             Live preview · Photo {photoNumber} / {totalPhotos}
@@ -492,14 +511,14 @@ export function CameraCaptureModal({
         <button
           type="button"
           onClick={handleClose}
-          className="flex-shrink-0 p-2 rounded-full bg-white/10 text-white"
+          className="flex-shrink-0 p-2 rounded-full bg-white/15 text-white min-h-[44px] min-w-[44px] flex items-center justify-center"
           aria-label="Close live preview"
         >
-          <X className="h-5 w-5" />
+          <X className="h-6 w-6" />
         </button>
       </div>
 
-      <div className="camera-panel-stage">
+      <div className="camera-overlay-stage">
         {phase !== "preview" && (
           <video
             ref={videoRef}
@@ -509,7 +528,7 @@ export function CameraCaptureModal({
             controls={false}
             disablePictureInPicture
             controlsList="nofullscreen nodownload noremoteplayback"
-            className={`camera-panel-video ${
+            className={`camera-overlay-video ${
               facingMode === "user" ? "camera-media-mirror" : ""
             }`}
             style={{ opacity: phase === "live" ? 1 : 0 }}
@@ -522,11 +541,11 @@ export function CameraCaptureModal({
             ref={previewRef}
             src={previewUrl}
             alt="Preview"
-            className="camera-panel-video object-contain"
+            className="camera-overlay-video object-contain"
           />
         )}
         {phase === "native" && (
-          <div className="absolute inset-0 bg-[#0b1220] flex items-center justify-center px-4">
+          <div className="absolute inset-0 bg-black flex items-center justify-center px-4">
             <p className="text-center text-sm text-white/80">
               {liveError || "Starting camera…"}
             </p>
@@ -539,7 +558,7 @@ export function CameraCaptureModal({
         )}
       </div>
 
-      <div className="camera-panel-controls px-3 pb-3 pt-2 space-y-2">
+      <div className="camera-overlay-controls">
         {liveError && phase === "live" && (
           <div className="flex items-start gap-2 bg-red-950/90 rounded-xl px-3 py-2 border border-red-500/40">
             <AlertTriangle className="h-4 w-4 text-red-300 flex-shrink-0 mt-0.5" />
@@ -549,7 +568,9 @@ export function CameraCaptureModal({
         {phase === "live" && liveLowLight && (
           <p className="text-center text-xs text-amber-200">
             {flashlightUsable
-              ? "Low light — turn on Flashlight"
+              ? torchOn
+                ? "Low light — flashlight is on"
+                : "Low light — turn on Flashlight"
               : isLikelyIOS()
                 ? "Low light — use Take photo and Camera flash"
                 : "Low light — use Take photo for a single flash"}
@@ -573,14 +594,14 @@ export function CameraCaptureModal({
 
         {phase === "live" && (
           <>
-            <div className="camera-live-actions flex flex-wrap items-center justify-center gap-2">
+            <div className="camera-live-actions">
               <button
                 type="button"
                 onClick={flipCamera}
-                className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 rounded-full bg-black/50 text-white border border-white/35 font-semibold text-sm"
+                className="camera-overlay-btn"
               >
                 <SwitchCamera className="h-5 w-5" />
-                Flip camera
+                Flip
               </button>
               <FlashlightControl
                 on={torchOn}
@@ -591,7 +612,7 @@ export function CameraCaptureModal({
                 type="button"
                 onClick={capturePhoto}
                 disabled={capturing}
-                className="camera-shutter-btn w-full h-12 rounded-xl bg-white text-gray-900 font-bold text-base disabled:opacity-50 px-6"
+                className="camera-shutter-btn"
               >
                 Capture
               </button>
@@ -599,7 +620,7 @@ export function CameraCaptureModal({
             <button
               type="button"
               onClick={openNativeCamera}
-              className="camera-native-fallback block w-full text-center text-white/70 text-xs underline py-1"
+              className="camera-native-fallback"
             >
               Take photo instead
             </button>
@@ -668,4 +689,6 @@ export function CameraCaptureModal({
       />
     </div>
   );
+
+  return createPortal(overlay, document.body);
 }
