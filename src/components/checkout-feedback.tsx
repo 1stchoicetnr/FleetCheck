@@ -163,6 +163,7 @@ function FeedbackDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
+  const [loggedOnly, setLoggedOnly] = useState(false);
   const [canCaptureScreen, setCanCaptureScreen] = useState(false);
 
   useEffect(() => {
@@ -173,6 +174,7 @@ function FeedbackDialog({
     setBusy(false);
     setError("");
     setDone(false);
+    setLoggedOnly(false);
     setCanCaptureScreen(
       typeof navigator !== "undefined" &&
         typeof navigator.mediaDevices?.getDisplayMedia === "function"
@@ -278,12 +280,14 @@ function FeedbackDialog({
       const data = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
         error?: string;
+        logged?: boolean;
       };
       if (!res.ok || !data.ok) {
         throw new Error(data.error || "Could not send feedback.");
       }
+      setLoggedOnly(Boolean(data.logged));
       setDone(true);
-      setTimeout(onClose, 1200);
+      setTimeout(onClose, 1400);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Could not send feedback."
@@ -329,7 +333,9 @@ function FeedbackDialog({
 
         {done ? (
           <p className="px-4 py-8 text-center text-sm font-semibold text-green-700">
-            Sent. Thanks — Ashley will see it.
+            {loggedOnly
+              ? "Saved on this machine — set RESEND_API_KEY on Vercel to email Ashley."
+              : "Sent. Thanks — Ashley will see it."}
           </p>
         ) : (
           <div className="px-4 py-4 space-y-4">

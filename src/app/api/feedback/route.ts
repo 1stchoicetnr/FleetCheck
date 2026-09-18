@@ -10,6 +10,7 @@ import {
 import {
   feedbackMailerConfigured,
   feedbackToEmail,
+  formatFeedbackEmail,
   sendFeedbackEmail,
 } from "@/lib/server/feedback-mail";
 
@@ -90,6 +91,13 @@ export async function POST(req: Request) {
     };
 
     if (!feedbackMailerConfigured()) {
+      if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
+        const { subject, text } = formatFeedbackEmail(payload);
+        console.info("[FleetCheck Feedback] RESEND_API_KEY not set — logging instead of emailing");
+        console.info(subject);
+        console.info(text);
+        return NextResponse.json({ ok: true, logged: true });
+      }
       return NextResponse.json(
         {
           ok: false,
