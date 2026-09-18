@@ -79,7 +79,7 @@ export interface PhotoStep {
   label: string;
   instruction: string;
   icon: string;
-  /** exterior = full vehicle (landscape); detail = close-up; interior = cabin */
+  /** exterior = full vehicle; detail = close-up; interior = cabin */
   category: "exterior" | "detail" | "interior";
   required: boolean;
   /** Office-leniency / capture tip shown under the instruction */

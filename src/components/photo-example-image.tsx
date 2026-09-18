@@ -47,7 +47,7 @@ export function PhotoExampleCard({
         <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent pt-10 pb-2.5 px-3">
           <p className="text-center text-[11px] text-gray-300 leading-snug">
             {category === "exterior"
-              ? "Hold phone sideways (landscape) · whole vehicle in frame · sharp focus"
+              ? "Whole vehicle in frame · sharp focus · landscape not required"
               : isDetail
               ? "Get close · center the area · hold steady for a sharp photo"
               : "Keep the subject sharp and readable · landscape not required"}

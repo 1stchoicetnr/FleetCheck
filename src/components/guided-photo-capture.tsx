@@ -7,7 +7,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Image as ImageIcon,
-  RotateCw,
   Video,
 } from "lucide-react";
 import { Button } from "./ui/button";
@@ -67,7 +66,6 @@ export function GuidedPhotoCapture({
   const current = requiredPhotos[currentIndex];
   const allComplete = acceptedCount === requiredPhotos.length;
   const value = current ? photos[current.angle] : undefined;
-  const isExterior = current?.category === "exterior";
   const isLastStep = currentIndex === requiredPhotos.length - 1;
 
   const handleAccept = (dataUrl: string) => {
@@ -157,15 +155,9 @@ export function GuidedPhotoCapture({
           <p className="text-base text-gray-300 mt-2 leading-relaxed">
             {current.instruction}
           </p>
-          {current.helper && (
+            {current.helper && (
             <p className="mt-2 text-sm text-amber-200/90 leading-relaxed bg-amber-950/40 border border-amber-700/40 rounded-lg px-3 py-2">
               {current.helper}
-            </p>
-          )}
-          {isExterior && (
-            <p className="flex items-center gap-1.5 text-emerald-400/80 text-xs mt-2.5">
-              <RotateCw className="h-3.5 w-3.5 flex-shrink-0" />
-              Use landscape when photographing the vehicle
             </p>
           )}
         </div>

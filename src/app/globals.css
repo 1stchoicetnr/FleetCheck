@@ -5,9 +5,12 @@
 @layer base {
   html {
     -webkit-tap-highlight-color: transparent;
+    /* Follow the device. Never fake-landscape the document. */
+    transform: none;
   }
   body {
     @apply bg-gray-50 text-gray-900 antialiased;
+    transform: none;
   }
 }
 
@@ -16,17 +19,18 @@
     padding-bottom: env(safe-area-inset-bottom, 0);
   }
 
-  /* Full-screen native camera shell — no square or max-width constraints */
+  /* Full-screen camera shell in the device visual viewport — no rotate, no landscape lock */
   .camera-viewport {
     position: fixed;
     inset: 0;
     z-index: 200;
-    width: 100vw;
-    height: 100vh;
+    width: 100%;
+    height: 100%;
     height: 100dvh;
     overflow: hidden;
     touch-action: none;
     background: #000;
+    transform: none;
   }
 
   .camera-media {

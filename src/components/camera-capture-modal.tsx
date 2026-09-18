@@ -6,7 +6,6 @@ import {
   X,
   Camera,
   AlertTriangle,
-  RotateCw,
   Check,
   SwitchCamera,
   Flashlight,
@@ -37,6 +36,7 @@ import {
   waitForElement,
   waitForVideoFrame,
 } from "@/lib/camera";
+import { restoreNaturalOrientation } from "@/lib/orientation";
 
 type Phase = "native" | "live" | "preview";
 
@@ -53,28 +53,6 @@ const PREVIEW_MEDIA_STYLE: React.CSSProperties = {
   objectFit: "contain",
   objectPosition: "center",
 };
-
-async function enterNativeFullscreen(el: HTMLElement): Promise<void> {
-  try {
-    if (document.fullscreenElement) return;
-    const req =
-      el.requestFullscreen?.bind(el) ??
-      (el as HTMLElement & { webkitRequestFullscreen?: () => Promise<void> })
-        .webkitRequestFullscreen?.bind(el);
-    if (req) await req();
-  } catch {
-    /* iOS Safari often blocks element fullscreen — fixed viewport still works */
-  }
-}
-
-async function exitNativeFullscreen(): Promise<void> {
-  try {
-    if (!document.fullscreenElement) return;
-    await document.exitFullscreen?.();
-  } catch {
-    /* ignore */
-  }
-}
 
 function FlipCameraButton({
   facingMode,
@@ -311,12 +289,11 @@ export function CameraCaptureModal({
   const [autoAccepting, setAutoAccepting] = useState(false);
   const [liveLowLight, setLiveLowLight] = useState(false);
 
-  const { isLandscape, version: orientationVersion } = useDeviceOrientation();
+  const { version: orientationVersion } = useDeviceOrientation();
 
   const [facingMode, setFacingMode] = useState<CameraFacing>("environment");
   const [torchOn, setTorchOn] = useState(false);
   const [torchSupported, setTorchSupported] = useState(false);
-  const showLandscapeTip = photoStep.category === "exterior";
 
   openRef.current = open;
 
@@ -347,18 +324,11 @@ export function CameraCaptureModal({
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
-    try {
-      screen.orientation?.unlock?.();
-    } catch {
-      /* ignore */
-    }
-
-    const root = viewportRef.current;
-    if (root) void enterNativeFullscreen(root);
+    void restoreNaturalOrientation();
 
     return () => {
       document.body.style.overflow = prevOverflow;
-      void exitNativeFullscreen();
+      void restoreNaturalOrientation();
     };
   }, [open]);
 
@@ -603,7 +573,7 @@ export function CameraCaptureModal({
     if (!video || !stream) return;
     if (video.srcObject !== stream) video.srcObject = stream;
     if (video.paused) void video.play().catch(() => {});
-  }, [open, phase, isLandscape, orientationVersion, syncLiveLayout]);
+  }, [open, phase, orientationVersion, syncLiveLayout]);
 
   const capturePhoto = async () => {
     const video = videoRef.current;
@@ -672,7 +642,7 @@ export function CameraCaptureModal({
   };
 
   const handleClose = () => {
-    void exitNativeFullscreen();
+    void restoreNaturalOrientation();
     onClose();
   };
 
@@ -695,6 +665,8 @@ export function CameraCaptureModal({
           autoPlay
           playsInline
           muted
+          controls={false}
+          disablePictureInPicture
           className={`camera-media z-0 ${
             facingMode === "user" ? "camera-media-mirror" : ""
           }`}
@@ -710,11 +682,7 @@ export function CameraCaptureModal({
         <PhotoExampleThumb
           angle={photoStep.angle}
           label={photoStep.label}
-          className={
-            isLandscape
-              ? "absolute z-20 w-[8rem] h-[4.5rem] left-3 top-[max(5rem,env(safe-area-inset-top))]"
-              : "absolute z-20 w-[7.5rem] h-[4.25rem] left-3 bottom-[calc(max(7rem,env(safe-area-inset-bottom))+1rem)]"
-          }
+          className="absolute z-20 w-[7.5rem] h-[4.25rem] left-3 bottom-[calc(max(7rem,env(safe-area-inset-bottom))+1rem)]"
         />
       )}
 
@@ -760,17 +728,6 @@ export function CameraCaptureModal({
             instruction={photoStep.instruction}
             onClose={handleClose}
           />
-
-          {showLandscapeTip && (
-            <div className="absolute left-0 right-0 z-20 px-4 bottom-[calc(max(7.5rem,env(safe-area-inset-bottom))+4.5rem)] pointer-events-none">
-              <div className="flex items-center justify-center gap-2 mx-auto max-w-sm bg-black/40 backdrop-blur-sm rounded-lg px-3 py-2 border border-emerald-500/20">
-                <RotateCw className="h-4 w-4 text-emerald-400 flex-shrink-0" />
-                <p className="text-emerald-200/90 text-xs leading-snug text-center">
-                  For best results, use landscape when photographing the vehicle
-                </p>
-              </div>
-            </div>
-          )}
 
           <div className="absolute bottom-0 left-0 right-0 z-30 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-8 px-4 bg-gradient-to-t from-black/95 via-black/70 to-transparent">
             {liveError && (
@@ -877,42 +834,19 @@ export function CameraCaptureModal({
         )}
 
       {phase === "live" && (
-        <div
-          className={`absolute z-20 ${
-            isLandscape
-              ? "right-0 top-0 bottom-0 flex flex-col items-center justify-center gap-3 px-2 w-[6.25rem] bg-gradient-to-l from-black/80 via-black/45 to-transparent pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
-              : "bottom-0 left-0 right-0 flex flex-col items-center gap-3 bg-gradient-to-t from-black/85 via-black/50 to-transparent pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-10 px-4"
-          }`}
-        >
-          {!isLandscape && showLandscapeTip && (
-            <p className="text-center text-emerald-400/80 text-xs mb-2 drop-shadow px-3">
-              Tip: rotate to landscape for vehicle photos
-            </p>
-          )}
-          <div
-            className={
-              isLandscape
-                ? "flex flex-col items-center gap-3"
-                : "flex flex-wrap items-start justify-center gap-2"
-            }
-          >
+        <div className="absolute z-20 bottom-0 left-0 right-0 flex flex-col items-center gap-3 bg-gradient-to-t from-black/85 via-black/50 to-transparent pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-10 px-4">
+          <div className="flex flex-wrap items-start justify-center gap-2">
             <FlipCameraButton
               facingMode={facingMode}
               onFlip={flipCamera}
-              compact={isLandscape}
+              compact={false}
             />
             <FlashlightButton
               on={torchOn}
               supported={torchSupported && facingMode === "environment"}
               onToggle={() => void toggleTorch()}
-              compact={isLandscape}
-              unavailableHint={
-                isLandscape
-                  ? isLikelyIOS()
-                    ? "Use Take photo flash"
-                    : "Not available"
-                  : describeTorchUnavailable()
-              }
+              compact={false}
+              unavailableHint={describeTorchUnavailable()}
             />
           </div>
           <button
@@ -924,11 +858,9 @@ export function CameraCaptureModal({
           >
             <div className="w-[3.75rem] h-[3.75rem] rounded-full border-[3px] border-gray-300 bg-white" />
           </button>
-          {!isLandscape && (
-            <p className="text-center text-white font-semibold text-base mt-2 drop-shadow">
-              Capture
-            </p>
-          )}
+          <p className="text-center text-white font-semibold text-base mt-2 drop-shadow">
+            Capture
+          </p>
           <button
             type="button"
             onClick={openNativeCamera}

@@ -49,6 +49,7 @@ import { formatDate, formatDateOnly, formatUnitLabel } from "@/lib/utils";
 import { PHOTO_EXAMPLE_PATHS } from "@/lib/photo-examples";
 import { InspectionFormFields } from "@/components/inspection-form-fields";
 import { Check } from "lucide-react";
+import { restoreNaturalOrientation } from "@/lib/orientation";
 
 export default function CheckoutCapturePage() {
   const params = useParams();
@@ -80,6 +81,10 @@ export default function CheckoutCapturePage() {
     if (!loading && !user) router.replace("/");
     if (user && !canStartCheckout(user.role)) router.replace("/dashboard");
   }, [user, loading, router]);
+
+  useEffect(() => {
+    void restoreNaturalOrientation();
+  }, []);
 
   useEffect(() => {
     async function load() {
