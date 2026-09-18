@@ -11,6 +11,7 @@ import { canStartCheckout } from "@/lib/fleet-config";
 import { checkoutDraftId, getCheckoutDraft, saveCheckoutDraft } from "@/lib/storage";
 import {
   fetchCompanies,
+  fetchFleetSettings,
   fetchVehicles,
   SharedVehicle,
   upsertSharedVehicle,
@@ -34,6 +35,7 @@ import {
 } from "@/lib/checkout-prefs";
 import { formatDateOnly, formatUnitLabel, normalizePlate } from "@/lib/utils";
 import { ClipboardCheck } from "lucide-react";
+import { useCheckoutFeedbackMeta } from "@/components/checkout-feedback";
 
 export default function CheckoutStartPage() {
   const { user, loading } = useAuth();
@@ -59,6 +61,8 @@ export default function CheckoutStartPage() {
   const [error, setError] = useState("");
   const [starting, setStarting] = useState(false);
   const [powertrainOverride, setPowertrainOverride] = useState<Powertrain | "">("");
+  const [allowDriverAdd, setAllowDriverAdd] = useState(false);
+  const [showErrors, setShowErrors] = useState(false);
   const inspectionDate = formatDateOnly(new Date().toISOString());
 
   useEffect(() => {
@@ -85,6 +89,9 @@ export default function CheckoutStartPage() {
       .catch((err: Error) => {
         setLoadError(err.message || "Could not load companies from the shared server.");
       });
+    fetchFleetSettings()
+      .then((settings) => setAllowDriverAdd(settings.allowDriverAddVehicles))
+      .catch(() => setAllowDriverAdd(false));
   }, []);
 
   useEffect(() => {
@@ -121,6 +128,16 @@ export default function CheckoutStartPage() {
     [vehicles, vehicleId]
   );
 
+  useCheckoutFeedbackMeta({
+    unitId: selected?.id,
+    unitNumber: addingUnit
+      ? newUnitNumber.trim() || newPlate.trim() || undefined
+      : selected?.unitNumber,
+    plate: addingUnit ? newPlate.trim() || undefined : selected?.plate,
+    pagePhase: "start",
+    driverName: driverName.trim() || user?.name,
+  });
+
   const inferredPowertrain = inferPowertrain(
     make,
     model,
@@ -147,20 +164,18 @@ export default function CheckoutStartPage() {
   const handleStart = async (e: FormEvent) => {
     e.preventDefault();
     if (!user) return;
-    if (!odometer.trim() || isNaN(Number(odometer))) {
-      setError("Enter the odometer reading.");
-      return;
-    }
-    if (!driverName.trim()) {
-      setError("Enter the driver name.");
-      return;
-    }
-    if (!dispatcherName.trim()) {
-      setError("Enter the dispatcher name.");
-      return;
-    }
+    const fieldErrors: string[] = [];
+    if (!odometer.trim() || isNaN(Number(odometer))) fieldErrors.push("odometer");
+    if (!driverName.trim()) fieldErrors.push("driverName");
+    if (!dispatcherName.trim()) fieldErrors.push("dispatcherName");
     if (!year.trim() || !make.trim() || !model.trim()) {
-      setError("Year, make, and model are required.");
+      fieldErrors.push("year", "make", "model");
+    }
+    if (addingUnit && allowDriverAdd && !newPlate.trim()) fieldErrors.push("newPlate");
+    if (!addingUnit && !vehicleId) fieldErrors.push("vehicleId");
+    if (fieldErrors.length) {
+      setShowErrors(true);
+      setError("Fill the highlighted fields.");
       return;
     }
 
@@ -168,7 +183,7 @@ export default function CheckoutStartPage() {
     setError("");
     try {
       let vehicle = selected;
-      if (addingUnit) {
+      if (addingUnit && allowDriverAdd) {
         if (!newPlate.trim()) {
           setError("Enter the license plate for this unit.");
           setStarting(false);
@@ -291,8 +306,8 @@ export default function CheckoutStartPage() {
                   <span className="font-semibold">Date:</span> {inspectionDate}
                 </p>
                 <p className="text-xs text-gray-500 mt-1">
-                  Same header as the paper form — date, name, vehicle, Clover
-                  serial (last digits), odometer start.
+                  Same header as the paper form — date, name, vehicle, optional
+                  Clover serial (last digits), odometer start.
                 </p>
               </div>
               <div>
@@ -327,10 +342,18 @@ export default function CheckoutStartPage() {
                     <select
                       value={vehicleId}
                       onChange={(e) => setVehicleId(e.target.value)}
-                      className="w-full rounded-xl border-2 border-gray-300 px-4 py-4 text-lg min-h-[56px] bg-white"
+                      className={`w-full rounded-xl border-2 px-4 py-4 text-lg min-h-[56px] bg-white ${
+                        showErrors && !vehicleId
+                          ? "border-red-500 bg-red-50"
+                          : "border-gray-300"
+                      }`}
                     >
                       {filteredVehicles.length === 0 && (
-                        <option value="">No units match — add the plate below</option>
+                        <option value="">
+                          {allowDriverAdd
+                            ? "No units match — add the plate below"
+                            : "No units match. Ask Super Admin to add this van."}
+                        </option>
                       )}
                       {filteredVehicles.map((v) => (
                         <option key={v.id} value={v.id}>
@@ -339,6 +362,11 @@ export default function CheckoutStartPage() {
                         </option>
                       ))}
                     </select>
+                    {showErrors && !vehicleId && (
+                      <p className="text-sm font-medium text-red-600 mt-1.5">
+                        Pick an active unit.
+                      </p>
+                    )}
                     <p className="text-xs text-gray-500 mt-1.5">
                       Only active units. Archived / out-of-service vans are
                       hidden until Office unarchives them.
@@ -347,6 +375,7 @@ export default function CheckoutStartPage() {
                 </>
               )}
 
+              {allowDriverAdd && (
               <button
                 type="button"
                 onClick={() => {
@@ -359,8 +388,9 @@ export default function CheckoutStartPage() {
                   ? "Cancel — pick an existing unit"
                   : "Plate not listed? Add unit / plate"}
               </button>
+              )}
 
-              {addingUnit && (
+              {allowDriverAdd && addingUnit && (
                 <div className="rounded-xl border-2 border-dashed border-brand-200 bg-brand-50/60 p-3 space-y-3">
                   <p className="text-sm text-gray-700">
                     Adds this van to the shared list so Office can see it —
@@ -371,6 +401,11 @@ export default function CheckoutStartPage() {
                     value={newPlate}
                     onChange={(e) => setNewPlate(e.target.value.toUpperCase())}
                     placeholder="e.g. CXB9373"
+                    error={
+                      showErrors && !newPlate.trim()
+                        ? "Enter the license plate for this unit."
+                        : undefined
+                    }
                   />
                   <Input
                     label={`${UNIT_NUMBER_LABEL} (optional)`}
@@ -415,16 +450,19 @@ export default function CheckoutStartPage() {
                   label="Year"
                   inputMode="numeric"
                   value={year}
+                  error={showErrors && !year.trim() ? "Required" : undefined}
                   onChange={(e) => setYear(e.target.value)}
                 />
                 <Input
                   label="Make"
                   value={make}
+                  error={showErrors && !make.trim() ? "Required" : undefined}
                   onChange={(e) => setMake(e.target.value)}
                 />
                 <Input
                   label="Model"
                   value={model}
+                  error={showErrors && !model.trim() ? "Required" : undefined}
                   onChange={(e) => setModel(e.target.value)}
                 />
               </div>
@@ -435,10 +473,15 @@ export default function CheckoutStartPage() {
                 inputMode="numeric"
                 value={odometer}
                 onChange={(e) => setOdometer(e.target.value)}
+                error={
+                  showErrors && (!odometer.trim() || isNaN(Number(odometer)))
+                    ? "Enter the odometer reading."
+                    : undefined
+                }
                 hint="Mileage on the dash — must be readable in the odometer photo"
               />
               <Input
-                label={CLOVER_SERIAL_LABEL}
+                label={`${CLOVER_SERIAL_LABEL} (optional)`}
                 value={cloverSerial}
                 onChange={(e) => setCloverSerial(e.target.value)}
                 inputMode="numeric"
@@ -453,6 +496,11 @@ export default function CheckoutStartPage() {
                 label="Name (driver)"
                 value={driverName}
                 onChange={(e) => setDriverName(e.target.value)}
+                error={
+                  showErrors && !driverName.trim()
+                    ? "Enter the driver name."
+                    : undefined
+                }
               />
               {!addingUnit && (
                 <div>
@@ -497,6 +545,11 @@ export default function CheckoutStartPage() {
                 value={dispatcherName}
                 onChange={(e) => setDispatcherName(e.target.value)}
                 placeholder="Who is taking this vehicle in?"
+                error={
+                  showErrors && !dispatcherName.trim()
+                    ? "Enter the dispatcher name."
+                    : undefined
+                }
               />
 
               <div>

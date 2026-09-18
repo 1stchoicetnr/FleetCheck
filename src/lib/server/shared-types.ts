@@ -7,6 +7,7 @@ import {
   PhotoAngle,
   VehiclePhoto,
 } from "@/lib/types";
+import type { FleetSettings } from "@/lib/fleet-settings";
 
 export interface SharedVehicle {
   id: string;
@@ -67,6 +68,7 @@ export interface SharedStore {
   companies: Company[];
   vehicles: SharedVehicle[];
   reports: CheckoutReport[];
+  settings?: FleetSettings;
 }
 
-export type { CheckoutReport, Company, VehiclePhoto };
+export type { FleetSettings, CheckoutReport, Company, VehiclePhoto };

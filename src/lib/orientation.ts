@@ -1,11 +1,6 @@
 /**
- * Keep checkout / camera chrome aligned with the physical phone.
- *
- * Android Chrome treats element.requestFullscreen() on a <video> like a
- * landscape movie player, which rotates the whole page ~90° while the device
- * is still held portrait. We never lock landscape and we never enter native
- * fullscreen for capture — Live Preview is an in-app overlay (fixed shell,
- * playsInline video), not the Fullscreen API.
+ * Keep checkout chrome aligned with the physical phone.
+ * We never lock landscape and we never enter native fullscreen for capture.
  */
 
 export async function exitLeftoverFullscreen(): Promise<void> {

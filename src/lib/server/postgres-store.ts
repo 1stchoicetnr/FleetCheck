@@ -19,6 +19,8 @@ import {
   sharedSeedVehicles,
 } from "./seed-shared";
 import { ListVehiclesOptions, SharedVehicle, UpsertVehicleInput } from "./shared-types";
+import type { FleetSettings } from "@/lib/fleet-settings";
+import { DEFAULT_FLEET_SETTINGS } from "@/lib/fleet-settings";
 
 function sqlClient() {
   const url = getDatabaseUrl();
@@ -151,6 +153,17 @@ export async function pgMigrateAndSeed(): Promise<void> {
   await sql`ALTER TABLE checkout_reports ADD COLUMN IF NOT EXISTS inspection_form JSONB`;
   await sql`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ`;
   await sql`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS powertrain TEXT`;
+  await sql`
+    CREATE TABLE IF NOT EXISTS fleet_settings (
+      id TEXT PRIMARY KEY,
+      allow_driver_add_vehicles BOOLEAN NOT NULL DEFAULT FALSE
+    )
+  `;
+  await sql`
+    INSERT INTO fleet_settings (id, allow_driver_add_vehicles)
+    VALUES ('app', FALSE)
+    ON CONFLICT (id) DO NOTHING
+  `;
 
   for (const company of SEEDED_COMPANIES) {
     await sql`
@@ -415,4 +428,36 @@ export async function pgPutReport(report: CheckoutReport): Promise<CheckoutRepor
   await pgMigrateAndSeed();
   await upsertReportRow(report);
   return { ...report, synced: true };
+}
+
+export async function pgGetFleetSettings(): Promise<FleetSettings> {
+  await pgMigrateAndSeed();
+  const sql = sqlClient();
+  const rows = await sql`
+    SELECT allow_driver_add_vehicles FROM fleet_settings WHERE id = 'app' LIMIT 1
+  `;
+  const row = rows[0];
+  return {
+    allowDriverAddVehicles: Boolean(row?.allow_driver_add_vehicles),
+  };
+}
+
+export async function pgSetFleetSettings(
+  patch: Partial<FleetSettings>
+): Promise<FleetSettings> {
+  await pgMigrateAndSeed();
+  const current = await pgGetFleetSettings();
+  const next: FleetSettings = {
+    ...DEFAULT_FLEET_SETTINGS,
+    ...current,
+    ...patch,
+  };
+  const sql = sqlClient();
+  await sql`
+    INSERT INTO fleet_settings (id, allow_driver_add_vehicles)
+    VALUES ('app', ${next.allowDriverAddVehicles})
+    ON CONFLICT (id) DO UPDATE SET
+      allow_driver_add_vehicles = EXCLUDED.allow_driver_add_vehicles
+  `;
+  return next;
 }

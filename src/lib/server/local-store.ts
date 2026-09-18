@@ -15,6 +15,10 @@ import {
   SharedVehicle,
   UpsertVehicleInput,
 } from "./shared-types";
+import {
+  FleetSettings,
+  DEFAULT_FLEET_SETTINGS,
+} from "@/lib/fleet-settings";
 
 const STORE_PATH = path.join(process.cwd(), ".data", "shared.json");
 
@@ -230,5 +234,29 @@ export async function localPatchReport(
     store.reports[idx] = { ...store.reports[idx], ...patch };
     await writeStore(store);
     return store.reports[idx];
+  });
+}
+
+export async function localGetFleetSettings(): Promise<FleetSettings> {
+  const store = await localEnsureSeed();
+  return {
+    ...DEFAULT_FLEET_SETTINGS,
+    ...(store.settings ?? {}),
+  };
+}
+
+export async function localSetFleetSettings(
+  patch: Partial<FleetSettings>
+): Promise<FleetSettings> {
+  return enqueueWrite(async () => {
+    const store = await loadAndSeedUnlocked();
+    const next: FleetSettings = {
+      ...DEFAULT_FLEET_SETTINGS,
+      ...(store.settings ?? {}),
+      ...patch,
+    };
+    store.settings = next;
+    await writeStore(store);
+    return next;
   });
 }

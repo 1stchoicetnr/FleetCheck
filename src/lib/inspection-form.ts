@@ -26,7 +26,22 @@ export type DamageSide = "left" | "right" | "front" | "rear";
 
 export type TreadLevel = "good" | "fair" | "low" | "bald";
 
+/** Per-tire tread corners. LF/RF/LR/RR (same as FL/FR/RL/RR). */
+export type TreadTireId = "lf" | "rf" | "lr" | "rr";
+
+export type TreadByTire = Record<TreadTireId, TreadLevel | "">;
+
 export type TrafficLight = "green" | "yellow" | "red";
+
+/** Keys used to highlight empty/invalid Precheck fields. */
+export type InspectionFieldKey =
+  | "cloverSerial"
+  | InspectionCheckId
+  | `tread.${TreadTireId}`
+  | "interiorClean"
+  | "exteriorClean"
+  | "trafficLight"
+  | "trafficNote";
 
 export type InspectionIssueFlags = {
   safety?: boolean;
@@ -56,7 +71,10 @@ export type CheckoutInspectionForm = {
   checks: Record<InspectionCheckId, InspectionCheckState>;
   interiorClean: YesNo | "";
   exteriorClean: YesNo | "";
+  /** @deprecated One global rating. Prefer `treadByTire`. */
   treadLevel?: TreadLevel | "";
+  /** Required: one rating per corner (LF / RF / LR / RR). */
+  treadByTire?: TreadByTire;
   trafficLight?: TrafficLight | "";
   trafficNote?: string;
   damage: InspectionDamage;
@@ -113,6 +131,21 @@ export const TREAD_LEVEL_ITEMS: ReadonlyArray<{
   { id: "bald", label: "Bald", hint: "Park it" },
 ];
 
+export const TREAD_TIRE_ITEMS: ReadonlyArray<{
+  id: TreadTireId;
+  label: string;
+  longLabel: string;
+}> = [
+  { id: "lf", label: "LF", longLabel: "Left front" },
+  { id: "rf", label: "RF", longLabel: "Right front" },
+  { id: "lr", label: "LR", longLabel: "Left rear" },
+  { id: "rr", label: "RR", longLabel: "Right rear" },
+];
+
+export function emptyTreadByTire(): TreadByTire {
+  return { lf: "", rf: "", lr: "", rr: "" };
+}
+
 export const TRAFFIC_LIGHT_ITEMS: ReadonlyArray<{
   id: TrafficLight;
   label: string;
@@ -165,7 +198,7 @@ export function evSkipsCheck(
   powertrain: Powertrain
 ): boolean {
   if (powertrain !== "ev") return false;
-  return INSPECTION_CHECK_ITEMS.find((item) => item.id === id)?.evSkips === true;
+  return id === "oil" || id === "fuelLevel";
 }
 
 function emptyChecks(powertrain: Powertrain): Record<
@@ -182,7 +215,7 @@ function emptyChecks(powertrain: Powertrain): Record<
 
 export const CLOVER_SERIAL_LABEL = "Clover serial (last digits)";
 export const CLOVER_SERIAL_HINT =
-  "Borrowed card reader from Rad Cab — not the van. Write the last 3–4 digits of the Clover serial number.";
+  "Optional. Borrowed card reader from Rad Cab — not the van. Last 3–4 digits of the Clover serial if you have one.";
 export const UNIT_NUMBER_LABEL = "Unit #";
 
 export function normalizeCloverSerial(raw: unknown): string {
@@ -220,6 +253,7 @@ export function createEmptyInspectionForm(
     interiorClean: "",
     exteriorClean: "",
     treadLevel: "",
+    treadByTire: emptyTreadByTire(),
     trafficLight: "",
     trafficNote: "",
     damage: {},
@@ -291,6 +325,63 @@ function asTreadLevel(value: unknown): TreadLevel | "" {
     : "";
 }
 
+export function asTreadByTire(
+  raw: unknown,
+  legacy?: unknown
+): TreadByTire {
+  const fallback = asTreadLevel(legacy);
+  const row =
+    raw && typeof raw === "object" ? (raw as Partial<TreadByTire>) : {};
+  const next = emptyTreadByTire();
+  let any = false;
+  for (const tire of TREAD_TIRE_ITEMS) {
+    const value = asTreadLevel(row[tire.id]);
+    if (value) {
+      next[tire.id] = value;
+      any = true;
+    }
+  }
+  if (!any && fallback) {
+    for (const tire of TREAD_TIRE_ITEMS) next[tire.id] = fallback;
+  }
+  return next;
+}
+
+const TREAD_RANK: Record<TreadLevel, number> = {
+  good: 0,
+  fair: 1,
+  low: 2,
+  bald: 3,
+};
+
+export function worstTreadLevel(tread: TreadByTire): TreadLevel | "" {
+  let worst: TreadLevel | "" = "";
+  for (const tire of TREAD_TIRE_ITEMS) {
+    const level = tread[tire.id];
+    if (!level) continue;
+    if (!worst || TREAD_RANK[level] > TREAD_RANK[worst]) worst = level;
+  }
+  return worst;
+}
+
+export function missingTreadTires(tread: TreadByTire): TreadTireId[] {
+  return TREAD_TIRE_ITEMS.filter((tire) => !asTreadLevel(tread[tire.id])).map(
+    (tire) => tire.id
+  );
+}
+
+export function cloverSerialError(raw: unknown): string | null {
+  const cloverSerial = normalizeCloverSerial(raw);
+  if (!cloverSerial) return null;
+  if (cloverSerial.length < 2 || cloverSerial.length > 8) {
+    return `${CLOVER_SERIAL_LABEL} should be about 3–4 digits (2–8 characters).`;
+  }
+  if (!/^[A-Z0-9]+$/.test(cloverSerial)) {
+    return `${CLOVER_SERIAL_LABEL} should be letters and numbers only.`;
+  }
+  return null;
+}
+
 function asTrafficLight(value: unknown): TrafficLight | "" {
   return value === "green" || value === "yellow" || value === "red"
     ? value
@@ -353,6 +444,7 @@ export function normalizeInspectionForm(
     }
   }
   const cloverSerial = cloverSerialOf(row as CheckoutInspectionForm);
+  const treadByTire = asTreadByTire(row.treadByTire, row.treadLevel);
   return {
     inspectedAt:
       typeof row.inspectedAt === "string" ? row.inspectedAt : undefined,
@@ -361,7 +453,8 @@ export function normalizeInspectionForm(
     checks,
     interiorClean: asYesNo(row.interiorClean),
     exteriorClean: asYesNo(row.exteriorClean),
-    treadLevel: asTreadLevel(row.treadLevel),
+    treadByTire,
+    treadLevel: worstTreadLevel(treadByTire),
     trafficLight: asTrafficLight(row.trafficLight),
     trafficNote:
       typeof row.trafficNote === "string" ? row.trafficNote : undefined,
@@ -382,11 +475,13 @@ export function suggestedTrafficLight(
   form: CheckoutInspectionForm
 ): TrafficLight {
   const flags = form.issueFlags ?? {};
+  const tread = asTreadByTire(form.treadByTire, form.treadLevel);
+  const worst = worstTreadLevel(tread);
   if (
     flags.refuseToDrive ||
     flags.outOfService ||
     flags.safety ||
-    form.treadLevel === "bald"
+    worst === "bald"
   ) {
     return "red";
   }
@@ -394,7 +489,7 @@ export function suggestedTrafficLight(
     (item) => form.checks[item.id]?.result === "not_ok"
   );
   if (
-    form.treadLevel === "low" ||
+    worst === "low" ||
     hasIssue ||
     form.interiorClean === "no" ||
     form.exteriorClean === "no" ||
@@ -418,85 +513,86 @@ export function applyTrafficLightDefaults(
   };
 }
 
+export type InspectionValidation =
+  | { ok: true; form: CheckoutInspectionForm; missing: InspectionFieldKey[] }
+  | { ok: false; error: string; missing: InspectionFieldKey[] };
+
 export function validateInspectionForm(
   form: CheckoutInspectionForm | undefined,
   powertrain: Powertrain
-): { ok: true; form: CheckoutInspectionForm } | { ok: false; error: string } {
+): InspectionValidation {
   if (!form) {
-    return { ok: false, error: "Fill Precheck before submitting." };
+    return {
+      ok: false,
+      error: "Fill Precheck before submitting.",
+      missing: ["trafficLight"],
+    };
   }
   const normalized = applyTrafficLightDefaults(
     applyPowertrainToForm(form, powertrain)
   );
-  const cloverSerial = cloverSerialOf(normalized);
-  if (!cloverSerial) {
-    return {
-      ok: false,
-      error:
-        "Enter the last digits of the Clover serial (the card reader, not the van).",
-    };
-  }
-  if (cloverSerial.length < 2 || cloverSerial.length > 8) {
-    return {
-      ok: false,
-      error: `${CLOVER_SERIAL_LABEL} should be about 3–4 digits (2–8 characters).`,
-    };
-  }
-  if (!/^[A-Z0-9]+$/.test(cloverSerial)) {
-    return {
-      ok: false,
-      error: `${CLOVER_SERIAL_LABEL} should be letters and numbers only.`,
-    };
-  }
-  const missing = INSPECTION_CHECK_ITEMS.filter((item) => {
+  const missing: InspectionFieldKey[] = [];
+  const cloverError = cloverSerialError(cloverSerialOf(normalized));
+  if (cloverError) missing.push("cloverSerial");
+  for (const item of INSPECTION_CHECK_ITEMS) {
     const state = normalized.checks[item.id];
-    if (state.result === "na" || evSkipsCheck(item.id, powertrain)) return false;
-    return state.result !== "ok" && state.result !== "not_ok";
-  });
-  if (missing.length) {
-    return {
-      ok: false,
-      error: `Answer ${missing.map((item) => item.label).join(", ")}.`,
-    };
+    if (evSkipsCheck(item.id, powertrain) || state.result === "na") continue;
+    if (state.result !== "ok" && state.result !== "not_ok") {
+      missing.push(item.id);
+    }
   }
-  if (
-    normalized.treadLevel !== "good" &&
-    normalized.treadLevel !== "fair" &&
-    normalized.treadLevel !== "low" &&
-    normalized.treadLevel !== "bald"
-  ) {
-    return { ok: false, error: "Mark tread: Good, Fair, Low, or Bald." };
+  const tread = asTreadByTire(normalized.treadByTire, normalized.treadLevel);
+  for (const tire of missingTreadTires(tread)) {
+    missing.push(`tread.${tire}`);
   }
   if (normalized.interiorClean !== "yes" && normalized.interiorClean !== "no") {
-    return { ok: false, error: "Mark Interior clean Yes or No." };
+    missing.push("interiorClean");
   }
   if (normalized.exteriorClean !== "yes" && normalized.exteriorClean !== "no") {
-    return { ok: false, error: "Mark Exterior clean Yes or No." };
+    missing.push("exteriorClean");
   }
   if (
     normalized.trafficLight !== "green" &&
     normalized.trafficLight !== "yellow" &&
     normalized.trafficLight !== "red"
   ) {
-    return {
-      ok: false,
-      error: "Pick Green, Yellow, or Red at the end of Precheck.",
-    };
+    missing.push("trafficLight");
   }
   if (
     (normalized.trafficLight === "yellow" ||
       normalized.trafficLight === "red") &&
     !precheckNote(normalized)
   ) {
+    missing.push("trafficNote");
+  }
+
+  if (cloverError) {
+    return { ok: false, error: cloverError, missing };
+  }
+  if (missing.length) {
+    const labels = missing.map((key) => inspectionFieldLabel(key));
+    const unique = [...new Set(labels)];
     return {
       ok: false,
-      error:
-        normalized.trafficLight === "red"
-          ? "Add a short note for Red — park it."
-          : "Add a short note for Yellow — note & drive.",
+      error: `Fill required fields: ${unique.join(", ")}.`,
+      missing,
     };
   }
-  return { ok: true, form: normalized };
+  return { ok: true, form: { ...normalized, treadByTire: tread, treadLevel: worstTreadLevel(tread) }, missing: [] };
+}
+
+export function inspectionFieldLabel(key: InspectionFieldKey): string {
+  if (key === "cloverSerial") return CLOVER_SERIAL_LABEL;
+  if (key === "interiorClean") return "Interior clean";
+  if (key === "exteriorClean") return "Exterior clean";
+  if (key === "trafficLight") return "Traffic light";
+  if (key === "trafficNote") return "Traffic note";
+  if (key.startsWith("tread.")) {
+    const id = key.slice(6) as TreadTireId;
+    const tire = TREAD_TIRE_ITEMS.find((item) => item.id === id);
+    return tire ? `Tread ${tire.label}` : "Tread";
+  }
+  return inspectionCheckLabel(key as InspectionCheckId);
 }
 
 export function canContinueToPhotos(
@@ -575,11 +671,12 @@ export function inspectionFormFlagsReport(
   form?: CheckoutInspectionForm | null
 ): boolean {
   if (!form) return false;
+  const worst = worstTreadLevel(asTreadByTire(form.treadByTire, form.treadLevel));
   return (
     form.trafficLight === "red" ||
     form.trafficLight === "yellow" ||
-    form.treadLevel === "bald" ||
-    form.treadLevel === "low" ||
+    worst === "bald" ||
+    worst === "low" ||
     hasInspectionIssueFlags(form) ||
     hasInspectionDamageNotes(form) ||
     hasNotOkChecks(form)
@@ -607,7 +704,12 @@ export function inspectionFormSummaryLines(
   lines.push(
     `Powertrain: ${form.powertrain === "ev" ? "EV (oil / fuel N/A)" : "Gas"}`
   );
-  lines.push(`Tread: ${treadLevelLabel(form.treadLevel)}`);
+  const tread = asTreadByTire(form.treadByTire, form.treadLevel);
+  lines.push(
+    `Tread: ${TREAD_TIRE_ITEMS.map(
+      (tire) => `${tire.label} ${treadLevelLabel(tread[tire.id])}`
+    ).join(" · ")}`
+  );
   for (const item of INSPECTION_CHECK_ITEMS) {
     const state = form.checks[item.id];
     const note = state.note?.trim();

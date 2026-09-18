@@ -1,5 +1,6 @@
 import {
   activeIssueFlagLabels,
+  asTreadByTire,
   CheckoutInspectionForm,
   CLOVER_SERIAL_LABEL,
   DAMAGE_SIDES,
@@ -7,7 +8,9 @@ import {
   formatCloverSerial,
   INSPECTION_CHECK_ITEMS,
   trafficLightLabel,
+  TREAD_TIRE_ITEMS,
   treadLevelLabel,
+  worstTreadLevel,
 } from "@/lib/inspection-form";
 import { cn } from "@/lib/utils";
 
@@ -44,6 +47,8 @@ export function InspectionFormSummary({
   const flags = activeIssueFlagLabels(form);
   const traffic = form.trafficNote?.trim();
   const extra = form.additionalComments?.trim();
+  const tread = asTreadByTire(form.treadByTire, form.treadLevel);
+  const worst = worstTreadLevel(tread);
   return (
     <div className="space-y-3">
       <p className="text-sm text-gray-800">
@@ -62,22 +67,30 @@ export function InspectionFormSummary({
         >
           {form.powertrain === "ev" ? "EV · oil/fuel N/A" : "Gas"}
         </span>
-        <span
-          className={cn(
-            "rounded-full px-2.5 py-1",
-            form.treadLevel === "good"
-              ? "bg-green-100 text-green-800"
-              : form.treadLevel === "fair"
-                ? "bg-sky-100 text-sky-800"
-                : form.treadLevel === "low"
-                  ? "bg-amber-100 text-amber-900"
-                  : form.treadLevel === "bald"
-                    ? "bg-red-100 text-red-800"
-                    : "bg-gray-100 text-gray-600"
-          )}
-        >
-          Tread {treadLevelLabel(form.treadLevel)}
-        </span>
+        {TREAD_TIRE_ITEMS.map((tire) => (
+          <span
+            key={tire.id}
+            className={cn(
+              "rounded-full px-2.5 py-1",
+              tread[tire.id] === "good"
+                ? "bg-green-100 text-green-800"
+                : tread[tire.id] === "fair"
+                  ? "bg-sky-100 text-sky-800"
+                  : tread[tire.id] === "low"
+                    ? "bg-amber-100 text-amber-900"
+                    : tread[tire.id] === "bald"
+                      ? "bg-red-100 text-red-800"
+                      : "bg-gray-100 text-gray-600"
+            )}
+          >
+            {tire.label} {treadLevelLabel(tread[tire.id])}
+          </span>
+        ))}
+        {worst ? (
+          <span className="rounded-full px-2.5 py-1 bg-gray-100 text-gray-600">
+            Worst {treadLevelLabel(worst)}
+          </span>
+        ) : null}
         <span
           className={cn(
             "rounded-full px-2.5 py-1",

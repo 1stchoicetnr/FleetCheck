@@ -34,6 +34,7 @@ function checkedForm(
     interiorClean: "yes",
     exteriorClean: "yes",
     treadLevel: "good",
+    treadByTire: { lf: "good", rf: "good", lr: "good", rr: "good" },
     trafficLight: "green",
     ...extras,
     checks: {
@@ -185,6 +186,7 @@ function teslaPaperExampleReport(): CheckoutReport {
       interiorClean: "yes",
       exteriorClean: "yes",
       treadLevel: "good",
+      treadByTire: { lf: "good", rf: "good", lr: "good", rr: "good" },
       trafficLight: "yellow",
       trafficNote: "Right-side bumper scratches — note & drive.",
       damage: { right: "SCRATCHES", marks: ["right"] },

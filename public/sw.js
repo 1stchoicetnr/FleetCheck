@@ -1,4 +1,4 @@
-const CACHE_NAME = "fleetcheck-v9";
+const CACHE_NAME = "fleetcheck-v10";
 
 /** Never cache Next.js bundles — they change every build. */
 function isDynamicAsset(url: URL): boolean {

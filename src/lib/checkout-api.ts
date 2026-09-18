@@ -6,6 +6,7 @@ import {
   Company,
   PhotoAngle,
 } from "./types";
+import type { FleetSettings } from "./fleet-settings";
 
 export interface SharedVehicle {
   id: string;
@@ -223,4 +224,19 @@ export async function verifyOfficePinRemote(pin: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+export async function fetchFleetSettings(): Promise<FleetSettings> {
+  const data = await api<{ settings: FleetSettings }>("/api/fleet-settings");
+  return data.settings;
+}
+
+export async function updateFleetSettings(input: {
+  allowDriverAddVehicles: boolean;
+}): Promise<FleetSettings> {
+  const data = await api<{ settings: FleetSettings }>("/api/fleet-settings", {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+  return data.settings;
 }

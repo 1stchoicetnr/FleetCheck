@@ -435,16 +435,19 @@ export function photoStepsForReport(
 /**
  * Default checkout walkaround (Rad Cab + generic_30).
  * Tire-tread slots stay in this list for old reports / labels, but
- * `walkaroundPhotoSteps` drops them from the required driver checklist.
+ * `walkaroundPhotoSteps` drops them from the required driver checklist (~26 shots).
  *
- * Physical path a driver walks — do not scatter corners / wheels:
- *   Docs from the driver seat: odometer, registration, windshield, radio
- *   Start at LF corner; shoot fender + wheel as you stand there (tread is Precheck)
- *   Straight-on front, then walk clockwise
- *   RF cluster (corner, fender, wheel) → passenger doors → RR cluster
- *   Straight-on rear → LR cluster → driver-side doors
- *   Interiors: driver door in → rear seats → trunk → passenger
- *   Engine bay last (oil)
+ * One clockwise lap grouped by physical station so the driver does not
+ * circle the van twice (exteriors first, then a second interior lap):
+ *
+ *   1. Driver seat (already sitting) — odometer, windshield, radio, registration
+ *   2. Driver door / left-front — interior in, door panels, LF fender/wheel/3/4
+ *   3. Front
+ *   4. Passenger front — RF cluster, passenger front interior, passenger doors
+ *   5. Passenger rear — RR cluster, passenger rear interior
+ *   6. Rear — straight-on rear, trunk/hatch
+ *   7. Driver rear — LR cluster, driver rear interior
+ *   8. Engine bay last (oil dipstick — keep oily hands off the rest of the walk)
  *
  * Example JPGs stay keyed by `angle` in photo-examples.ts (old filenames are fine).
  */
@@ -452,25 +455,16 @@ export const PHOTO_ANGLES: PhotoStep[] = [
   {
     angle: "odometer_fuel",
     label: "Odometer & Fuel",
-    instruction: "Capture mileage, fuel level, and any warning lights on the dash.",
+    instruction: "From the driver seat — capture mileage, fuel, and warning lights.",
     icon: "🔢",
     category: "interior",
     required: true,
     helper: ODOMETER_HELPER,
   },
   {
-    angle: "registration",
-    label: "Registration & Insurance",
-    instruction: "Clear photo of the registration and insurance documents.",
-    icon: "📄",
-    category: "interior",
-    required: true,
-    helper: REGISTRATION_HELPER,
-  },
-  {
     angle: "windshield",
     label: "Windshield",
-    instruction: "From the driver seat — show windshield condition.",
+    instruction: "Still in the driver seat — show windshield condition.",
     icon: "🪟",
     category: "interior",
     required: true,
@@ -479,24 +473,42 @@ export const PHOTO_ANGLES: PhotoStep[] = [
   {
     angle: "radio_climate",
     label: "Radio & Climate",
-    instruction: "Photograph the radio and climate control panel.",
+    instruction: "Still in the driver seat — photograph the radio and climate panel.",
     icon: "📻",
     category: "interior",
     required: true,
     helper: INTERIOR_NIGHT_HELPER,
   },
   {
-    angle: "lf_corner",
-    label: "Front 3/4 Left",
-    instruction: "Show the whole left-front (LF) of the vehicle.",
-    icon: "↖️",
+    angle: "registration",
+    label: "Registration & Insurance",
+    instruction: "Docs from the driver seat / visor / glove — date and VIN readable.",
+    icon: "📄",
+    category: "interior",
+    required: true,
+    helper: REGISTRATION_HELPER,
+  },
+  {
+    angle: "driver_door_in",
+    label: "Driver Door — Interior",
+    instruction: "Step out, leave the driver door open, and photograph facing in.",
+    icon: "🚪",
+    category: "interior",
+    required: true,
+    helper: INTERIOR_NIGHT_HELPER,
+  },
+  {
+    angle: "driver_doors",
+    label: "Driver Side Doors",
+    instruction: "While at the driver side — both door panels, full length.",
+    icon: "⬅️",
     category: "exterior",
     required: true,
   },
   {
     angle: "lf_fender",
     label: "LF Fender",
-    instruction: "Close-up of the left-front fender condition.",
+    instruction: "Still at the left-front — close-up of the LF fender.",
     icon: "🛡️",
     category: "detail",
     required: true,
@@ -520,9 +532,17 @@ export const PHOTO_ANGLES: PhotoStep[] = [
     helper: WHEEL_HELPER,
   },
   {
+    angle: "lf_corner",
+    label: "Front 3/4 Left",
+    instruction: "Step back at the left-front — show the whole LF 3/4.",
+    icon: "↖️",
+    category: "exterior",
+    required: true,
+  },
+  {
     angle: "front",
     label: "Front",
-    instruction: "Stand low — show the full front including the lower bumper.",
+    instruction: "Walk to the front — stand low, full bumper in frame.",
     icon: "⬆️",
     category: "exterior",
     required: true,
@@ -530,7 +550,7 @@ export const PHOTO_ANGLES: PhotoStep[] = [
   {
     angle: "rf_corner",
     label: "Front 3/4 Right",
-    instruction: "Show the whole right-front (RF) of the vehicle.",
+    instruction: "Continue clockwise to the right-front — whole RF 3/4.",
     icon: "↗️",
     category: "exterior",
     required: true,
@@ -538,7 +558,7 @@ export const PHOTO_ANGLES: PhotoStep[] = [
   {
     angle: "rf_fender",
     label: "RF Fender",
-    instruction: "Close-up of the right-front fender condition.",
+    instruction: "Close-up of the right-front fender while you are there.",
     icon: "🛡️",
     category: "detail",
     required: true,
@@ -562,9 +582,18 @@ export const PHOTO_ANGLES: PhotoStep[] = [
     helper: WHEEL_HELPER,
   },
   {
+    angle: "passenger_front_in",
+    label: "Passenger Front Interior",
+    instruction: "Open the front passenger door and photograph the interior.",
+    icon: "💺",
+    category: "interior",
+    required: true,
+    helper: INTERIOR_NIGHT_HELPER,
+  },
+  {
     angle: "passenger_doors",
     label: "Passenger Doors",
-    instruction: "Capture both passenger-side doors — full door panels visible.",
+    instruction: "While on the passenger side — both door panels, full length.",
     icon: "➡️",
     category: "exterior",
     required: true,
@@ -572,7 +601,7 @@ export const PHOTO_ANGLES: PhotoStep[] = [
   {
     angle: "rr_quarter_panel",
     label: "RR Quarter Panel",
-    instruction: "Show the right-rear quarter panel condition.",
+    instruction: "Walk to the right-rear — quarter panel close-up.",
     icon: "📐",
     category: "detail",
     required: true,
@@ -598,23 +627,41 @@ export const PHOTO_ANGLES: PhotoStep[] = [
   {
     angle: "rr_corner",
     label: "Rear 3/4 Right",
-    instruction: "Show the whole right-rear (RR) of the vehicle.",
+    instruction: "Step back at the right-rear — whole RR 3/4.",
     icon: "↘️",
     category: "exterior",
     required: true,
   },
   {
+    angle: "passenger_rear_in",
+    label: "Passenger Rear Interior",
+    instruction: "Open the passenger rear door and photograph the interior.",
+    icon: "💺",
+    category: "interior",
+    required: true,
+    helper: INTERIOR_NIGHT_HELPER,
+  },
+  {
     angle: "rear",
     label: "Rear",
-    instruction: "Straight-on rear view — show the full rear of the vehicle.",
+    instruction: "Straight-on rear — full bumper, lights, and hatch.",
     icon: "⬇️",
     category: "exterior",
     required: true,
   },
   {
+    angle: "trunk_interior",
+    label: "Trunk / Rear Hatch",
+    instruction: "Open the trunk or hatch and photograph the cargo area.",
+    icon: "📦",
+    category: "interior",
+    required: true,
+    helper: INTERIOR_NIGHT_HELPER,
+  },
+  {
     angle: "lr_corner",
     label: "Rear 3/4 Left",
-    instruction: "Show the whole left-rear (LR) of the vehicle.",
+    instruction: "Continue to the left-rear — whole LR 3/4.",
     icon: "↙️",
     category: "exterior",
     required: true,
@@ -622,7 +669,7 @@ export const PHOTO_ANGLES: PhotoStep[] = [
   {
     angle: "lr_quarter_panel",
     label: "LR Quarter Panel",
-    instruction: "Show the left-rear quarter panel condition.",
+    instruction: "Close-up of the left-rear quarter panel while you are there.",
     icon: "📐",
     category: "detail",
     required: true,
@@ -646,23 +693,6 @@ export const PHOTO_ANGLES: PhotoStep[] = [
     helper: WHEEL_HELPER,
   },
   {
-    angle: "driver_doors",
-    label: "Driver Side Doors",
-    instruction: "Capture both driver-side doors — full door panels visible.",
-    icon: "⬅️",
-    category: "exterior",
-    required: true,
-  },
-  {
-    angle: "driver_door_in",
-    label: "Driver Door — Interior",
-    instruction: "Open the driver door and photograph facing in.",
-    icon: "🚪",
-    category: "interior",
-    required: true,
-    helper: INTERIOR_NIGHT_HELPER,
-  },
-  {
     angle: "driver_rear_door_in",
     label: "Driver Rear Door — Interior",
     instruction: "Open the driver-side rear door and photograph facing in.",
@@ -672,36 +702,9 @@ export const PHOTO_ANGLES: PhotoStep[] = [
     helper: INTERIOR_NIGHT_HELPER,
   },
   {
-    angle: "trunk_interior",
-    label: "Trunk / Rear Hatch",
-    instruction: "Photograph the inside of the trunk or rear hatch area.",
-    icon: "📦",
-    category: "interior",
-    required: true,
-    helper: INTERIOR_NIGHT_HELPER,
-  },
-  {
-    angle: "passenger_rear_in",
-    label: "Passenger Rear Interior",
-    instruction: "Open the passenger rear door and photograph the interior.",
-    icon: "💺",
-    category: "interior",
-    required: true,
-    helper: INTERIOR_NIGHT_HELPER,
-  },
-  {
-    angle: "passenger_front_in",
-    label: "Passenger Front Interior",
-    instruction: "Photograph the front passenger area from the open door.",
-    icon: "💺",
-    category: "interior",
-    required: true,
-    helper: INTERIOR_NIGHT_HELPER,
-  },
-  {
     angle: "engine_oil",
     label: "Engine Oil Level",
-    instruction: "Show the dipstick with the engine oil level visible.",
+    instruction: "Last stop — hood up, dipstick with oil level visible.",
     icon: "🛢️",
     category: "detail",
     required: true,
