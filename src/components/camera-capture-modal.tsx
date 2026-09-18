@@ -13,7 +13,6 @@ import {
   FlashlightOff,
 } from "lucide-react";
 import { Button } from "./ui/button";
-import { PhotoFrameGuide } from "./photo-frame-guide";
 import { PhotoExampleThumb } from "./photo-example-image";
 import { PhotoStep } from "@/lib/types";
 import { compressUploadPhoto, fileToDataUrl } from "@/lib/utils";
@@ -708,23 +707,15 @@ export function CameraCaptureModal({
       )}
 
       {phase === "live" && (
-        <>
-          <PhotoFrameGuide
-            category={photoStep.category}
-            angle={photoStep.angle}
-            mode="fullscreen"
-            className="photo-guide-overlay"
-          />
-          <PhotoExampleThumb
-            angle={photoStep.angle}
-            label={photoStep.label}
-            className={
-              isLandscape
-                ? "absolute z-20 w-[8rem] h-[4.5rem] left-3 top-[max(5rem,env(safe-area-inset-top))]"
-                : "absolute z-20 w-[7.5rem] h-[4.25rem] left-3 bottom-[calc(max(7rem,env(safe-area-inset-bottom))+1rem)]"
-            }
-          />
-        </>
+        <PhotoExampleThumb
+          angle={photoStep.angle}
+          label={photoStep.label}
+          className={
+            isLandscape
+              ? "absolute z-20 w-[8rem] h-[4.5rem] left-3 top-[max(5rem,env(safe-area-inset-top))]"
+              : "absolute z-20 w-[7.5rem] h-[4.25rem] left-3 bottom-[calc(max(7rem,env(safe-area-inset-bottom))+1rem)]"
+          }
+        />
       )}
 
       {phase === "preview" && previewUrl && (
@@ -800,8 +791,7 @@ export function CameraCaptureModal({
               Take photo
             </Button>
             <p className="text-center text-white/70 text-xs mt-3 mb-1 px-2 leading-snug">
-              Need a flashlight or the ghost silhouette to line up this angle?
-              Take photo cannot show an overlay. Use Live preview.
+              Need a continuous flashlight? Use Live preview.
             </p>
             <button
               type="button"
@@ -823,18 +813,13 @@ export function CameraCaptureModal({
       )}
 
       {phase === "live" && (
-        <>
-          <CameraHeader
-            photoNumber={photoNumber}
-            totalPhotos={totalPhotos}
-            label={photoStep.label}
-            instruction={photoStep.instruction}
-            onClose={handleClose}
-          />
-          <p className="absolute left-3 right-3 z-20 top-[max(4.6rem,calc(env(safe-area-inset-top)+3.4rem))] text-center text-[11px] font-medium text-emerald-200/90 drop-shadow pointer-events-none">
-            Line this angle up with the ghost outline
-          </p>
-        </>
+        <CameraHeader
+          photoNumber={photoNumber}
+          totalPhotos={totalPhotos}
+          label={photoStep.label}
+          instruction={photoStep.instruction}
+          onClose={handleClose}
+        />
       )}
 
       {phase === "preview" && (
@@ -899,21 +884,10 @@ export function CameraCaptureModal({
               : "bottom-0 left-0 right-0 flex flex-col items-center gap-3 bg-gradient-to-t from-black/85 via-black/50 to-transparent pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-10 px-4"
           }`}
         >
-          {!isLandscape && (
-            <>
-              {showLandscapeTip && (
-                <p className="text-center text-emerald-400/80 text-xs mb-2 drop-shadow px-3">
-                  Tip: rotate to landscape for vehicle photos
-                </p>
-              )}
-              <p className="text-center text-white/80 text-sm mb-3 drop-shadow px-2">
-                {photoStep.category === "interior"
-                  ? "Center the subject in the green box"
-                  : photoStep.category === "detail"
-                  ? "Move closer — center the area in the green rectangle"
-                  : "Step back — fit the whole vehicle inside the green rectangle"}
-              </p>
-            </>
+          {!isLandscape && showLandscapeTip && (
+            <p className="text-center text-emerald-400/80 text-xs mb-2 drop-shadow px-3">
+              Tip: rotate to landscape for vehicle photos
+            </p>
           )}
           <div
             className={
