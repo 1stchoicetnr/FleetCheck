@@ -28,6 +28,8 @@ import {
   localSetVehicleArchived,
   localSetVehiclePowertrain,
   localUpsertVehicle,
+  localGetFleetSettings,
+  localSetFleetSettings,
 } from "./local-store";
 import { persistCheckoutPhoto } from "./photo-store";
 import { notifyCheckoutReport } from "./slack-notify";
@@ -42,6 +44,8 @@ import {
   pgSetVehicleArchived,
   pgSetVehiclePowertrain,
   pgUpsertVehicle,
+  pgGetFleetSettings,
+  pgSetFleetSettings,
 } from "./postgres-store";
 import { sharedBackendMode } from "./shared-config";
 import {
@@ -51,6 +55,7 @@ import {
   SharedVehicle,
   UpsertVehicleInput,
 } from "./shared-types";
+import type { FleetSettings } from "@/lib/fleet-settings";
 
 export class SharedBackendError extends Error {
   status: number;
@@ -357,4 +362,20 @@ export function backendStatus() {
     mode: sharedBackendMode(),
     production: process.env.NODE_ENV === "production" || process.env.VERCEL === "1",
   };
+}
+
+export async function getFleetSettings(): Promise<FleetSettings> {
+  const mode = assertConfigured();
+  return mode === "postgres" ? pgGetFleetSettings() : localGetFleetSettings();
+}
+
+export async function updateFleetSettings(
+  patch: Partial<FleetSettings>
+): Promise<FleetSettings> {
+  const mode = assertConfigured();
+  const next =
+    mode === "postgres"
+      ? await pgSetFleetSettings(patch)
+      : await localSetFleetSettings(patch);
+  return next;
 }

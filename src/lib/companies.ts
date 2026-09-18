@@ -54,7 +54,7 @@ export function companyIdForFleetType(type: string): string {
 }
 
 const CHECKLISTS: Record<ChecklistId, PhotoStep[]> = {
-  // Clockwise walkaround minus the four tire-tread slots (tread is Precheck).
+  // One clockwise lap grouped by station (interiors at each door, not a second circle).
   radcab_default: walkaroundPhotoSteps(PHOTO_ANGLES),
   generic_30: walkaroundPhotoSteps(PHOTO_ANGLES),
 };

@@ -88,23 +88,27 @@ Open [http://localhost:3000](http://localhost:3000)
 
 ## Policy notes (Rad Cab default checklist)
 
-Walkaround order (photo slots after Precheck — tire-tread photos dropped; same list for Rad Cab and other companies):
+Walkaround order (photo slots after Precheck — tire-tread photos dropped; same list for Rad Cab and other companies). **One clockwise lap grouped by station** so the driver does not circle the van twice:
 
-1. **Docs from the driver seat** — odometer/fuel, registration (date + VIN), windshield, radio/climate
-2. **Clockwise exterior from the LF corner** — LF cluster (corner, fender, wheel) → front → RF cluster → passenger doors → RR cluster → rear → LR cluster → driver-side doors
-3. **Wheels as you pass each corner** (tread rating is on Precheck, not four extra photos)
-4. **Interior** — driver door in, driver rear, trunk/cargo, passenger rear, passenger front
-5. **Engine bay last** — oil dipstick
+1. **Driver seat** — odometer/fuel, windshield, radio/climate, registration (date + VIN)
+2. **Driver door / left-front** — driver door interior, driver-side doors, LF fender, LF wheel, LF 3/4
+3. **Front**
+4. **Passenger front** — RF 3/4, RF fender, RF wheel, passenger front interior, passenger doors
+5. **Passenger rear** — RR quarter, RR wheel, RR 3/4, passenger rear interior
+6. **Rear** — straight-on rear, trunk/hatch
+7. **Driver rear** — LR 3/4, LR quarter, LR wheel, driver rear interior
+8. **Engine bay last** — oil dipstick (keep oily hands off the rest of the walk)
 
 - Example angle photos live in `public/photo-examples/` (paths keyed by angle, not step number).
-- Tire tread is a Precheck rating (Good / Fair / Low / Bald). Wheel-well photos: close enough and well-lit is OK.
+- Tire tread is a Precheck rating **per tire** (LF / RF / LR / RR: Good / Fair / Low / Bald). Wheel-well photos: close enough and well-lit is OK.
+- Clover serial (last digits of the borrowed card reader) is **optional**.
+- EV units: Oil and Fuel on Precheck are N/A and do not block advance.
 - Registration: office mainly needs date + VIN readable.
 - Dash / odometer: office mainly needs mileage readable.
 - Night interiors: turn the lights on.
-- **Take photo** opens the phone’s native rear camera (one-shot flash only — the web page cannot add a flashlight to that picker).
-- **Live preview + flashlight** is the path for dark shots that need a continuous torch. Rear / environment lens is the default; Flip Camera is available. Torch uses `applyConstraints({ advanced: [{ torch }] })` on Android Chrome. It is typically **not** available in iOS Safari — use Take photo + Camera flash, or the Control Center LED torch.
-- Choose from library is a backup.
-- Photos are compressed on the phone (max edge 1920px, JPEG ~0.75) before upload.
+- **Take photo** opens the phone’s native rear camera. **Choose from library** is the backup. There is no in-app Live Preview or flashlight.
+- Super Admin **Add Vehicle** writes to the shared checkout unit list (not IndexedDB-only).
+- Super Admin can allow/deny **drivers adding vehicles** on Checkout (default off).
 
 ## PWA
 

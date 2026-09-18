@@ -7,11 +7,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Image as ImageIcon,
-  Video,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { ProgressBar } from "./ui/progress-bar";
-import { CameraCaptureModal } from "./camera-capture-modal";
 import { PhotoExampleCard } from "./photo-example-image";
 import { compressImageFile } from "@/lib/utils";
 import { PHOTO_ANGLES, PhotoAngle, PhotoStep, walkaroundPhotoSteps } from "@/lib/types";
@@ -56,7 +54,6 @@ export function GuidedPhotoCapture({
   }, [photos, requiredPhotos]);
 
   const [viewIndex, setViewIndex] = useState(0);
-  const [cameraOpen, setCameraOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [pickError, setPickError] = useState("");
 
@@ -77,7 +74,6 @@ export function GuidedPhotoCapture({
   const handleAccept = (dataUrl: string) => {
     if (!current) return;
     onAccept(current.angle, dataUrl);
-    setCameraOpen(false);
     setPickError("");
 
     if (isLastStep) {
@@ -120,11 +116,6 @@ export function GuidedPhotoCapture({
     galleryInputRef.current?.click();
   };
 
-  const openLivePreview = () => {
-    if (!current || value) return;
-    setCameraOpen(true);
-  };
-
   const retakeAccepted = () => {
     if (!current) return;
     onClear(current.angle);
@@ -132,7 +123,6 @@ export function GuidedPhotoCapture({
   };
 
   const goToStep = (index: number) => {
-    setCameraOpen(false);
     setViewIndex(index);
   };
 
@@ -272,18 +262,9 @@ export function GuidedPhotoCapture({
                     {busy ? "Saving photo…" : "Take photo"}
                   </button>
                   <p className="photo-capture-flash-hint text-center text-xs text-gray-400 leading-snug px-1">
-                    Dark shot? Take photo can use your phone’s flash, but not a
-                    flashlight. Open Live preview for a continuous flashlight.
+                    Dark shot? Use the phone Camera flash on Take photo, or
+                    Choose from library.
                   </p>
-                  <button
-                    type="button"
-                    onClick={openLivePreview}
-                    className="photo-live-btn w-full h-12 rounded-xl border border-amber-700/60 bg-amber-950/30 text-amber-100 text-sm font-semibold hover:bg-amber-950/50 transition-colors flex items-center justify-center gap-2"
-                  >
-                    <Video className="h-4 w-4" />
-                    <span className="photo-live-label-full">Live preview + flashlight</span>
-                    <span className="photo-live-label-short hidden">Live preview</span>
-                  </button>
                   <button
                     type="button"
                     onClick={openGallery}
@@ -297,15 +278,6 @@ export function GuidedPhotoCapture({
               </div>
             )}
       </div>
-
-      <CameraCaptureModal
-        open={cameraOpen}
-        photoStep={current}
-        photoNumber={currentIndex + 1}
-        totalPhotos={requiredPhotos.length}
-        onClose={() => setCameraOpen(false)}
-        onAccept={handleAccept}
-      />
 
       <div className="photo-step-nav flex items-center gap-2">
         {canGoPrev && (

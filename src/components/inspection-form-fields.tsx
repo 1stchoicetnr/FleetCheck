@@ -2,22 +2,27 @@
 
 import {
   applyPowertrainToForm,
+  asTreadByTire,
   CheckoutInspectionForm,
   CLOVER_SERIAL_HINT,
   CLOVER_SERIAL_LABEL,
   cloverSerialOf,
   DAMAGE_SIDES,
   DamageSide,
+  evSkipsCheck,
   INSPECTION_CHECK_ITEMS,
+  InspectionFieldKey,
   ISSUE_FLAG_ITEMS,
   Powertrain,
   precheckNote,
   suggestedTrafficLight,
   TRAFFIC_LIGHT_ITEMS,
   TREAD_LEVEL_ITEMS,
+  TREAD_TIRE_ITEMS,
+  TreadLevel,
+  TreadTireId,
   toggleDamageMark,
   TrafficLight,
-  TreadLevel,
   UNIT_NUMBER_LABEL,
   validateInspectionForm,
 } from "@/lib/inspection-form";
@@ -28,13 +33,17 @@ function YesNoButtons({
   label,
   value,
   onChange,
+  error,
+  fieldKey,
 }: {
   label: string;
   value: "yes" | "no" | "";
   onChange: (next: "yes" | "no") => void;
+  error?: boolean;
+  fieldKey?: InspectionFieldKey;
 }) {
   return (
-    <div>
+    <div data-precheck-field={fieldKey}>
       <p className="block text-base font-semibold text-gray-900 mb-1.5">
         {label}
       </p>
@@ -55,13 +64,20 @@ function YesNoButtons({
                 ? next === "yes"
                   ? "border-green-600 bg-green-50 text-green-800"
                   : "border-red-600 bg-red-50 text-red-800"
-                : "border-gray-200 bg-white text-gray-700"
+                : error
+                  ? "border-red-500 bg-red-50 text-red-800"
+                  : "border-gray-200 bg-white text-gray-700"
             )}
           >
             {text}
           </button>
         ))}
       </div>
+      {error && (
+        <p className="mt-1.5 text-sm font-medium text-red-600">
+          Required — pick Yes or No.
+        </p>
+      )}
     </div>
   );
 }
@@ -71,18 +87,29 @@ export function InspectionFormFields({
   powertrain,
   unitNumber,
   onChange,
+  showErrors = false,
 }: {
   form: CheckoutInspectionForm;
   powertrain: Powertrain;
   unitNumber?: string;
   onChange: (next: CheckoutInspectionForm) => void;
+  showErrors?: boolean;
 }) {
   const synced = applyPowertrainToForm(form, powertrain);
   const validation = validateInspectionForm(synced, powertrain);
+  const missing = new Set(showErrors ? validation.missing : []);
   const suggested = suggestedTrafficLight(synced);
+  const tread = asTreadByTire(synced.treadByTire, synced.treadLevel);
 
   const update = (next: CheckoutInspectionForm) => {
     onChange(applyPowertrainToForm(next, powertrain));
+  };
+
+  const setTread = (tire: TreadTireId, level: TreadLevel) => {
+    update({
+      ...synced,
+      treadByTire: { ...tread, [tire]: level },
+    });
   };
 
   const setTrafficLight = (trafficLight: TrafficLight) => {
@@ -96,11 +123,13 @@ export function InspectionFormFields({
     });
   };
 
+  const fieldError = (key: InspectionFieldKey) => missing.has(key);
+
   return (
     <div className="space-y-5">
       <div className="rounded-xl border border-brand-200 bg-brand-50/70 px-3 py-2 text-sm text-brand-900">
         {powertrain === "ev"
-          ? "EV unit — Oil and Fuel level are N/A. Aim for about a minute."
+          ? "EV unit — Oil and Fuel level are N/A and will not block Precheck. Aim for about a minute."
           : "Gas unit — Oil and Fuel level are required. Aim for about a minute."}
       </div>
 
@@ -118,9 +147,10 @@ export function InspectionFormFields({
             </p>
           </div>
         ) : null}
-        <label className="block">
+        <label className="block" data-precheck-field="cloverSerial">
           <span className="block text-base font-semibold text-gray-900 mb-1.5">
-            {CLOVER_SERIAL_LABEL}
+            {CLOVER_SERIAL_LABEL}{" "}
+            <span className="font-medium text-gray-500">(optional)</span>
           </span>
           <input
             value={cloverSerialOf(synced)}
@@ -133,10 +163,24 @@ export function InspectionFormFields({
             spellCheck={false}
             maxLength={8}
             placeholder="e.g. 4821"
-            className="w-full rounded-xl border-2 border-gray-300 px-4 py-3 text-lg min-h-[52px]"
+            className={cn(
+              "w-full rounded-xl border-2 px-4 py-3 text-lg min-h-[52px]",
+              fieldError("cloverSerial")
+                ? "border-red-500 bg-red-50"
+                : "border-gray-300"
+            )}
           />
-          <span className="mt-1.5 block text-sm text-gray-500">
-            {CLOVER_SERIAL_HINT}
+          <span
+            className={cn(
+              "mt-1.5 block text-sm",
+              fieldError("cloverSerial")
+                ? "font-medium text-red-600"
+                : "text-gray-500"
+            )}
+          >
+            {fieldError("cloverSerial")
+              ? "If you enter a Clover serial, use about 3–4 letters/digits."
+              : CLOVER_SERIAL_HINT}
           </span>
         </label>
       </div>
@@ -145,21 +189,25 @@ export function InspectionFormFields({
         <h3 className="text-base font-bold text-gray-900">Walkaround checks</h3>
         {INSPECTION_CHECK_ITEMS.map((item) => {
           const state = synced.checks[item.id];
-          const skipped = state.result === "na";
+          const skipped = evSkipsCheck(item.id, powertrain) || state.result === "na";
           const okLabel = item.id === "tirePressure" ? "Yes" : "OK";
           const issueLabel = item.id === "tirePressure" ? "No" : "Issue";
+          const error = !skipped && fieldError(item.id);
           return (
             <div
               key={item.id}
+              data-precheck-field={item.id}
               className={cn(
                 "rounded-2xl border p-3 space-y-2",
                 skipped
                   ? "border-gray-200 bg-gray-50"
-                  : state.result === "ok"
-                    ? "border-green-300 bg-green-50/40"
-                    : state.result === "not_ok"
-                      ? "border-amber-300 bg-amber-50/50"
-                      : "border-gray-200 bg-white"
+                  : error
+                    ? "border-red-500 bg-red-50"
+                    : state.result === "ok"
+                      ? "border-green-300 bg-green-50/40"
+                      : state.result === "not_ok"
+                        ? "border-amber-300 bg-amber-50/50"
+                        : "border-gray-200 bg-white"
               )}
             >
               <div className="flex items-center justify-between gap-3">
@@ -170,7 +218,12 @@ export function InspectionFormFields({
                   )}
                   {skipped && (
                     <p className="text-xs font-semibold text-gray-500">
-                      N/A for EV
+                      N/A for EV — skipped
+                    </p>
+                  )}
+                  {error && (
+                    <p className="text-xs font-medium text-red-600 mt-1">
+                      Required — pick {okLabel} or {issueLabel}.
                     </p>
                   )}
                 </div>
@@ -195,7 +248,9 @@ export function InspectionFormFields({
                         "min-h-[44px] min-w-[72px] rounded-xl border-2 text-sm font-semibold px-3",
                         state.result === "ok"
                           ? "border-green-600 bg-green-600 text-white"
-                          : "border-gray-300 bg-white text-gray-700"
+                          : error
+                            ? "border-red-400 bg-white text-red-800"
+                            : "border-gray-300 bg-white text-gray-700"
                       )}
                     >
                       {okLabel}
@@ -215,7 +270,9 @@ export function InspectionFormFields({
                         "min-h-[44px] min-w-[72px] rounded-xl border-2 text-sm font-semibold px-3",
                         state.result === "not_ok"
                           ? "border-amber-600 bg-amber-500 text-white"
-                          : "border-gray-300 bg-white text-gray-700"
+                          : error
+                            ? "border-red-400 bg-white text-red-800"
+                            : "border-gray-300 bg-white text-gray-700"
                       )}
                     >
                       {issueLabel}
@@ -244,36 +301,64 @@ export function InspectionFormFields({
         })}
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-3">
         <h3 className="text-base font-bold text-gray-900">Tread level</h3>
         <p className="text-sm text-gray-600">
-          Replaces the four tire-tread photos. One rating for the van.
+          Rate each tire (LF / RF / LR / RR). Replaces the four tire-tread photos.
         </p>
-        <div className="grid grid-cols-2 gap-2">
-          {TREAD_LEVEL_ITEMS.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() =>
-                update({ ...synced, treadLevel: item.id as TreadLevel })
-              }
-              className={cn(
-                "min-h-[56px] rounded-xl border-2 px-3 py-2 text-left",
-                synced.treadLevel === item.id
-                  ? item.id === "good"
-                    ? "border-green-600 bg-green-50 text-green-800"
-                    : item.id === "fair"
-                      ? "border-sky-600 bg-sky-50 text-sky-800"
-                      : item.id === "low"
-                        ? "border-amber-500 bg-amber-50 text-amber-900"
-                        : "border-red-600 bg-red-50 text-red-800"
-                  : "border-gray-200 bg-white text-gray-800"
-              )}
-            >
-              <span className="block font-bold">{item.label}</span>
-              <span className="block text-xs opacity-80">{item.hint}</span>
-            </button>
-          ))}
+        <div className="space-y-3">
+          {TREAD_TIRE_ITEMS.map((tire) => {
+            const error = fieldError(`tread.${tire.id}`);
+            return (
+              <div
+                key={tire.id}
+                data-precheck-field={`tread.${tire.id}`}
+                className={cn(
+                  "rounded-2xl border p-3 space-y-2",
+                  error
+                    ? "border-red-500 bg-red-50"
+                    : "border-gray-200 bg-white"
+                )}
+              >
+                <p className="font-semibold text-gray-900">
+                  {tire.label}{" "}
+                  <span className="font-medium text-gray-500">
+                    · {tire.longLabel}
+                  </span>
+                </p>
+                {error && (
+                  <p className="text-xs font-medium text-red-600">
+                    Required — pick Good, Fair, Low, or Bald.
+                  </p>
+                )}
+                <div className="grid grid-cols-4 gap-1.5">
+                  {TREAD_LEVEL_ITEMS.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setTread(tire.id, item.id as TreadLevel)}
+                      className={cn(
+                        "min-h-[48px] rounded-xl border-2 px-1 py-1 text-center text-sm font-bold",
+                        tread[tire.id] === item.id
+                          ? item.id === "good"
+                            ? "border-green-600 bg-green-50 text-green-800"
+                            : item.id === "fair"
+                              ? "border-sky-600 bg-sky-50 text-sky-800"
+                              : item.id === "low"
+                                ? "border-amber-500 bg-amber-50 text-amber-900"
+                                : "border-red-600 bg-red-50 text-red-800"
+                          : error
+                            ? "border-red-300 bg-white text-red-800"
+                            : "border-gray-200 bg-white text-gray-800"
+                      )}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -282,11 +367,15 @@ export function InspectionFormFields({
         <YesNoButtons
           label="Interior"
           value={synced.interiorClean}
+          fieldKey="interiorClean"
+          error={fieldError("interiorClean")}
           onChange={(interiorClean) => update({ ...synced, interiorClean })}
         />
         <YesNoButtons
           label="Exterior"
           value={synced.exteriorClean}
+          fieldKey="exteriorClean"
+          error={fieldError("exteriorClean")}
           onChange={(exteriorClean) => update({ ...synced, exteriorClean })}
         />
       </div>
@@ -371,7 +460,12 @@ export function InspectionFormFields({
         </div>
       </div>
 
-      <div className="space-y-2">
+      <div
+        className="space-y-2"
+        data-precheck-field={
+          fieldError("trafficNote") ? "trafficNote" : "trafficLight"
+        }
+      >
         <h3 className="text-base font-bold text-gray-900">Traffic light</h3>
         <p className="text-sm text-gray-600">
           Suggested:{" "}
@@ -380,6 +474,11 @@ export function InspectionFormFields({
           </span>{" "}
           — {TRAFFIC_LIGHT_ITEMS.find((item) => item.id === suggested)?.action}
         </p>
+        {fieldError("trafficLight") && (
+          <p className="text-sm font-medium text-red-600">
+            Required — pick Green, Yellow, or Red.
+          </p>
+        )}
         <div className="grid grid-cols-3 gap-2">
           {TRAFFIC_LIGHT_ITEMS.map((item) => {
             const selected = synced.trafficLight === item.id;
@@ -396,6 +495,8 @@ export function InspectionFormFields({
                       : item.id === "yellow"
                         ? "border-amber-500 bg-amber-400 text-amber-950"
                         : "border-red-600 bg-red-600 text-white"
+                    : fieldError("trafficLight")
+                      ? "border-red-500 bg-red-50 text-red-800"
                     : item.id === "green"
                       ? "border-green-200 bg-green-50 text-green-800"
                       : item.id === "yellow"
@@ -422,8 +523,20 @@ export function InspectionFormFields({
                 ? "Why is this van parked? Office will see this."
                 : "Short note — then you can drive and take photos."
             }
-            className="w-full rounded-xl border-2 border-gray-300 px-3 py-2.5 text-sm min-h-[48px]"
+            className={cn(
+              "w-full rounded-xl border-2 px-3 py-2.5 text-sm min-h-[48px]",
+              fieldError("trafficNote")
+                ? "border-red-500 bg-red-50"
+                : "border-gray-300"
+            )}
           />
+        )}
+        {fieldError("trafficNote") && (
+          <p className="text-sm font-medium text-red-600">
+            {synced.trafficLight === "red"
+              ? "Add a short note for Red — park it."
+              : "Add a short note for Yellow — note & drive."}
+          </p>
         )}
         {synced.trafficLight === "red" && (
           <p className="text-sm text-red-800 bg-red-50 rounded-xl px-3 py-2">
@@ -438,8 +551,8 @@ export function InspectionFormFields({
         )}
       </div>
 
-      {validation.ok === false && (
-        <p className="text-sm text-amber-800 bg-amber-50 rounded-xl px-3 py-2">
+      {showErrors && validation.ok === false && (
+        <p className="text-sm text-red-800 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
           {validation.error}
         </p>
       )}

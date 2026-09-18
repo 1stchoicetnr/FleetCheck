@@ -14,7 +14,14 @@ import {
   getChecks,
   getCompanies,
 } from "@/lib/storage";
+import {
+  fetchFleetSettings,
+  fetchVehicles,
+  SharedVehicle,
+  updateFleetSettings,
+} from "@/lib/checkout-api";
 import { Company, Fleet, User, Vehicle, fleetTypeLabel } from "@/lib/types";
+import { formatUnitLabel } from "@/lib/utils";
 import Link from "next/link";
 import { buildLastCheckMap, formatLastCheckLine } from "@/lib/vehicle-check-status";
 import { Plus, Bell, Users, Truck } from "lucide-react";
@@ -31,6 +38,11 @@ export default function AdminPage() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [checks, setChecks] = useState<Awaited<ReturnType<typeof getChecks>>>([]);
+  const [checkoutUnits, setCheckoutUnits] = useState<SharedVehicle[]>([]);
+  const [unitsError, setUnitsError] = useState("");
+  const [allowDriverAdd, setAllowDriverAdd] = useState(false);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [settingsError, setSettingsError] = useState("");
 
   useEffect(() => {
     if (!loading && !user) router.replace("/");
@@ -51,6 +63,22 @@ export default function AdminPage() {
       setChecks(c);
       setCompanies(companiesList);
     });
+    fetchVehicles(undefined, { includeArchived: false })
+      .then((list) => {
+        setCheckoutUnits(list);
+        setUnitsError("");
+      })
+      .catch((err: Error) => {
+        setUnitsError(err.message || "Could not load checkout units.");
+      });
+    fetchFleetSettings()
+      .then((settings) => {
+        setAllowDriverAdd(settings.allowDriverAddVehicles);
+        setSettingsError("");
+      })
+      .catch((err: Error) => {
+        setSettingsError(err.message || "Could not load Super Admin settings.");
+      });
   }, []);
 
   if (loading || !user) return null;
@@ -86,6 +114,93 @@ export default function AdminPage() {
             Add New Vehicle
           </Button>
         </Link>
+
+        <Card>
+          <CardContent className="py-5 space-y-3">
+            <CardTitle>Driver settings</CardTitle>
+            <p className="text-xs text-gray-500">
+              Drivers can always pick an existing active unit. Adding a brand-new
+              plate from Checkout is off unless you turn this on.
+            </p>
+            {settingsError && (
+              <p className="text-sm font-medium text-red-600">{settingsError}</p>
+            )}
+            <button
+              type="button"
+              disabled={settingsSaving}
+              onClick={async () => {
+                const next = !allowDriverAdd;
+                setSettingsSaving(true);
+                setSettingsError("");
+                try {
+                  const settings = await updateFleetSettings({
+                    allowDriverAddVehicles: next,
+                  });
+                  setAllowDriverAdd(settings.allowDriverAddVehicles);
+                } catch (err) {
+                  setSettingsError(
+                    err instanceof Error
+                      ? err.message
+                      : "Could not save this setting."
+                  );
+                } finally {
+                  setSettingsSaving(false);
+                }
+              }}
+              className={`w-full min-h-[52px] rounded-xl border-2 px-4 text-left ${
+                allowDriverAdd
+                  ? "border-brand-600 bg-brand-50 text-brand-900"
+                  : "border-gray-200 bg-white text-gray-800"
+              }`}
+            >
+              <span className="block font-semibold">
+                Allow drivers to add vehicles
+              </span>
+              <span className="block text-xs mt-0.5">
+                {settingsSaving
+                  ? "Saving…"
+                  : allowDriverAdd
+                    ? "On — Checkout shows “Plate not listed? Add unit / plate”."
+                    : "Off — drivers must pick from the active unit list (default)."}
+              </span>
+            </button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="py-5 space-y-3">
+            <CardTitle>Checkout units (shared)</CardTitle>
+            <p className="text-xs text-gray-500">
+              Active vans on the shared list Checkout uses. Super Admin add
+              writes here so the unit shows up in the Unit # picker.
+            </p>
+            {unitsError && (
+              <p className="text-sm font-medium text-red-600">{unitsError}</p>
+            )}
+            {checkoutUnits.map((v) => (
+              <div
+                key={v.id}
+                className="flex justify-between items-center py-2 border-b border-gray-100 last:border-0"
+              >
+                <div>
+                  <p className="font-medium">
+                    {formatUnitLabel(v.unitNumber, v.plate)}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {v.year} {v.make} {v.model}
+                    {v.powertrain === "ev" ? " · EV" : " · Gas"}
+                  </p>
+                </div>
+                <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 rounded-full px-2 py-1">
+                  Active
+                </span>
+              </div>
+            ))}
+            {checkoutUnits.length === 0 && !unitsError && (
+              <p className="text-sm text-gray-500">No active checkout units.</p>
+            )}
+          </CardContent>
+        </Card>
 
         <Card>
           <CardContent className="py-5 space-y-3">

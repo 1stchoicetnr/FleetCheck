@@ -76,6 +76,7 @@ export default function CheckoutCapturePage() {
     createEmptyInspectionForm("gas")
   );
   const [phase, setPhase] = useState<"inspect" | "photos">("inspect");
+  const [showPrecheckErrors, setShowPrecheckErrors] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) router.replace("/");
@@ -174,6 +175,24 @@ export default function CheckoutCapturePage() {
   const canSubmit =
     photosComplete && Boolean(signatureDataUrl) && inspectionValid.ok;
 
+  const tryContinueToPhotos = () => {
+    if (!canContinueToPhotos(inspectionForm, powertrain)) {
+      setShowPrecheckErrors(true);
+      setPhase("inspect");
+      window.setTimeout(() => {
+        const invalid = document.querySelector<HTMLElement>(
+          "[data-precheck-field].border-red-500, [data-precheck-field] .border-red-500, [data-precheck-field] .text-red-600"
+        );
+        invalid
+          ?.closest("[data-precheck-field]")
+          ?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 50);
+      return;
+    }
+    setShowPrecheckErrors(false);
+    setPhase("photos");
+  };
+
   const handleSubmit = useCallback(async () => {
     if (!user || !draft || !vehicle) return;
     if (!signatureDataUrl) {
@@ -182,6 +201,7 @@ export default function CheckoutCapturePage() {
     }
     if (!inspectionValid.ok) {
       setSubmitError(inspectionValid.error);
+      setShowPrecheckErrors(true);
       setPhase("inspect");
       return;
     }
@@ -380,11 +400,7 @@ export default function CheckoutCapturePage() {
             type="button"
             size="sm"
             variant={phase === "photos" ? "primary" : "secondary"}
-            onClick={() => {
-              if (!canContinueToPhotos(inspectionForm, powertrain)) return;
-              setPhase("photos");
-            }}
-            disabled={!canContinueToPhotos(inspectionForm, powertrain)}
+            onClick={tryContinueToPhotos}
           >
             2. Photo walkaround
           </Button>
@@ -404,6 +420,7 @@ export default function CheckoutCapturePage() {
               powertrain={powertrain}
               unitNumber={vehicle.unitNumber}
               onChange={setInspectionForm}
+              showErrors={showPrecheckErrors}
             />
             {redPark && inspectionValid.ok ? (
               <div className="space-y-3">
@@ -446,12 +463,11 @@ export default function CheckoutCapturePage() {
               <Button
                 size="xl"
                 className="w-full"
-                disabled={!canContinueToPhotos(inspectionForm, powertrain)}
-                onClick={() => setPhase("photos")}
+                onClick={tryContinueToPhotos}
               >
                 {canContinueToPhotos(inspectionForm, powertrain)
                   ? "Continue to photo walkaround"
-                  : "Finish Precheck to continue"}
+                  : "Continue — fill required fields"}
               </Button>
             )}
           </div>
