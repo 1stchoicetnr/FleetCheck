@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { UserRole, ROLE_LABELS } from "@/lib/types";
@@ -13,14 +13,25 @@ const LOGIN_OPTIONS: {
   icon: typeof Car;
   color: string;
   bg: string;
+  href?: string;
 }[] = [
   {
     role: "driver",
     title: "Driver",
-    description: "Check in/out, photos, mileage, report issues",
+    description: "Checkout Report — the only path Office can see",
     icon: Car,
     color: "text-green-700",
     bg: "bg-green-100 hover:bg-green-200 border-green-300",
+    href: "/checkout",
+  },
+  {
+    role: "management",
+    title: "Office",
+    description: "Review checkout reports — PIN 1357",
+    icon: Truck,
+    color: "text-indigo-700",
+    bg: "bg-indigo-100 hover:bg-indigo-200 border-indigo-300",
+    href: "/office",
   },
   {
     role: "tech",
@@ -29,14 +40,6 @@ const LOGIN_OPTIONS: {
     icon: Wrench,
     color: "text-orange-700",
     bg: "bg-orange-100 hover:bg-orange-200 border-orange-300",
-  },
-  {
-    role: "management",
-    title: "Management",
-    description: "View records, reports, and alerts",
-    icon: Truck,
-    color: "text-blue-700",
-    bg: "bg-blue-100 hover:bg-blue-200 border-blue-300",
   },
   {
     role: "super_admin",
@@ -53,14 +56,16 @@ export default function LoginPage() {
   const router = useRouter();
   const [signingIn, setSigningIn] = useState<UserRole | null>(null);
   const [error, setError] = useState("");
+  const destRef = useRef("/dashboard");
 
   useLayoutEffect(() => {
     if (!loading && user) {
-      router.replace("/dashboard");
+      router.replace(destRef.current);
     }
   }, [user, loading, router]);
 
-  const handleSelect = async (role: UserRole) => {
+  const handleSelect = async (role: UserRole, href = "/dashboard") => {
+    destRef.current = href;
     setError("");
     setSigningIn(role);
     try {
@@ -68,7 +73,7 @@ export default function LoginPage() {
       if (!ok) {
         setError("Could not sign in. Please refresh and try again.");
       } else {
-        router.replace("/dashboard");
+        router.replace(href);
       }
     } catch {
       setError("Something went wrong. Please refresh and try again.");
@@ -103,9 +108,25 @@ export default function LoginPage() {
         <h2 className="text-xl font-bold text-gray-900 mb-2 text-center">
           Select your role to continue
         </h2>
-        <p className="text-gray-500 text-center mb-6">
+        <p className="text-gray-500 text-center mb-4">
           Tap your role below to sign in
         </p>
+        <p className="text-sm text-center text-brand-800 bg-brand-50 border border-brand-200 rounded-xl px-3 py-2 mb-6">
+          Office only lists <strong>Checkout Reports</strong>. The old Check In /
+          Out Slack PDF does not appear in Office.
+        </p>
+
+        <button
+          type="button"
+          disabled={signingIn !== null}
+          onClick={() => handleSelect("driver", "/checkout")}
+          className="w-full mb-4 rounded-2xl bg-brand-600 text-white p-5 text-left shadow-md active:scale-[0.98] disabled:opacity-60"
+        >
+          <p className="text-xl font-bold">Start Checkout Report</p>
+          <p className="text-brand-100 text-sm mt-1">
+            Dispatchers: use this. Office reviews these reports only.
+          </p>
+        </button>
 
         <div className="space-y-4">
           {LOGIN_OPTIONS.map((option) => {
@@ -116,7 +137,7 @@ export default function LoginPage() {
                 key={option.role}
                 type="button"
                 disabled={signingIn !== null}
-                onClick={() => handleSelect(option.role)}
+                onClick={() => handleSelect(option.role, option.href)}
                 className={`w-full flex items-center gap-4 p-5 rounded-2xl border-2 text-left transition-all active:scale-[0.98] min-h-[80px] disabled:opacity-60 ${option.bg}`}
               >
                 <div className={`rounded-xl p-3 bg-white/70 ${option.color}`}>

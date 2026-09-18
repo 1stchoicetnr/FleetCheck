@@ -202,6 +202,8 @@ export async function sendTestSlackAlert(
       vehicle: {
         id: "test",
         fleetId: "test",
+        companyId: "company-rad-cab",
+        unitNumber: "00",
         plate: "TEST-000",
         make: "Test",
         model: "Vehicle",

@@ -70,6 +70,20 @@ export function canPerformCheckIn(role: string): boolean {
   return role === "driver" || role === "super_admin";
 }
 
+export function canStartCheckout(role: string): boolean {
+  return (
+    role === "driver" ||
+    role === "super_admin" ||
+    role === "management"
+  );
+}
+
+export function canReviewCheckout(role: string): boolean {
+  return (
+    role === "super_admin" || role === "management" || role === "tech"
+  );
+}
+
 export function canManageKnownIssues(role: string): boolean {
   return role === "super_admin" || role === "tech" || role === "management";
 }

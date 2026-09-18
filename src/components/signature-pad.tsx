@@ -37,6 +37,8 @@ export function SignaturePad({ onSignature, value }: SignaturePadProps) {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.strokeStyle = "#1e3a8a";
     ctx.lineWidth = 2.5;
     ctx.lineCap = "round";
@@ -44,7 +46,7 @@ export function SignaturePad({ onSignature, value }: SignaturePadProps) {
 
     if (value) {
       const img = new Image();
-      img.onload = () => ctx.drawImage(img, 0, 0);
+      img.onload = () => ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       img.src = value;
     }
 

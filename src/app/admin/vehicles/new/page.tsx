@@ -7,20 +7,24 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
 import { canManageFleet } from "@/lib/fleet-config";
-import { getFleets, saveVehicle } from "@/lib/storage";
-import { Fleet, Vehicle, fleetTypeLabel } from "@/lib/types";
+import { getCompanies, getFleets, saveVehicle } from "@/lib/storage";
+import { Company, Fleet, Vehicle, fleetTypeLabel } from "@/lib/types";
 import { generateId } from "@/lib/utils";
+import { defaultCompanyId } from "@/lib/companies";
 
 export default function NewVehiclePage() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const [fleets, setFleets] = useState<Fleet[]>([]);
+  const [companies, setCompanies] = useState<Company[]>([]);
   const [form, setForm] = useState({
     plate: "",
     make: "",
     model: "",
     year: new Date().getFullYear().toString(),
     fleetId: "",
+    companyId: "",
+    unitNumber: "",
     vin: "",
   });
   const [saving, setSaving] = useState(false);
@@ -31,19 +35,26 @@ export default function NewVehiclePage() {
   }, [user, loading, router]);
 
   useEffect(() => {
-    getFleets().then((f) => {
+    Promise.all([getFleets(), getCompanies()]).then(([f, c]) => {
       setFleets(f);
-      if (f.length > 0) setForm((prev) => ({ ...prev, fleetId: f[0].id }));
+      setCompanies(c);
+      setForm((prev) => ({
+        ...prev,
+        fleetId: prev.fleetId || f[0]?.id || "",
+        companyId: prev.companyId || defaultCompanyId(c),
+      }));
     });
   }, []);
 
   const handleSubmit = async () => {
-    if (!form.plate || !form.make || !form.model || !form.fleetId) return;
+    if (!form.plate || !form.make || !form.model || !form.fleetId || !form.companyId) return;
     setSaving(true);
 
     const vehicle: Vehicle = {
       id: generateId(),
       fleetId: form.fleetId,
+      companyId: form.companyId,
+      unitNumber: form.unitNumber.trim() || form.plate.toUpperCase(),
       plate: form.plate.toUpperCase(),
       make: form.make,
       model: form.model,
@@ -64,6 +75,29 @@ export default function NewVehiclePage() {
     <div className="min-h-screen bg-gray-50">
       <AppHeader title="Add Vehicle" backHref="/admin" />
       <div className="max-w-lg mx-auto px-4 py-6 space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">
+            Company
+          </label>
+          <select
+            value={form.companyId}
+            onChange={(e) => setForm({ ...form, companyId: e.target.value })}
+            className="w-full rounded-xl border border-gray-300 px-4 py-3 text-base min-h-[48px] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none"
+          >
+            {companies.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <Input
+          label="Unit #"
+          placeholder="12"
+          value={form.unitNumber}
+          onChange={(e) => setForm({ ...form, unitNumber: e.target.value })}
+          hint="Fleet unit number. Plate is used if you leave this blank."
+        />
         <Input
           label="License Plate"
           placeholder="ABC-1234"
