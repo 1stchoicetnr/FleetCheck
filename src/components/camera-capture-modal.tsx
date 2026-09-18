@@ -36,6 +36,7 @@ import {
   waitForVideoFrame,
 } from "@/lib/camera";
 import { restoreNaturalOrientation } from "@/lib/orientation";
+import { CheckoutFeedbackButton } from "@/components/checkout-feedback";
 
 type Phase = "native" | "live" | "preview";
 
@@ -508,14 +509,17 @@ export function CameraCaptureModal({
             {photoStep.label}
           </h3>
         </div>
-        <button
-          type="button"
-          onClick={handleClose}
-          className="flex-shrink-0 p-2 rounded-full bg-white/15 text-white min-h-[44px] min-w-[44px] flex items-center justify-center"
-          aria-label="Close live preview"
-        >
-          <X className="h-6 w-6" />
-        </button>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <CheckoutFeedbackButton variant="overlay" />
+          <button
+            type="button"
+            onClick={handleClose}
+            className="flex-shrink-0 p-2 rounded-full bg-white/15 text-white min-h-[44px] min-w-[44px] flex items-center justify-center"
+            aria-label="Close live preview"
+          >
+            <X className="h-6 w-6" />
+          </button>
+        </div>
       </div>
 
       <div className="camera-overlay-stage">
