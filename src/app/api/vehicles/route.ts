@@ -1,10 +1,12 @@
+import { errorResponse } from "@/lib/server/api-error";
 import { NextRequest, NextResponse } from "next/server";
 import {
   findVehicleByPlate,
   listVehicles,
-  SharedBackendError,
   upsertVehicle,
 } from "@/lib/server/checkout-repo";
+import { isOfficeRequest, assertOfficePin } from "@/lib/server/office-pin";
+import { getFleetSettings } from "@/lib/server/checkout-repo";
 import { parseIncludeArchived } from "@/lib/vehicle-archive";
 import type { Powertrain } from "@/lib/inspection-form";
 
@@ -22,6 +24,8 @@ export async function GET(req: NextRequest) {
         { headers: { "Cache-Control": "no-store" } }
       );
     }
+    // Drivers may list one company's units; the all-company list is office-only.
+    if (!companyId) await assertOfficePin(req);
     const includeArchived = parseIncludeArchived(
       req.nextUrl.searchParams.get("includeArchived")
     );
@@ -31,11 +35,7 @@ export async function GET(req: NextRequest) {
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch (err) {
-    const status = err instanceof SharedBackendError ? err.status : 500;
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to load vehicles" },
-      { status }
-    );
+    return errorResponse(err, "Failed to load vehicles");
   }
 }
 
@@ -56,6 +56,30 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+    if (!(await isOfficeRequest(req))) {
+      // Driver (no PIN): may add a new unit only when the office toggle is on,
+      // or update just the powertrain of a unit that already exists.
+      const existing = await findVehicleByPlate(body.companyId, body.plate);
+      if (existing) {
+        const vehicle = await upsertVehicle({
+          companyId: existing.companyId,
+          unitNumber: existing.unitNumber,
+          plate: existing.plate,
+          make: existing.make,
+          model: existing.model,
+          year: existing.year,
+          powertrain: body.powertrain ?? existing.powertrain,
+        });
+        return NextResponse.json({ vehicle }, { status: 200 });
+      }
+      const settings = await getFleetSettings();
+      if (!settings.allowDriverAddVehicles) {
+        return NextResponse.json(
+          { error: "Only the office can add units right now." },
+          { status: 403 }
+        );
+      }
+    }
     const vehicle = await upsertVehicle({
       companyId: body.companyId,
       unitNumber: body.unitNumber,
@@ -67,10 +91,6 @@ export async function POST(req: Request) {
     });
     return NextResponse.json({ vehicle }, { status: 201 });
   } catch (err) {
-    const status = err instanceof SharedBackendError ? err.status : 500;
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to save unit" },
-      { status }
-    );
+    return errorResponse(err, "Failed to save unit");
   }
 }

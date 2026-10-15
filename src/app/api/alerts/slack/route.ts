@@ -1,3 +1,4 @@
+import { errorResponse } from "@/lib/server/api-error";
 import { NextRequest, NextResponse } from "next/server";
 import {
   SLACK_CHANNEL_DEFAULTS,
@@ -10,10 +11,15 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const channel = body.channel as SlackRoute;
     const message = body.message as string;
-    const webhookUrl = body.webhookUrl as string | undefined;
-    const channelId =
-      (body.channelId as string | undefined) ?? slackChannelIdForRoute(channel);
+    // Webhooks come only from server env vars; any webhookUrl/channelId in the body is ignored.
+    const channelId = slackChannelIdForRoute(channel);
 
+    if (channel !== "rad_cab" && channel !== "equipment") {
+      return NextResponse.json({ ok: false, error: "Unknown channel" }, { status: 400 });
+    }
+    if (typeof message !== "string" || message.length > 3000) {
+      return NextResponse.json({ ok: false, error: "Message is missing or too long" }, { status: 400 });
+    }
     if (!message || !channel) {
       return NextResponse.json(
         { ok: false, error: "Missing message or channel" },
@@ -26,7 +32,7 @@ export async function POST(req: NextRequest) {
         ? process.env.SLACK_WEBHOOK_RAD_CAB_REPAIRS
         : process.env.SLACK_WEBHOOK_EQUIPMENT_ISSUES;
 
-    const url = envUrl || webhookUrl;
+    const url = envUrl;
     if (!url) {
       return NextResponse.json(
         { ok: false, error: "No Slack webhook configured for this channel" },
@@ -66,18 +72,15 @@ export async function POST(req: NextRequest) {
     });
 
     if (!slackRes.ok) {
-      const detail = await slackRes.text();
+      console.error("[api] slack alert failed:", slackRes.status, await slackRes.text());
       return NextResponse.json(
-        { ok: false, error: detail || "Slack request failed" },
+        { ok: false, error: "Slack request failed" },
         { status: 502 }
       );
     }
 
     return NextResponse.json({ ok: true });
   } catch (err) {
-    return NextResponse.json(
-      { ok: false, error: err instanceof Error ? err.message : "Unknown error" },
-      { status: 500 }
-    );
+    return errorResponse(err, "Unknown error");
   }
 }

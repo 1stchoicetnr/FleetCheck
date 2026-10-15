@@ -1,7 +1,8 @@
+import { assertOfficePin } from "@/lib/server/office-pin";
+import { errorResponse } from "@/lib/server/api-error";
 import { NextResponse } from "next/server";
 import {
   getFleetSettings,
-  SharedBackendError,
   updateFleetSettings,
 } from "@/lib/server/checkout-repo";
 
@@ -16,16 +17,13 @@ export async function GET() {
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch (err) {
-    const status = err instanceof SharedBackendError ? err.status : 500;
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to load settings" },
-      { status }
-    );
+    return errorResponse(err, "Failed to load settings");
   }
 }
 
 export async function PATCH(req: Request) {
   try {
+    await assertOfficePin(req);
     const body = (await req.json()) as {
       allowDriverAddVehicles?: boolean;
     };
@@ -40,10 +38,6 @@ export async function PATCH(req: Request) {
     });
     return NextResponse.json({ settings });
   } catch (err) {
-    const status = err instanceof SharedBackendError ? err.status : 500;
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to save settings" },
-      { status }
-    );
+    return errorResponse(err, "Failed to save settings");
   }
 }

@@ -1,8 +1,8 @@
+import { errorResponse } from "@/lib/server/api-error";
 import { NextResponse } from "next/server";
 import {
   getReport,
   patchReportPhotoFlags,
-  SharedBackendError,
 } from "@/lib/server/checkout-repo";
 import { assertOfficePin } from "@/lib/server/office-pin";
 import { PhotoAngle } from "@/lib/types";
@@ -64,11 +64,7 @@ export async function GET(
       },
     });
   } catch (err) {
-    const status = err instanceof SharedBackendError ? err.status : 500;
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to load photo" },
-      { status }
-    );
+    return errorResponse(err, "Failed to load photo");
   }
 }
 
@@ -77,7 +73,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string; angle: string }> }
 ) {
   try {
-    assertOfficePin(req);
+    await assertOfficePin(req);
     const { id, angle } = await params;
     const body = (await req.json()) as {
       flaggedDamage?: boolean;
@@ -95,12 +91,6 @@ export async function PATCH(
     });
     return NextResponse.json({ report });
   } catch (err) {
-    const status =
-      (err as { status?: number }).status ||
-      (err instanceof SharedBackendError ? err.status : 500);
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to update photo flag" },
-      { status }
-    );
+    return errorResponse(err, "Failed to update photo flag");
   }
 }

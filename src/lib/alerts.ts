@@ -106,9 +106,7 @@ function slackSkipReason(
   if (!channelEnabled(channel, ns)) {
     return `The ${slackChannelLabel(channel)} channel is turned off in Alert Settings`;
   }
-  if (!webhookForChannel(channel, ns)) {
-    return `No webhook URL for ${slackChannelLabel(channel)} — add one in Alert Settings`;
-  }
+  // Webhook URLs live only in server env vars (SLACK_WEBHOOK_*); the server reports if one is missing.
   return undefined;
 }
 
@@ -120,15 +118,13 @@ async function sendSlackAlert(
   if (skip) return { sent: false, error: skip };
 
   const channel = slackChannelForFleet(payload.fleetType);
-  const webhookUrl = webhookForChannel(channel, ns)!;
-  const channelId = channelIdForRoute(channel, ns);
   const message = formatSlackMessage(payload, channel);
 
   try {
     const res = await fetch("/api/alerts/slack", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ channel, channelId, message, webhookUrl }),
+      body: JSON.stringify({ channel, message }),
     });
     const data = (await res.json()) as { ok?: boolean; error?: string };
     if (!res.ok || !data.ok) {

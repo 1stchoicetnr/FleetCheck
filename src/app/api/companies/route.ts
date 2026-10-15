@@ -1,3 +1,4 @@
+import { errorResponse } from "@/lib/server/api-error";
 import { NextResponse } from "next/server";
 import { listCompanies, SharedBackendError } from "@/lib/server/checkout-repo";
 
@@ -12,10 +13,6 @@ export async function GET() {
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch (err) {
-    const status = err instanceof SharedBackendError ? err.status : 500;
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to load companies" },
-      { status }
-    );
+    return errorResponse(err, "Failed to load companies");
   }
 }

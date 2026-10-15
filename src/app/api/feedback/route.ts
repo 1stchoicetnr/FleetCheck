@@ -9,7 +9,6 @@ import {
 } from "@/lib/feedback";
 import {
   feedbackMailerConfigured,
-  feedbackToEmail,
   formatFeedbackEmail,
   sendFeedbackEmail,
 } from "@/lib/server/feedback-mail";
@@ -41,7 +40,6 @@ export async function GET() {
   return NextResponse.json(
     {
       configured: feedbackMailerConfigured(),
-      to: feedbackToEmail(),
     },
     { headers: { "Cache-Control": "no-store" } }
   );
@@ -101,8 +99,7 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           ok: false,
-          error:
-            "Feedback email is not wired yet. Set RESEND_API_KEY and a verified FEEDBACK_FROM_EMAIL on Vercel, then redeploy.",
+          error: "Feedback is not set up yet. Please tell the office.",
         },
         { status: 503 }
       );
@@ -111,11 +108,11 @@ export async function POST(req: Request) {
     const result = await sendFeedbackEmail(payload);
     return NextResponse.json({ ok: true, id: result.id });
   } catch (err) {
+    console.error("[api] feedback send failed:", err);
     return NextResponse.json(
       {
         ok: false,
-        error:
-          err instanceof Error ? err.message : "Could not send feedback email.",
+        error: "Could not send feedback. Please try again.",
       },
       { status: 500 }
     );

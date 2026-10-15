@@ -22,11 +22,19 @@ export interface SharedVehicle {
   createdAt: string;
 }
 
+function officePinHeader(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  const pin = sessionStorage.getItem("fleetcheck-office-pin") || "";
+  return pin ? { "x-office-pin": pin } : {};
+}
+
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...init,
+    credentials: "same-origin",
     headers: {
       "Content-Type": "application/json",
+      ...officePinHeader(),
       ...(init?.headers || {}),
     },
   });

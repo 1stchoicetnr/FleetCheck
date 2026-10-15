@@ -17,6 +17,9 @@ export function getStoredOfficePin(): string {
 }
 
 export function lockOffice(): void {
+  if (typeof window !== "undefined") {
+    void fetch("/api/office-pin", { method: "DELETE" }).catch(() => {});
+  }
   sessionStorage.removeItem(OFFICE_UNLOCK_KEY);
   sessionStorage.removeItem(OFFICE_PIN_KEY);
 }

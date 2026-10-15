@@ -1,4 +1,3 @@
-import { DEFAULT_OFFICE_PIN } from "@/lib/companies";
 
 export function isProductionRuntime(): boolean {
   return process.env.NODE_ENV === "production" || process.env.VERCEL === "1";
@@ -17,7 +16,8 @@ export function hasBlobToken(): boolean {
 }
 
 export function getOfficePin(): string {
-  return (process.env.OFFICE_PIN || DEFAULT_OFFICE_PIN).trim();
+  // No fallback: unset OFFICE_PIN means office access is closed.
+  return (process.env.OFFICE_PIN || "").trim();
 }
 
 /** Production / Vercel preview must use Postgres. File store is next-dev only. */

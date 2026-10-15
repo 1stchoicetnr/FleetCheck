@@ -1,8 +1,9 @@
+import { errorResponse } from "@/lib/server/api-error";
+import { assertOfficePin } from "@/lib/server/office-pin";
 import { NextResponse } from "next/server";
 import {
   createReport,
   listReports,
-  SharedBackendError,
 } from "@/lib/server/checkout-repo";
 import type { CheckoutInspectionForm } from "@/lib/inspection-form";
 import { CheckoutType } from "@/lib/types";
@@ -10,19 +11,16 @@ import { CheckoutType } from "@/lib/types";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    await assertOfficePin(req);
     const reports = await listReports();
     return NextResponse.json(
       { reports },
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch (err) {
-    const status = err instanceof SharedBackendError ? err.status : 500;
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to load reports" },
-      { status }
-    );
+    return errorResponse(err, "Failed to load reports");
   }
 }
 
@@ -60,6 +58,13 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+    if (
+      body.signatureDataUrl &&
+      (!/^data:image\/(png|jpeg|webp);base64,/.test(body.signatureDataUrl) ||
+        body.signatureDataUrl.length > 700_000)
+    ) {
+      return NextResponse.json({ error: "Signature image is invalid or too large" }, { status: 400 });
+    }
     const report = await createReport({
       companyId: body.companyId,
       vehicleId: body.vehicleId,
@@ -78,10 +83,6 @@ export async function POST(req: Request) {
     });
     return NextResponse.json({ report }, { status: 201 });
   } catch (err) {
-    const status = err instanceof SharedBackendError ? err.status : 500;
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to create report" },
-      { status }
-    );
+    return errorResponse(err, "Failed to create report");
   }
 }

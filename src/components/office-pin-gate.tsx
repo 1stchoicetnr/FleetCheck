@@ -31,6 +31,8 @@ export function OfficePinGate({ children }: { children: ReactNode }) {
     }
     unlockOffice(pin);
     setUnlocked(true);
+    const next = new URLSearchParams(window.location.search).get("next");
+    if (next && next.startsWith("/admin")) window.location.assign(next);
   };
 
   if (!ready) {
