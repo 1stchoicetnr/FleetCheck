@@ -11,6 +11,7 @@ import {
   Powertrain,
   validateInspectionForm,
 } from "@/lib/inspection-form";
+import { earlierReports } from "@/lib/report-priors";
 import { reportHasPhotoDamage } from "@/lib/photo-flags";
 import {
   VEHICLE_ARCHIVED_MESSAGE,
@@ -21,26 +22,37 @@ import {
   localGetReport,
   localGetVehicle,
   localListCompanies,
+  localDeleteReport,
+  localListAlerts,
+  localDeleteAlert,
   localListReports,
   localListVehicles,
   localPatchReport,
   localPutReport,
+  localSetAlertArchived,
+  localSetReportArchived,
   localSetVehicleArchived,
   localSetVehiclePowertrain,
   localUpsertVehicle,
   localGetFleetSettings,
   localSetFleetSettings,
 } from "./local-store";
-import { persistCheckoutPhoto } from "./photo-store";
+import { deleteStoredPhoto, persistCheckoutPhoto } from "./photo-store";
+import { recordCheckoutAlerts } from "./report-alerts";
 import { notifyCheckoutReport } from "./slack-notify";
 import {
   pgFindVehicleByPlate,
   pgGetReport,
   pgGetVehicle,
   pgListCompanies,
+  pgDeleteAlert,
+  pgDeleteReport,
+  pgListAlerts,
   pgListReports,
   pgListVehicles,
   pgPutReport,
+  pgSetAlertArchived,
+  pgSetReportArchived,
   pgSetVehicleArchived,
   pgSetVehiclePowertrain,
   pgUpsertVehicle,
@@ -52,6 +64,7 @@ import {
   CheckoutReportInput,
   CheckoutReviewInput,
   ListVehiclesOptions,
+  SharedOfficeAlert,
   SharedVehicle,
   UpsertVehicleInput,
 } from "./shared-types";
@@ -169,9 +182,13 @@ export async function setVehiclePowertrain(
   return vehicle;
 }
 
-export async function listReports(): Promise<CheckoutReport[]> {
+export async function listReports(options?: {
+  includeArchived?: boolean;
+}): Promise<CheckoutReport[]> {
   const mode = assertConfigured();
-  return mode === "postgres" ? pgListReports() : localListReports();
+  const reports = mode === "postgres" ? await pgListReports() : await localListReports();
+  if (options?.includeArchived) return reports;
+  return reports.filter((report) => !report.archivedAt);
 }
 
 export async function getReport(id: string): Promise<CheckoutReport | undefined> {
@@ -184,10 +201,16 @@ export async function getPriorReports(
   currentId?: string,
   limit = 2
 ): Promise<CheckoutReport[]> {
-  const reports = await listReports();
-  return reports
-    .filter((r) => r.vehicleId === vehicleId && r.id !== currentId)
-    .slice(0, limit);
+  const reports = (await listReports()).filter((report) => report.vehicleId === vehicleId);
+  if (!currentId) return reports.slice(0, limit);
+  const current =
+    reports.find((report) => report.id === currentId) ?? (await getReport(currentId));
+  if (!current) return reports.slice(0, limit);
+  return earlierReports(
+    reports.filter((report) => report.vehicleId === current.vehicleId),
+    current,
+    limit
+  );
 }
 
 export async function createReport(
@@ -249,6 +272,9 @@ export async function createReport(
   const saved =
     mode === "postgres" ? await pgPutReport(report) : await localPutReport(report);
   void notifyCheckoutReport(saved);
+  void recordCheckoutAlerts(saved).catch((err) => {
+    console.error("[alerts] checkout report alerts failed:", err);
+  });
   return saved;
 }
 
@@ -283,7 +309,13 @@ export async function addReportPhoto(
       reportHasPhotoDamage({ photos }) ||
       inspectionFormFlagsReport(existing.inspectionForm),
   };
-  return mode === "postgres" ? pgPutReport(updated) : localPutReport(updated);
+  const saved = mode === "postgres" ? await pgPutReport(updated) : await localPutReport(updated);
+  if (flags?.flaggedDamage) {
+    void recordCheckoutAlerts(saved).catch((err) => {
+      console.error("[alerts] photo flag alerts failed:", err);
+    });
+  }
+  return saved;
 }
 
 export async function patchReportPhotoFlags(
@@ -322,7 +354,61 @@ export async function patchReportPhotoFlags(
       reportHasPhotoDamage({ photos }) ||
       inspectionFormFlagsReport(existing.inspectionForm),
   };
-  return mode === "postgres" ? pgPutReport(updated) : localPutReport(updated);
+  const saved = mode === "postgres" ? await pgPutReport(updated) : await localPutReport(updated);
+  if (flags.flaggedDamage) {
+    void recordCheckoutAlerts(saved).catch((err) => {
+      console.error("[alerts] photo flag alerts failed:", err);
+    });
+  }
+  return saved;
+}
+
+export async function setReportArchived(
+  id: string,
+  archived: boolean
+): Promise<CheckoutReport> {
+  const mode = assertConfigured();
+  const report =
+    mode === "postgres"
+      ? await pgSetReportArchived(id, archived)
+      : await localSetReportArchived(id, archived);
+  if (!report) throw new SharedBackendError("Checkout report not found", 404);
+  return report;
+}
+
+export async function deleteReport(id: string): Promise<void> {
+  const mode = assertConfigured();
+  const existing = mode === "postgres" ? await pgGetReport(id) : await localGetReport(id);
+  if (!existing) throw new SharedBackendError("Checkout report not found", 404);
+  await Promise.all(existing.photos.map((photo) => deleteStoredPhoto(photo.dataUrl)));
+  const removed = mode === "postgres" ? await pgDeleteReport(id) : await localDeleteReport(id);
+  if (!removed) throw new SharedBackendError("Checkout report not found", 404);
+}
+
+export async function listOfficeAlerts(includeArchived = false): Promise<SharedOfficeAlert[]> {
+  const mode = assertConfigured();
+  return mode === "postgres"
+    ? pgListAlerts(includeArchived)
+    : localListAlerts(includeArchived);
+}
+
+export async function setOfficeAlertArchived(
+  id: string,
+  archived: boolean
+): Promise<SharedOfficeAlert> {
+  const mode = assertConfigured();
+  const alert =
+    mode === "postgres"
+      ? await pgSetAlertArchived(id, archived)
+      : await localSetAlertArchived(id, archived);
+  if (!alert) throw new SharedBackendError("Alert not found", 404);
+  return alert;
+}
+
+export async function deleteOfficeAlert(id: string): Promise<void> {
+  const mode = assertConfigured();
+  const removed = mode === "postgres" ? await pgDeleteAlert(id) : await localDeleteAlert(id);
+  if (!removed) throw new SharedBackendError("Alert not found", 404);
 }
 
 export async function reviewReport(

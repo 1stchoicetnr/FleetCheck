@@ -750,6 +750,19 @@ export async function getVehicleByQR(
   );
 }
 
+export async function deleteVehicle(id: string): Promise<void> {
+  const db = await getDB();
+  const checks = await db.getAllFromIndex("checks", "by-vehicle", id);
+  const alerts = await db.getAll("alerts");
+  const tx = db.transaction(["vehicles", "checks", "alerts"], "readwrite");
+  await tx.objectStore("vehicles").delete(id);
+  for (const check of checks) await tx.objectStore("checks").delete(check.id);
+  for (const alert of alerts) {
+    if (alert.vehicleId === id) await tx.objectStore("alerts").delete(alert.id);
+  }
+  await tx.done;
+}
+
 export async function saveVehicle(vehicle: Vehicle): Promise<void> {
   await (await getDB()).put("vehicles", vehicle);
 }
@@ -774,6 +787,19 @@ export async function getChecksByVehicle(
   vehicleId: string
 ): Promise<CheckRecord[]> {
   return (await getDB()).getAllFromIndex("checks", "by-vehicle", vehicleId);
+}
+
+export async function setCheckArchived(id: string, archived: boolean): Promise<void> {
+  const db = await getDB();
+  const check = await db.get("checks", id);
+  if (!check) return;
+  if (archived) check.archivedAt = new Date().toISOString();
+  else delete check.archivedAt;
+  await db.put("checks", check);
+}
+
+export async function deleteCheck(id: string): Promise<void> {
+  await (await getDB()).delete("checks", id);
 }
 
 export async function saveCheck(check: CheckRecord): Promise<void> {
@@ -862,11 +888,26 @@ export async function deleteCheckInDraft(id: string): Promise<void> {
 }
 
 // Alerts
-export async function getAlerts(): Promise<FleetAlert[]> {
+export async function getAlerts(includeArchived = false): Promise<FleetAlert[]> {
   const alerts = await (await getDB()).getAll("alerts");
-  return alerts.sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-  );
+  return alerts
+    .filter((alert) => includeArchived || !alert.archivedAt)
+    .sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+}
+
+export async function setAlertArchived(id: string, archived: boolean): Promise<void> {
+  const db = await getDB();
+  const alert = await db.get("alerts", id);
+  if (!alert) return;
+  if (archived) alert.archivedAt = new Date().toISOString();
+  else delete alert.archivedAt;
+  await db.put("alerts", alert);
+}
+
+export async function deleteAlert(id: string): Promise<void> {
+  await (await getDB()).delete("alerts", id);
 }
 
 export async function saveAlert(alert: FleetAlert): Promise<void> {

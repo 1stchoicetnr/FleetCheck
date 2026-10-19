@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { AppHeader } from "@/components/app-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { OfficePinGate } from "@/components/office-pin-gate";
 import { ReviewStatusBadge } from "@/components/review-status-badge";
 import { CheckoutPhotoComparison } from "@/components/checkout-photo-comparison";
@@ -14,16 +15,18 @@ import {
   PhotoLightbox,
 } from "@/components/photo-lightbox";
 import { useAuth } from "@/hooks/use-auth";
-import { canReviewCheckout } from "@/lib/fleet-config";
+import { canManageOfficeRecords, canReviewCheckout } from "@/lib/fleet-config";
 import { getChecklistForCompany } from "@/lib/companies";
 import { isCheckoutFlagged } from "@/lib/storage";
 import {
+  deleteCheckoutReport,
   fetchCheckoutReport,
   fetchCompanies,
   fetchPriorReports,
   fetchVehicles,
   flagCheckoutPhoto,
   reviewCheckoutReport,
+  setCheckoutReportArchived,
   SharedVehicle,
 } from "@/lib/checkout-api";
 import { getStoredOfficePin } from "@/lib/office-auth";
@@ -78,6 +81,8 @@ export default function OfficeReportDetailPage() {
   const [downloadError, setDownloadError] = useState("");
   const [flaggingAngle, setFlaggingAngle] = useState<PhotoAngle | null>(null);
   const [officeReady, setOfficeReady] = useState(false);
+  const [recordAction, setRecordAction] = useState<null | "archive" | "delete">(null);
+  const [recordBusy, setRecordBusy] = useState(false);
   const markOfficeUnlocked = useCallback(() => setOfficeReady(true), []);
 
   useEffect(() => {
@@ -239,6 +244,29 @@ export default function OfficeReportDetailPage() {
     }
   };
 
+  const handleRecordAction = async () => {
+    if (!report || !recordAction) return;
+    setRecordBusy(true);
+    setSaveError("");
+    try {
+      if (recordAction === "delete") {
+        await deleteCheckoutReport(report.id);
+        router.push("/office");
+        return;
+      }
+      const saved = await setCheckoutReportArchived(report.id, !report.archivedAt);
+      setReport(saved);
+      setRecordAction(null);
+    } catch (err) {
+      setSaveError(
+        err instanceof Error ? err.message : "Could not update this report."
+      );
+      setRecordAction(null);
+    } finally {
+      setRecordBusy(false);
+    }
+  };
+
   if (loading || !user) return null;
 
   return (
@@ -330,6 +358,33 @@ export default function OfficeReportDetailPage() {
                   This unit is archived / out of service. History is kept —
                   drivers no longer see it in Checkout.
                 </p>
+              )}
+              {report.archivedAt && (
+                <p className="text-sm text-gray-700 bg-gray-100 rounded-lg px-2 py-1">
+                  This report is archived and hidden from the default office list.
+                </p>
+              )}
+              {user && canManageOfficeRecords(user.role) && (
+                <div className="flex gap-2 pt-1">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => setRecordAction("archive")}
+                  >
+                    {report.archivedAt ? "Unarchive report" : "Archive report"}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="danger"
+                    className="flex-1"
+                    onClick={() => setRecordAction("delete")}
+                  >
+                    Delete report
+                  </Button>
+                </div>
               )}
               {isCheckoutFlagged(report) && (
                 <p className="text-sm font-semibold text-red-700">
@@ -580,6 +635,24 @@ export default function OfficeReportDetailPage() {
         </div>
         )}
       </OfficePinGate>
+      <ConfirmDialog
+        open={recordAction !== null}
+        title={recordAction === "delete" ? "Delete this report?" : report?.archivedAt ? "Unarchive this report?" : "Archive this report?"}
+        body={
+          recordAction === "delete"
+            ? "This permanently removes the office record and its photos. This cannot be undone."
+            : report?.archivedAt
+              ? "The report will show in the default office list again."
+              : "The report stays on file and disappears from the default office list. Turn on Show archived reports to see it."
+        }
+        confirmLabel={recordAction === "delete" ? "Delete report" : report?.archivedAt ? "Unarchive" : "Archive"}
+        danger={recordAction === "delete"}
+        busy={recordBusy}
+        onConfirm={() => void handleRecordAction()}
+        onCancel={() => {
+          if (!recordBusy) setRecordAction(null);
+        }}
+      />
       <PhotoLightbox
         photos={galleryPhotos}
         index={lightboxIndex}

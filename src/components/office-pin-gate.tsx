@@ -41,7 +41,9 @@ export function OfficePinGate({
     setUnlocked(true);
     onUnlocked?.();
     const next = new URLSearchParams(window.location.search).get("next");
-    if (next && next.startsWith("/admin")) window.location.assign(next);
+        if (next && /^\/(admin|alerts|reports|vehicles|office)(\/|$)/.test(next)) {
+          window.location.assign(next);
+        }
   };
 
   if (!ready) {

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { AppHeader } from "@/components/app-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { OfficePinGate } from "@/components/office-pin-gate";
 import { useAuth } from "@/hooks/use-auth";
 import { canReviewCheckout } from "@/lib/fleet-config";
@@ -34,6 +35,7 @@ export default function OfficeUnitsPage() {
   const [filter, setFilter] = useState<UnitFilter>("active");
   const [savingId, setSavingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState("");
+  const [pendingArchive, setPendingArchive] = useState<SharedVehicle | null>(null);
   const [officeReady, setOfficeReady] = useState(false);
   const markOfficeUnlocked = useCallback(() => setOfficeReady(true), []);
 
@@ -103,13 +105,6 @@ export default function OfficeUnitsPage() {
 
   const handleToggle = async (vehicle: SharedVehicle) => {
     const archived = !isVehicleArchived(vehicle);
-    const label = formatUnitLabel(vehicle.unitNumber, vehicle.plate);
-    const ok = window.confirm(
-      archived
-        ? `Archive ${label}? Drivers will no longer see it in Checkout. Past reports stay in Office.`
-        : `Unarchive ${label}? Drivers will see it again in Checkout.`
-    );
-    if (!ok) return;
     setSavingId(vehicle.id);
     setActionError("");
     try {
@@ -269,7 +264,7 @@ export default function OfficeUnitsPage() {
                         variant={archived ? "primary" : "outline"}
                         className="w-full"
                         disabled={savingId === vehicle.id}
-                        onClick={() => handleToggle(vehicle)}
+                        onClick={() => setPendingArchive(vehicle)}
                       >
                         {archived ? (
                           <ArchiveRestore className="h-4 w-4 mr-1.5" />
@@ -295,6 +290,32 @@ export default function OfficeUnitsPage() {
           )}
         </div>
       </OfficePinGate>
+      <ConfirmDialog
+        open={pendingArchive !== null}
+        title={
+          pendingArchive && isVehicleArchived(pendingArchive)
+            ? "Unarchive this unit?"
+            : "Archive this unit?"
+        }
+        body={
+          pendingArchive && isVehicleArchived(pendingArchive)
+            ? `${pendingArchive ? formatUnitLabel(pendingArchive.unitNumber, pendingArchive.plate) : "This unit"} will show up in Checkout again. This uses your office unlock.`
+            : `${pendingArchive ? formatUnitLabel(pendingArchive.unitNumber, pendingArchive.plate) : "This unit"} will be hidden from Checkout. Past reports stay in Office. This uses your office unlock.`
+        }
+        confirmLabel={
+          pendingArchive && isVehicleArchived(pendingArchive) ? "Unarchive" : "Archive"
+        }
+        busy={pendingArchive != null && savingId === pendingArchive.id}
+        onConfirm={() => {
+          if (!pendingArchive) return;
+          const vehicle = pendingArchive;
+          setPendingArchive(null);
+          void handleToggle(vehicle);
+        }}
+        onCancel={() => {
+          if (!savingId) setPendingArchive(null);
+        }}
+      />
     </div>
   );
 }

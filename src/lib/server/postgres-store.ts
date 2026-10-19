@@ -18,7 +18,12 @@ import {
   sharedSeedReports,
   sharedSeedVehicles,
 } from "./seed-shared";
-import { ListVehiclesOptions, SharedVehicle, UpsertVehicleInput } from "./shared-types";
+import {
+  ListVehiclesOptions,
+  SharedOfficeAlert,
+  SharedVehicle,
+  UpsertVehicleInput,
+} from "./shared-types";
 import type { FleetSettings } from "@/lib/fleet-settings";
 import { DEFAULT_FLEET_SETTINGS } from "@/lib/fleet-settings";
 
@@ -55,6 +60,7 @@ type ReportRow = {
   signature_data_url: string | null;
   signed_at: string | null;
   inspection_form: CheckoutInspectionForm | null;
+  archived_at?: string | null;
 };
 
 function rowToReport(row: ReportRow): CheckoutReport {
@@ -88,6 +94,9 @@ function rowToReport(row: ReportRow): CheckoutReport {
     signatureDataUrl: row.signature_data_url ?? undefined,
     signedAt: row.signed_at ? new Date(row.signed_at).toISOString() : undefined,
     inspectionForm: row.inspection_form ?? undefined,
+    archivedAt: row.archived_at
+      ? new Date(row.archived_at).toISOString()
+      : undefined,
   };
 }
 
@@ -153,6 +162,21 @@ export async function pgMigrateAndSeed(): Promise<void> {
   await sql`ALTER TABLE checkout_reports ADD COLUMN IF NOT EXISTS inspection_form JSONB`;
   await sql`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ`;
   await sql`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS powertrain TEXT`;
+  await sql`ALTER TABLE checkout_reports ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ`;
+  await sql`
+    CREATE TABLE IF NOT EXISTS fleet_alerts (
+      id TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      message TEXT NOT NULL,
+      vehicle_id TEXT NOT NULL,
+      vehicle_plate TEXT NOT NULL,
+      actor_name TEXT NOT NULL,
+      report_id TEXT,
+      created_at TIMESTAMPTZ NOT NULL,
+      read BOOLEAN NOT NULL DEFAULT FALSE,
+      archived_at TIMESTAMPTZ
+    )
+  `;
   await sql`
     CREATE TABLE IF NOT EXISTS fleet_settings (
       id TEXT PRIMARY KEY,
@@ -440,6 +464,106 @@ export async function pgGetFleetSettings(): Promise<FleetSettings> {
   return {
     allowDriverAddVehicles: Boolean(row?.allow_driver_add_vehicles),
   };
+}
+
+export async function pgSetReportArchived(
+  id: string,
+  archived: boolean
+): Promise<CheckoutReport | undefined> {
+  await pgMigrateAndSeed();
+  const sql = sqlClient();
+  const archivedAt = archived ? new Date().toISOString() : null;
+  await sql`
+    UPDATE checkout_reports
+    SET archived_at = ${archivedAt}
+    WHERE id = ${id}
+  `;
+  return pgGetReport(id);
+}
+
+export async function pgDeleteReport(id: string): Promise<boolean> {
+  await pgMigrateAndSeed();
+  const sql = sqlClient();
+  const existing = await pgGetReport(id);
+  if (!existing) return false;
+  await sql`DELETE FROM fleet_alerts WHERE report_id = ${id}`;
+  await sql`DELETE FROM checkout_reports WHERE id = ${id}`;
+  return true;
+}
+
+type AlertRow = {
+  id: string;
+  type: SharedOfficeAlert["type"];
+  message: string;
+  vehicle_id: string;
+  vehicle_plate: string;
+  actor_name: string;
+  report_id: string | null;
+  created_at: string;
+  read: boolean;
+  archived_at: string | null;
+};
+
+function rowToAlert(row: AlertRow): SharedOfficeAlert {
+  return {
+    id: row.id,
+    type: row.type,
+    message: row.message,
+    vehicleId: row.vehicle_id,
+    vehiclePlate: row.vehicle_plate,
+    actorName: row.actor_name,
+    reportId: row.report_id ?? undefined,
+    createdAt: new Date(row.created_at).toISOString(),
+    read: Boolean(row.read),
+    archivedAt: row.archived_at ? new Date(row.archived_at).toISOString() : undefined,
+  };
+}
+
+export async function pgListAlerts(includeArchived = false): Promise<SharedOfficeAlert[]> {
+  await pgMigrateAndSeed();
+  const sql = sqlClient();
+  const rows = (await sql`
+    SELECT * FROM fleet_alerts ORDER BY created_at DESC
+  `) as AlertRow[];
+  const alerts = rows.map(rowToAlert);
+  if (includeArchived) return alerts;
+  return alerts.filter((alert) => !alert.archivedAt);
+}
+
+export async function pgInsertAlert(alert: SharedOfficeAlert): Promise<void> {
+  await pgMigrateAndSeed();
+  const sql = sqlClient();
+  await sql`
+    INSERT INTO fleet_alerts (
+      id, type, message, vehicle_id, vehicle_plate, actor_name, report_id, created_at, read, archived_at
+    ) VALUES (
+      ${alert.id}, ${alert.type}, ${alert.message}, ${alert.vehicleId}, ${alert.vehiclePlate},
+      ${alert.actorName}, ${alert.reportId ?? null}, ${alert.createdAt}, ${alert.read},
+      ${alert.archivedAt ?? null}
+    )
+    ON CONFLICT (id) DO NOTHING
+  `;
+}
+
+export async function pgSetAlertArchived(
+  id: string,
+  archived: boolean
+): Promise<SharedOfficeAlert | undefined> {
+  await pgMigrateAndSeed();
+  const sql = sqlClient();
+  const archivedAt = archived ? new Date().toISOString() : null;
+  await sql`UPDATE fleet_alerts SET archived_at = ${archivedAt} WHERE id = ${id}`;
+  const rows = (await sql`SELECT * FROM fleet_alerts WHERE id = ${id} LIMIT 1`) as AlertRow[];
+  return rows[0] ? rowToAlert(rows[0]) : undefined;
+}
+
+export async function pgDeleteAlert(id: string): Promise<boolean> {
+  await pgMigrateAndSeed();
+  const sql = sqlClient();
+  const rows = (await sql`SELECT id FROM fleet_alerts WHERE id = ${id} LIMIT 1`) as { id: string }[];
+  if (!rows[0]) return false;
+  await sql`DELETE FROM fleet_alerts WHERE id = ${id}`;
+  return true;
 }
 
 export async function pgSetFleetSettings(

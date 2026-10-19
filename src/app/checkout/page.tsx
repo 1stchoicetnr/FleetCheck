@@ -33,6 +33,7 @@ import {
   saveLastDispatcherName,
   saveLastVehicleId,
 } from "@/lib/checkout-prefs";
+import { odometerPrefill } from "@/lib/odometer-prefill";
 import { formatDateOnly, formatUnitLabel, normalizePlate } from "@/lib/utils";
 import { ClipboardCheck } from "lucide-react";
 import { useCheckoutFeedbackMeta } from "@/components/checkout-feedback";
@@ -151,15 +152,18 @@ export default function CheckoutStartPage() {
   }, [addingUnit, filteredVehicles, vehicleId]);
 
   useEffect(() => {
+    if (!addingUnit) return;
+    setOdometer("");
+  }, [addingUnit]);
+
+  useEffect(() => {
     if (addingUnit || !selected) return;
     setYear(String(selected.year));
     setMake(selected.make);
     setModel(selected.model);
     setPowertrainOverride(selected.powertrain || "");
-    if (selected.lastMileage != null) {
-      setOdometer(String(selected.lastMileage));
-    }
-  }, [selected, addingUnit]);
+    setOdometer(odometerPrefill(selected.lastMileage));
+  }, [addingUnit, selected]);
 
   const handleStart = async (e: FormEvent) => {
     e.preventDefault();

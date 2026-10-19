@@ -3,12 +3,14 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { AppHeader } from "@/components/app-header";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import {
+  deleteVehicle,
   getVehicleById,
   getFleetById,
   getChecksByVehicleSorted,
@@ -18,7 +20,9 @@ import {
   canManageVehicleMaintenance,
   canViewVehicleHistory,
   canExportHistory,
+  canManageOfficeRecords,
 } from "@/lib/fleet-config";
+import { isOfficeUnlocked } from "@/lib/office-auth";
 import { Vehicle, Fleet, CheckRecord, MaintenanceLogEntry, FUEL_LEVEL_LABELS } from "@/lib/types";
 import { formatDate, formatMileage } from "@/lib/utils";
 import { OilChangeStatusBadge } from "@/components/oil-change-status";
@@ -38,6 +42,7 @@ export default function VehicleDetailPage() {
   const [fleet, setFleet] = useState<Fleet | null>(null);
   const [checks, setChecks] = useState<CheckRecord[]>([]);
   const [logs, setLogs] = useState<MaintenanceLogEntry[]>([]);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) router.replace("/");
@@ -110,6 +115,17 @@ export default function VehicleDetailPage() {
               </p>
             )}
             <OilChangeStatusBadge vehicle={vehicle} currentMileage={currentMi} />
+            {canManageOfficeRecords(user.role) && (
+              <Button
+                type="button"
+                variant="danger"
+                size="sm"
+                className="w-full"
+                onClick={() => setConfirmDelete(true)}
+              >
+                Delete this vehicle
+              </Button>
+            )}
             {canMaintain && (
               <OilChangeEditor
                 vehicle={vehicle}
@@ -187,6 +203,21 @@ export default function VehicleDetailPage() {
           </Button>
         </Link>
       </div>
+      <ConfirmDialog
+        open={confirmDelete}
+        title="Delete this vehicle?"
+        body={`This removes ${vehicle.unitNumber || vehicle.plate} from this browser's fleet list. Checkout units stored for Office are separate.`}
+        confirmLabel="Delete vehicle"
+        danger
+        onConfirm={() => {
+          if (!isOfficeUnlocked()) {
+            router.push(`/office?next=/vehicles/${vehicle.id}`);
+            return;
+          }
+          void deleteVehicle(vehicle.id).then(() => router.push("/vehicles"));
+        }}
+        onCancel={() => setConfirmDelete(false)}
+      />
     </div>
   );
 }

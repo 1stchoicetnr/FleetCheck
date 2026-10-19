@@ -64,10 +64,24 @@ export interface CheckoutReviewInput {
   reviewedBy: string;
 }
 
+export interface SharedOfficeAlert {
+  id: string;
+  type: "damage_reported" | "status_needs_work" | "status_out_of_service";
+  message: string;
+  vehicleId: string;
+  vehiclePlate: string;
+  actorName: string;
+  reportId?: string;
+  createdAt: string;
+  read: boolean;
+  archivedAt?: string;
+}
+
 export interface SharedStore {
   companies: Company[];
   vehicles: SharedVehicle[];
   reports: CheckoutReport[];
+  alerts?: SharedOfficeAlert[];
   settings?: FleetSettings;
 }
 

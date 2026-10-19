@@ -55,6 +55,7 @@ function OfficeReportsPage() {
   const [companyId, setCompanyId] = useState("all");
   const [unitId, setUnitId] = useState("all");
   const [showArchivedUnits, setShowArchivedUnits] = useState(false);
+  const [showArchivedReports, setShowArchivedReports] = useState(false);
   const [status, setStatus] = useState<(typeof STATUS_FILTERS)[number]>("all");
   const [officeReady, setOfficeReady] = useState(false);
   const markOfficeUnlocked = useCallback(() => setOfficeReady(true), []);
@@ -66,7 +67,7 @@ function OfficeReportsPage() {
 
   const loadOffice = useCallback(() => {
     Promise.all([
-      fetchCheckoutReports(),
+      fetchCheckoutReports({ includeArchived: showArchivedReports }),
       fetchCompanies(),
       fetchVehicles(undefined, { includeArchived: true }),
     ])
@@ -79,7 +80,7 @@ function OfficeReportsPage() {
       .catch((err: Error) => {
         setLoadError(err.message || "Could not load shared checkout reports.");
       });
-  }, []);
+  }, [showArchivedReports]);
 
   useEffect(() => {
     if (!officeReady) return;
@@ -159,6 +160,7 @@ function OfficeReportsPage() {
     if (unitId !== "all" && report.vehicleId !== unitId) return false;
     if (status === "flagged") return isCheckoutFlagged(report);
     if (status !== "all" && report.reviewStatus !== status) return false;
+    if (!showArchivedReports && report.archivedAt) return false;
     return true;
   });
 
@@ -270,6 +272,15 @@ function OfficeReportsPage() {
             Include archived units in the unit filter. Past reports still show
             under All units.
           </label>
+          <label className="flex items-center gap-2 text-sm text-gray-600">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-gray-300"
+              checked={showArchivedReports}
+              onChange={(e) => setShowArchivedReports(e.target.checked)}
+            />
+            Show archived reports
+          </label>
 
           {filtered.length === 0 ? (
             <div className="text-center py-12">
@@ -306,6 +317,11 @@ function OfficeReportsPage() {
                           {flagged && (
                             <span className="text-[11px] font-semibold text-red-700">
                               Flagged
+                            </span>
+                          )}
+                          {report.archivedAt && (
+                            <span className="text-[11px] font-semibold text-gray-600">
+                              Archived report
                             </span>
                           )}
                           {vehicle && isVehicleArchived(vehicle) && (

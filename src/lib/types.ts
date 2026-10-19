@@ -149,6 +149,8 @@ export interface CheckoutReport {
   /** Driver signature image (data URL or Blob URL). */
   signatureDataUrl?: string;
   signedAt?: string;
+  /** ISO timestamp when Office archived this report. Absent = visible in the default list. */
+  archivedAt?: string;
 }
 
 /** In-progress checkout report saved locally for offline resume. */
@@ -305,6 +307,8 @@ export interface CheckRecord {
   knownIssueConsent?: KnownIssueConsent;
   synced: boolean;
   createdAt: string;
+  /** ISO timestamp when Office archived this legacy record. */
+  archivedAt?: string;
 }
 
 /** In-progress check saved locally for offline resume. */
@@ -364,6 +368,7 @@ export interface FleetAlert {
   actorName: string;
   createdAt: string;
   read: boolean;
+  archivedAt?: string;
 }
 
 export const ALERT_TYPE_LABELS: Record<AlertEventType, string> = {

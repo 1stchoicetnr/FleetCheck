@@ -1,6 +1,6 @@
 import { errorResponse } from "@/lib/server/api-error";
 import { assertOfficePin } from "@/lib/server/office-pin";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import {
   createReport,
   listReports,
@@ -11,10 +11,11 @@ import { CheckoutType } from "@/lib/types";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
   try {
     await assertOfficePin(req);
-    const reports = await listReports();
+    const includeArchived = req.nextUrl.searchParams.get("includeArchived") === "1";
+    const reports = await listReports({ includeArchived });
     return NextResponse.json(
       { reports },
       { headers: { "Cache-Control": "no-store" } }

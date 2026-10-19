@@ -3,16 +3,20 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppHeader } from "@/components/app-header";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
-import { canViewReports, canExportHistory } from "@/lib/fleet-config";
+import { canViewReports, canExportHistory, canManageOfficeRecords } from "@/lib/fleet-config";
+import { isOfficeUnlocked } from "@/lib/office-auth";
 import {
+  deleteCheck,
   getChecks,
   getVehicles,
   getFleets,
   getVehicleById,
   getFleetById,
+  setCheckArchived,
 } from "@/lib/storage";
 import { CheckRecord, Vehicle, Fleet, FUEL_LEVEL_LABELS } from "@/lib/types";
 import { formatDate, formatMileage } from "@/lib/utils";
@@ -28,6 +32,11 @@ export default function ReportsPage() {
   const [fleets, setFleets] = useState<Record<string, Fleet>>({});
   const [vehicleFilter, setVehicleFilter] = useState<string>("all");
   const [vehicleList, setVehicleList] = useState<Vehicle[]>([]);
+  const [showArchived, setShowArchived] = useState(false);
+  const [pending, setPending] = useState<null | {
+    check: CheckRecord;
+    action: "archive" | "delete";
+  }>(null);
 
   useEffect(() => {
     if (!loading && !user) router.replace("/");
@@ -61,10 +70,36 @@ export default function ReportsPage() {
 
   if (loading || !user) return null;
 
+  const visibleChecks = checks.filter((check) => showArchived || !check.archivedAt);
   const filteredChecks =
     vehicleFilter === "all"
-      ? checks
-      : checks.filter((c) => c.vehicleId === vehicleFilter);
+      ? visibleChecks
+      : visibleChecks.filter((c) => c.vehicleId === vehicleFilter);
+
+  const requireOffice = () => {
+    if (isOfficeUnlocked()) return true;
+    router.push("/office?next=/reports");
+    return false;
+  };
+
+  const handlePending = async () => {
+    if (!pending || !requireOffice()) return;
+    if (pending.action === "delete") await deleteCheck(pending.check.id);
+    else await setCheckArchived(pending.check.id, !pending.check.archivedAt);
+    setChecks((prev) =>
+      pending.action === "delete"
+        ? prev.filter((check) => check.id !== pending.check.id)
+        : prev.map((check) =>
+            check.id === pending.check.id
+              ? {
+                  ...check,
+                  archivedAt: check.archivedAt ? undefined : new Date().toISOString(),
+                }
+              : check
+          )
+    );
+    setPending(null);
+  };
 
   const exportAll = () => {
     const csv = checksToCsv(filteredChecks, vehicles);
@@ -90,6 +125,17 @@ export default function ReportsPage() {
                 </option>
               ))}
             </select>
+            {canManageOfficeRecords(user.role) && (
+              <label className="flex items-center gap-2 text-sm text-gray-600">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-gray-300"
+                  checked={showArchived}
+                  onChange={(e) => setShowArchived(e.target.checked)}
+                />
+                Archived
+              </label>
+            )}
             {canExportHistory(user.role) && filteredChecks.length > 0 && (
               <Button size="sm" variant="outline" onClick={exportAll}>
                 <Download className="h-4 w-4 mr-1" />
@@ -158,12 +204,51 @@ export default function ReportsPage() {
                     <Download className="h-4 w-4 mr-2" />
                     Download PDF
                   </Button>
+                  {canManageOfficeRecords(user.role) && (
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => setPending({ check, action: "archive" })}
+                      >
+                        {check.archivedAt ? "Unarchive" : "Archive"}
+                      </Button>
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => setPending({ check, action: "delete" })}
+                      >
+                        Delete
+                      </Button>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             );
           })
         )}
       </div>
+      <ConfirmDialog
+        open={pending !== null}
+        title={
+          pending?.action === "delete"
+            ? "Delete this record?"
+            : pending?.check.archivedAt
+              ? "Unarchive this record?"
+              : "Archive this record?"
+        }
+        body={
+          pending?.action === "delete"
+            ? "This removes the legacy check record from this browser. It cannot be undone."
+            : "Archived records stay out of the default list on this browser."
+        }
+        confirmLabel={pending?.action === "delete" ? "Delete record" : pending?.check.archivedAt ? "Unarchive" : "Archive"}
+        danger={pending?.action === "delete"}
+        onConfirm={() => void handlePending()}
+        onCancel={() => setPending(null)}
+      />
     </div>
   );
 }

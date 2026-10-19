@@ -1,5 +1,6 @@
 import type { CheckoutInspectionForm, Powertrain } from "./inspection-form";
 import {
+  AlertEventType,
   CheckoutReport,
   CheckoutReviewStatus,
   CheckoutType,
@@ -110,9 +111,63 @@ export async function upsertSharedVehicle(input: {
   return data.vehicle;
 }
 
-export async function fetchCheckoutReports(): Promise<CheckoutReport[]> {
-  const data = await api<{ reports: CheckoutReport[] }>("/api/checkout-reports");
+export async function fetchCheckoutReports(options?: {
+  includeArchived?: boolean;
+}): Promise<CheckoutReport[]> {
+  const query = options?.includeArchived ? "?includeArchived=1" : "";
+  const data = await api<{ reports: CheckoutReport[] }>(`/api/checkout-reports${query}`);
   return data.reports;
+}
+
+export async function setCheckoutReportArchived(
+  id: string,
+  archived: boolean
+): Promise<CheckoutReport> {
+  const data = await api<{ report: CheckoutReport }>(`/api/checkout-reports/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ archived }),
+  });
+  return data.report;
+}
+
+export async function deleteCheckoutReport(id: string): Promise<void> {
+  await api(`/api/checkout-reports/${id}`, { method: "DELETE" });
+}
+
+export interface OfficeAlert {
+  id: string;
+  type: AlertEventType;
+  message: string;
+  vehicleId: string;
+  vehiclePlate: string;
+  actorName: string;
+  reportId?: string;
+  createdAt: string;
+  read: boolean;
+  archivedAt?: string;
+}
+
+export async function fetchOfficeAlerts(options?: {
+  includeArchived?: boolean;
+}): Promise<OfficeAlert[]> {
+  const query = options?.includeArchived ? "?includeArchived=1" : "";
+  const data = await api<{ alerts: OfficeAlert[] }>(`/api/alerts${query}`);
+  return data.alerts;
+}
+
+export async function setOfficeAlertArchived(
+  id: string,
+  archived: boolean
+): Promise<OfficeAlert> {
+  const data = await api<{ alert: OfficeAlert }>(`/api/alerts/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ archived }),
+  });
+  return data.alert;
+}
+
+export async function deleteOfficeAlert(id: string): Promise<void> {
+  await api(`/api/alerts/${id}`, { method: "DELETE" });
 }
 
 export async function fetchCheckoutReport(

@@ -11,6 +11,7 @@ import {
 } from "./seed-shared";
 import {
   ListVehiclesOptions,
+  SharedOfficeAlert,
   SharedStore,
   SharedVehicle,
   UpsertVehicleInput,
@@ -220,6 +221,86 @@ export async function localPutReport(report: CheckoutReport): Promise<CheckoutRe
     if (vehicle) vehicle.lastMileage = report.odometer;
     await writeStore(store);
     return report;
+  });
+}
+
+export async function localSetReportArchived(
+  id: string,
+  archived: boolean
+): Promise<CheckoutReport | undefined> {
+  return enqueueWrite(async () => {
+    const store = await loadAndSeedUnlocked();
+    const idx = store.reports.findIndex((report) => report.id === id);
+    if (idx < 0) return undefined;
+    const next = { ...store.reports[idx] };
+    if (archived) next.archivedAt = new Date().toISOString();
+    else delete next.archivedAt;
+    store.reports[idx] = next;
+    await writeStore(store);
+    return next;
+  });
+}
+
+export async function localDeleteReport(id: string): Promise<boolean> {
+  return enqueueWrite(async () => {
+    const store = await loadAndSeedUnlocked();
+    const idx = store.reports.findIndex((report) => report.id === id);
+    if (idx < 0) return false;
+    store.reports.splice(idx, 1);
+    store.alerts = (store.alerts ?? []).filter((alert) => alert.reportId !== id);
+    await writeStore(store);
+    return true;
+  });
+}
+
+export async function localListAlerts(includeArchived = false): Promise<SharedOfficeAlert[]> {
+  const store = await localEnsureSeed();
+  const alerts = [...(store.alerts ?? [])].sort(
+    (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)
+  );
+  if (includeArchived) return alerts;
+  return alerts.filter((alert) => !alert.archivedAt);
+}
+
+export async function localInsertAlert(alert: SharedOfficeAlert): Promise<void> {
+  await enqueueWrite(async () => {
+    const store = await loadAndSeedUnlocked();
+    store.alerts = store.alerts ?? [];
+    if (store.alerts.some((item) => item.id === alert.id)) return;
+    store.alerts.unshift(alert);
+    await writeStore(store);
+  });
+}
+
+export async function localSetAlertArchived(
+  id: string,
+  archived: boolean
+): Promise<SharedOfficeAlert | undefined> {
+  return enqueueWrite(async () => {
+    const store = await loadAndSeedUnlocked();
+    const alerts = store.alerts ?? [];
+    const idx = alerts.findIndex((alert) => alert.id === id);
+    if (idx < 0) return undefined;
+    const next = { ...alerts[idx] };
+    if (archived) next.archivedAt = new Date().toISOString();
+    else delete next.archivedAt;
+    alerts[idx] = next;
+    store.alerts = alerts;
+    await writeStore(store);
+    return next;
+  });
+}
+
+export async function localDeleteAlert(id: string): Promise<boolean> {
+  return enqueueWrite(async () => {
+    const store = await loadAndSeedUnlocked();
+    const alerts = store.alerts ?? [];
+    const idx = alerts.findIndex((alert) => alert.id === id);
+    if (idx < 0) return false;
+    alerts.splice(idx, 1);
+    store.alerts = alerts;
+    await writeStore(store);
+    return true;
   });
 }
 

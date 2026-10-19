@@ -4,21 +4,32 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AppHeader } from "@/components/app-header";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
-import { canViewAlerts } from "@/lib/fleet-config";
+import { canManageOfficeRecords, canViewAlerts } from "@/lib/fleet-config";
 import {
+  deleteOfficeAlert,
+  fetchOfficeAlerts,
+  OfficeAlert,
+  setOfficeAlertArchived,
+} from "@/lib/checkout-api";
+import { isOfficeUnlocked } from "@/lib/office-auth";
+import {
+  deleteAlert,
   getAlerts,
   markAlertRead,
   markAllAlertsRead,
   getSettings,
+  setAlertArchived,
 } from "@/lib/storage";
-import { AlertEventType, FleetAlert, ALERT_TYPE_LABELS } from "@/lib/types";
+import { AlertEventType, ALERT_TYPE_LABELS } from "@/lib/types";
 import { formatDate } from "@/lib/utils";
 import { AlertTriangle, Bell, CheckCheck, Settings } from "lucide-react";
 
 type FilterType = AlertEventType | "all" | "check_events";
+type ListedAlert = OfficeAlert & { remote: boolean };
 
 const CHECK_EVENT_TYPES: AlertEventType[] = [
   "check_in_completed",
@@ -28,15 +39,43 @@ const CHECK_EVENT_TYPES: AlertEventType[] = [
 export default function AlertsPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
-  const [alerts, setAlerts] = useState<FleetAlert[]>([]);
+  const [alerts, setAlerts] = useState<ListedAlert[]>([]);
   const [filter, setFilter] = useState<FilterType>("all");
   const [showCheckEvents, setShowCheckEvents] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+  const [officeNote, setOfficeNote] = useState("");
+  const [pending, setPending] = useState<null | {
+    alert: ListedAlert;
+    action: "archive" | "delete";
+  }>(null);
+  const [busy, setBusy] = useState(false);
 
   const loadAlerts = useCallback(async () => {
-    const [items, settings] = await Promise.all([getAlerts(), getSettings()]);
+    const [items, settings] = await Promise.all([
+      getAlerts(showArchived),
+      getSettings(),
+    ]);
     setShowCheckEvents(settings.notificationSettings.alertOnCheckInOut);
-    setAlerts(items);
-  }, []);
+    let remote: OfficeAlert[] = [];
+    try {
+      remote = await fetchOfficeAlerts({ includeArchived: showArchived });
+      setOfficeNote("");
+    } catch (err) {
+      setOfficeNote(
+        err instanceof Error
+          ? err.message
+          : "Unlock office to load checkout alerts."
+      );
+    }
+    const byId = new Map<string, ListedAlert>();
+    for (const alert of items) byId.set(alert.id, { ...alert, remote: false });
+    for (const alert of remote) byId.set(alert.id, { ...alert, remote: true });
+    setAlerts(
+      [...byId.values()].sort(
+        (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)
+      )
+    );
+  }, [showArchived]);
 
   useEffect(() => {
     if (!loading && !user) router.replace("/");
@@ -59,6 +98,33 @@ export default function AlertsPage() {
   const handleMarkAllRead = async () => {
     await markAllAlertsRead();
     setAlerts((prev) => prev.map((a) => ({ ...a, read: true })));
+  };
+
+  const handlePending = async () => {
+    if (!pending) return;
+    if (!pending.alert.remote && !isOfficeUnlocked()) {
+      router.push("/office?next=/alerts");
+      return;
+    }
+    setBusy(true);
+    try {
+      if (pending.action === "delete") {
+        if (pending.alert.remote) await deleteOfficeAlert(pending.alert.id);
+        else await deleteAlert(pending.alert.id);
+      } else if (pending.alert.remote) {
+        await setOfficeAlertArchived(pending.alert.id, !pending.alert.archivedAt);
+      } else {
+        await setAlertArchived(pending.alert.id, !pending.alert.archivedAt);
+      }
+      setPending(null);
+      await loadAlerts();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not update this alert.";
+      setOfficeNote(message);
+      if (/pin/i.test(message)) router.push("/office?next=/alerts");
+    } finally {
+      setBusy(false);
+    }
   };
 
   if (loading || !user) return null;
@@ -125,6 +191,24 @@ export default function AlertsPage() {
           ))}
         </div>
 
+        {officeNote && (
+          <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+            {officeNote}{" "}
+            <Link href="/office?next=/alerts" className="underline font-semibold">
+              Unlock office
+            </Link>
+          </p>
+        )}
+        <label className="flex items-center gap-2 text-sm text-gray-600">
+          <input
+            type="checkbox"
+            className="h-4 w-4 rounded border-gray-300"
+            checked={showArchived}
+            onChange={(e) => setShowArchived(e.target.checked)}
+          />
+          Show archived alerts
+        </label>
+
         {!showCheckEvents && filter === "all" && (
           <p className="text-xs text-gray-400">
             Check-in/out alerts are hidden. Enable them in Alert Settings.
@@ -189,11 +273,53 @@ export default function AlertsPage() {
                     Mark as read
                   </Button>
                 )}
+                {user && canManageOfficeRecords(user.role) && (
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() => setPending({ alert, action: "archive" })}
+                    >
+                      {alert.archivedAt ? "Unarchive" : "Archive"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      className="flex-1"
+                      onClick={() => setPending({ alert, action: "delete" })}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))
         )}
       </div>
+      <ConfirmDialog
+        open={pending !== null}
+        title={
+          pending?.action === "delete"
+            ? "Delete this alert?"
+            : pending?.alert.archivedAt
+              ? "Unarchive this alert?"
+              : "Archive this alert?"
+        }
+        body={
+          pending?.action === "delete"
+            ? "This removes the alert. The checkout report, if any, stays unless you delete that separately."
+            : "Archived alerts stay out of the default list."
+        }
+        confirmLabel={pending?.action === "delete" ? "Delete alert" : pending?.alert.archivedAt ? "Unarchive" : "Archive"}
+        danger={pending?.action === "delete"}
+        busy={busy}
+        onConfirm={() => void handlePending()}
+        onCancel={() => {
+          if (!busy) setPending(null);
+        }}
+      />
     </div>
   );
 }

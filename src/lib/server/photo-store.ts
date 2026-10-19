@@ -1,4 +1,4 @@
-import { put } from "@vercel/blob";
+import { del, put } from "@vercel/blob";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { hasBlobToken, isLocalSharedStoreEnabled } from "./shared-config";
@@ -85,4 +85,17 @@ export async function persistCheckoutPhoto(
   throw new Error(
     "Photo storage is not configured. Set BLOB_READ_WRITE_TOKEN on Vercel."
   );
+}
+
+/** Best-effort removal of a stored checkout photo. Missing files are ignored. */
+export async function deleteStoredPhoto(url: string | undefined): Promise<void> {
+  if (!url || url.startsWith("/photo-examples/") || url.startsWith("/api/shared-files/")) {
+    return;
+  }
+  if (!hasBlobToken() || !url.startsWith("http")) return;
+  try {
+    await del(url);
+  } catch (err) {
+    console.error("[photos] delete failed:", err);
+  }
 }

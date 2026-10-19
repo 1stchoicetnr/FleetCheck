@@ -78,6 +78,11 @@ export function canStartCheckout(role: string): boolean {
   );
 }
 
+/** Office and Super Admin can archive or delete records. */
+export function canManageOfficeRecords(role: string): boolean {
+  return role === "super_admin" || role === "management";
+}
+
 export function canReviewCheckout(role: string): boolean {
   return (
     role === "super_admin" || role === "management" || role === "tech"
