@@ -56,6 +56,8 @@ function OfficeReportsPage() {
   const [unitId, setUnitId] = useState("all");
   const [showArchivedUnits, setShowArchivedUnits] = useState(false);
   const [status, setStatus] = useState<(typeof STATUS_FILTERS)[number]>("all");
+  const [officeReady, setOfficeReady] = useState(false);
+  const markOfficeUnlocked = useCallback(() => setOfficeReady(true), []);
 
   useEffect(() => {
     if (!loading && !user) router.replace("/");
@@ -80,6 +82,7 @@ function OfficeReportsPage() {
   }, []);
 
   useEffect(() => {
+    if (!officeReady) return;
     loadOffice();
     const onVis = () => {
       if (document.visibilityState === "visible") loadOffice();
@@ -90,7 +93,7 @@ function OfficeReportsPage() {
       document.removeEventListener("visibilitychange", onVis);
       window.removeEventListener("focus", loadOffice);
     };
-  }, [loadOffice]);
+  }, [officeReady, loadOffice]);
 
   useEffect(() => {
     const requestedUnit = searchParams.get("unitId");
@@ -166,7 +169,7 @@ function OfficeReportsPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <AppHeader title="Office — Checkout reports" />
-      <OfficePinGate>
+      <OfficePinGate onUnlocked={markOfficeUnlocked}>
         <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
           {loadError && (
             <p className="text-sm text-red-600 font-medium">{loadError}</p>

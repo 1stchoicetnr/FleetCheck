@@ -34,6 +34,8 @@ export default function OfficeUnitsPage() {
   const [filter, setFilter] = useState<UnitFilter>("active");
   const [savingId, setSavingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState("");
+  const [officeReady, setOfficeReady] = useState(false);
+  const markOfficeUnlocked = useCallback(() => setOfficeReady(true), []);
 
   useEffect(() => {
     if (!loading && !user) router.replace("/");
@@ -53,8 +55,9 @@ export default function OfficeUnitsPage() {
   }, []);
 
   useEffect(() => {
+    if (!officeReady) return;
     loadUnits();
-  }, [loadUnits]);
+  }, [officeReady, loadUnits]);
 
   const companyMap = Object.fromEntries(companies.map((c) => [c.id, c]));
 
@@ -132,7 +135,7 @@ export default function OfficeUnitsPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <AppHeader title="Office — Units" backHref="/office" />
-      <OfficePinGate>
+      <OfficePinGate onUnlocked={markOfficeUnlocked}>
         <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
           {loadError && (
             <p className="text-sm text-red-600 font-medium">{loadError}</p>

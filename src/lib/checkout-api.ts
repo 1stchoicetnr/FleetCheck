@@ -222,15 +222,20 @@ export async function reviewCheckoutReport(
   return data.report;
 }
 
-export async function verifyOfficePinRemote(pin: string): Promise<boolean> {
+export async function verifyOfficePinRemote(
+  pin: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
     await api("/api/office-pin", {
       method: "POST",
       body: JSON.stringify({ pin }),
     });
-    return true;
-  } catch {
-    return false;
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Incorrect PIN. Try again.",
+    };
   }
 }
 

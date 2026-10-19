@@ -49,7 +49,11 @@ export function checkOfficePinGuarded(req: Request, pin: string): void {
   if (!expected) throw new OfficeAuthError("Office access is not configured", 503);
   const ip = clientIp(req);
   if (lockedOut(ip)) throw new OfficeAuthError("Too many wrong PIN attempts. Try again in 15 minutes.", 429);
-  if (!pin.trim() || !safeEqual(pin.trim(), expected)) {
+  const submitted = pin.trim();
+  // Missing PIN is unauthorized, but it is not a wrong guess. Office pages
+  // must not burn the lockout by loading data before unlock.
+  if (!submitted) throw new OfficeAuthError("Invalid office PIN", 401);
+  if (!safeEqual(submitted, expected)) {
     recordFail(ip);
     throw new OfficeAuthError("Invalid office PIN", 401);
   }

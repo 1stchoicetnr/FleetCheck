@@ -27,7 +27,7 @@ const LOGIN_OPTIONS: {
   {
     role: "management",
     title: "Office",
-    description: "Review checkout reports — PIN 1357",
+    description: "Review checkout reports",
     icon: Truck,
     color: "text-indigo-700",
     bg: "bg-indigo-100 hover:bg-indigo-200 border-indigo-300",

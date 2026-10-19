@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { AppHeader } from "@/components/app-header";
 import { Button } from "@/components/ui/button";
@@ -77,6 +77,8 @@ export default function OfficeReportDetailPage() {
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState("");
   const [flaggingAngle, setFlaggingAngle] = useState<PhotoAngle | null>(null);
+  const [officeReady, setOfficeReady] = useState(false);
+  const markOfficeUnlocked = useCallback(() => setOfficeReady(true), []);
 
   useEffect(() => {
     if (!loading && !user) router.replace("/");
@@ -84,6 +86,7 @@ export default function OfficeReportDetailPage() {
   }, [user, loading, router]);
 
   useEffect(() => {
+    if (!officeReady) return;
     async function load() {
       try {
         const found = await fetchCheckoutReport(reportId);
@@ -115,7 +118,7 @@ export default function OfficeReportDetailPage() {
       }
     }
     load();
-  }, [reportId]);
+  }, [officeReady, reportId]);
 
   const steps = photoStepsForReport(
     getChecklistForCompany(company),
@@ -236,26 +239,26 @@ export default function OfficeReportDetailPage() {
     }
   };
 
-  if (loading || !user || !reportReady) return null;
-
-  if (!report) {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <AppHeader title="Report" backHref="/office" />
-        <p className="text-center text-red-600 py-12">
-          {saveError || "Report not found."}
-        </p>
-      </div>
-    );
-  }
+  if (loading || !user) return null;
 
   return (
     <div className="min-h-screen bg-gray-50">
       <AppHeader
-        title={`${formatUnitLabel(report.unitNumber, report.plate ?? vehicle?.plate)} review`}
+        title={
+          report
+            ? `${formatUnitLabel(report.unitNumber, report.plate ?? vehicle?.plate)} review`
+            : "Report"
+        }
         backHref="/office"
       />
-      <OfficePinGate>
+      <OfficePinGate onUnlocked={markOfficeUnlocked}>
+        {!reportReady ? (
+          <p className="text-center text-brand-600 py-12 font-semibold">Loading…</p>
+        ) : !report ? (
+          <p className="text-center text-red-600 py-12">
+            {saveError || "Report not found."}
+          </p>
+        ) : (
         <div className="max-w-3xl mx-auto px-4 py-6 space-y-5">
           <Card>
             <CardContent className="py-4 space-y-2">
@@ -575,6 +578,7 @@ export default function OfficeReportDetailPage() {
             </CardContent>
           </Card>
         </div>
+        )}
       </OfficePinGate>
       <PhotoLightbox
         photos={galleryPhotos}

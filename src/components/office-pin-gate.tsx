@@ -7,7 +7,13 @@ import { verifyOfficePinRemote } from "@/lib/checkout-api";
 import { isOfficeUnlocked, unlockOffice } from "@/lib/office-auth";
 import { Lock } from "lucide-react";
 
-export function OfficePinGate({ children }: { children: ReactNode }) {
+export function OfficePinGate({
+  children,
+  onUnlocked,
+}: {
+  children: ReactNode;
+  onUnlocked?: () => void;
+}) {
   const [ready, setReady] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
   const [pin, setPin] = useState("");
@@ -15,22 +21,25 @@ export function OfficePinGate({ children }: { children: ReactNode }) {
   const [checking, setChecking] = useState(false);
 
   useEffect(() => {
-    setUnlocked(isOfficeUnlocked());
+    const open = isOfficeUnlocked();
+    setUnlocked(open);
     setReady(true);
-  }, []);
+    if (open) onUnlocked?.();
+  }, [onUnlocked]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setChecking(true);
     setError("");
-    const ok = await verifyOfficePinRemote(pin);
+    const result = await verifyOfficePinRemote(pin);
     setChecking(false);
-    if (!ok) {
-      setError("Incorrect PIN. Try again.");
+    if (!result.ok) {
+      setError(result.error);
       return;
     }
     unlockOffice(pin);
     setUnlocked(true);
+    onUnlocked?.();
     const next = new URLSearchParams(window.location.search).get("next");
     if (next && next.startsWith("/admin")) window.location.assign(next);
   };
@@ -67,7 +76,6 @@ export function OfficePinGate({ children }: { children: ReactNode }) {
               value={pin}
               onChange={(e) => setPin(e.target.value)}
               error={error}
-              hint="Demo PIN is 1357 (or OFFICE_PIN on the server)"
             />
             <Button type="submit" size="xl" className="w-full" disabled={checking}>
               {checking ? "Checking…" : "Unlock office"}
