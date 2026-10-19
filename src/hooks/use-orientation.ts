@@ -27,6 +27,19 @@ function readViewport(): ViewportSize {
   };
 }
 
+/**
+ * Prefer the Screen Orientation API / window.orientation over comparing
+ * innerWidth/innerHeight. A leftover landscape lock (or a CSS rotate) can
+ * swap the viewport while the phone is still physically portrait.
+ */
+function readIsLandscape(width: number, height: number): boolean {
+  const type = screen.orientation?.type;
+  if (type) return type.startsWith("landscape");
+  const angle = (window as Window & { orientation?: number }).orientation;
+  if (typeof angle === "number") return Math.abs(angle) === 90;
+  return width > height;
+}
+
 /** Tracks device orientation and viewport dimensions across resize / rotation. */
 export function useDeviceOrientation(): DeviceOrientationState {
   const [state, setState] = useState<DeviceOrientationState>(() => ({
@@ -45,7 +58,7 @@ export function useDeviceOrientation(): DeviceOrientationState {
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => {
         const { width, height, aspectRatio } = readViewport();
-        const isLandscape = width > height;
+        const isLandscape = readIsLandscape(width, height);
         setState((prev) => ({
           orientation: isLandscape ? "landscape" : "portrait",
           isLandscape,

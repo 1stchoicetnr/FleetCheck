@@ -69,7 +69,7 @@ export function sampleVideoLowLight(video: HTMLVideoElement): boolean {
 
 export async function checkPhotoQuality(
   dataUrl: string,
-  category: PhotoStep["category"]
+  _category: PhotoStep["category"]
 ): Promise<PhotoQualityResult> {
   const [blur, dims, isLowLight] = await Promise.all([
     detectBlur(dataUrl),
@@ -78,26 +78,20 @@ export async function checkPhotoQuality(
   ]);
 
   const isPortrait = dims.width < dims.height;
-  const needsLandscape = category === "exterior";
   const messages: string[] = [];
   const warnings: string[] = [];
 
   if (blur.isBlurry) {
     messages.push("Photo is too blurry — hold the phone steady and retake.");
   }
-  if (needsLandscape && isPortrait) {
-    messages.push(
-      "Photo must be landscape — rotate your phone sideways and retake."
-    );
-  }
   if (isLowLight) {
     warnings.push("Low light — hold steady and move closer if possible");
   }
 
   return {
-    passed: !blur.isBlurry && !(needsLandscape && isPortrait),
+    passed: !blur.isBlurry,
     isBlurry: blur.isBlurry,
-    isPortrait: needsLandscape && isPortrait,
+    isPortrait,
     isLowLight,
     messages,
     warnings,

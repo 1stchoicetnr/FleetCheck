@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/hooks/use-auth";
 import { ServiceWorkerRegister } from "@/components/service-worker-register";
+import { OrientationUnlock } from "@/components/orientation-unlock";
 import { OfflineBanner } from "@/components/offline-banner";
 
 const inter = Inter({
@@ -42,6 +43,7 @@ export default function RootLayout({
       </head>
       <body className={`${inter.className} min-h-screen`}>        <AuthProvider>
           <ServiceWorkerRegister />
+          <OrientationUnlock />
           <OfflineBanner />
           <main className="min-h-screen safe-bottom">{children}</main>
         </AuthProvider>
