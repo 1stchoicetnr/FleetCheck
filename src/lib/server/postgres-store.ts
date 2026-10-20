@@ -9,6 +9,7 @@ import {
   CheckoutReviewStatus,
   Company,
   PhotoAngle,
+  VehicleKnownIssue,
   VehiclePhoto,
 } from "@/lib/types";
 import { displayPlate, normalizePlate } from "@/lib/utils";
@@ -80,7 +81,10 @@ function rowToReport(row: ReportRow): CheckoutReport {
     driverName: row.driver_name,
     dispatcherName: row.dispatcher_name,
     type: row.type,
-    photos: row.photos ?? [],
+    photos: (row.photos ?? []).map((photo) => ({
+    ...photo,
+    dataUrl: photo.dataUrl || "",
+  })),
     status: "complete",
     completedAt: new Date(row.completed_at).toISOString(),
     reviewStatus: row.review_status,
@@ -159,12 +163,16 @@ export async function pgMigrateAndSeed(): Promise<void> {
   await sql`CREATE INDEX IF NOT EXISTS checkout_reports_vehicle_idx ON checkout_reports (vehicle_id)`;
   await sql`CREATE INDEX IF NOT EXISTS checkout_reports_company_idx ON checkout_reports (company_id)`;
   await sql`CREATE INDEX IF NOT EXISTS checkout_reports_review_idx ON checkout_reports (review_status)`;
+  await sql`CREATE INDEX IF NOT EXISTS checkout_reports_completed_idx ON checkout_reports (completed_at DESC)`;
+  await sql`CREATE INDEX IF NOT EXISTS checkout_reports_vehicle_completed_idx ON checkout_reports (vehicle_id, completed_at DESC)`;
   await sql`ALTER TABLE checkout_reports ADD COLUMN IF NOT EXISTS plate TEXT`;
   await sql`ALTER TABLE checkout_reports ADD COLUMN IF NOT EXISTS signature_data_url TEXT`;
   await sql`ALTER TABLE checkout_reports ADD COLUMN IF NOT EXISTS signed_at TIMESTAMPTZ`;
   await sql`ALTER TABLE checkout_reports ADD COLUMN IF NOT EXISTS inspection_form JSONB`;
   await sql`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ`;
   await sql`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS powertrain TEXT`;
+  await sql`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS last_oil_change_mileage INT`;
+  await sql`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS known_issue JSONB`;
   await sql`ALTER TABLE checkout_reports ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ`;
   await sql`
     CREATE TABLE IF NOT EXISTS fleet_alerts (
@@ -332,7 +340,30 @@ function mapVehicleRow(row: Record<string, unknown>): SharedVehicle {
       String(row.model),
       typeof row.powertrain === "string" ? row.powertrain : undefined
     ),
+    lastOilChangeMileage:
+      row.last_oil_change_mileage == null
+        ? undefined
+        : Number(row.last_oil_change_mileage),
+    knownIssue: mapKnownIssue(row.known_issue),
     createdAt: new Date(String(row.created_at)).toISOString(),
+  };
+}
+
+function mapKnownIssue(value: unknown): VehicleKnownIssue | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const issue = value as Partial<VehicleKnownIssue>;
+  const text = typeof issue.text === "string" ? issue.text.trim() : "";
+  if (!text) return undefined;
+  return {
+    text: text.slice(0, 1000),
+    isOpen: Boolean(issue.isOpen),
+    updatedAt:
+      typeof issue.updatedAt === "string" && issue.updatedAt
+        ? issue.updatedAt
+        : new Date(0).toISOString(),
+    updatedBy: typeof issue.updatedBy === "string" ? issue.updatedBy : undefined,
+    updatedByName:
+      typeof issue.updatedByName === "string" ? issue.updatedByName : undefined,
   };
 }
 
@@ -381,6 +412,8 @@ export async function pgUpsertVehicle(
     year: Number(input.year),
     lastMileage: existing?.lastMileage,
     archivedAt: existing?.archivedAt,
+    lastOilChangeMileage: existing?.lastOilChangeMileage,
+    knownIssue: existing?.knownIssue,
     powertrain: inferPowertrain(
       input.make,
       input.model,
@@ -436,6 +469,151 @@ export async function pgSetVehiclePowertrain(
     ...existing,
     powertrain,
   };
+}
+
+export async function pgSetVehicleService(
+  id: string,
+  patch: {
+    knownIssue?: VehicleKnownIssue | null;
+    lastOilChangeMileage?: number | null;
+  }
+): Promise<SharedVehicle | undefined> {
+  await pgMigrateAndSeed();
+  const existing = await pgGetVehicle(id);
+  if (!existing) return undefined;
+  const sql = sqlClient();
+  const touchIssue = patch.knownIssue !== undefined;
+  const touchOil = patch.lastOilChangeMileage !== undefined;
+  const issueJson =
+    patch.knownIssue == null ? null : JSON.stringify(patch.knownIssue);
+  await sql`
+    UPDATE vehicles SET
+      known_issue = CASE
+        WHEN ${touchIssue} THEN CAST(${issueJson} AS jsonb)
+        ELSE known_issue
+      END,
+      last_oil_change_mileage = CASE
+        WHEN ${touchOil} THEN ${patch.lastOilChangeMileage ?? null}
+        ELSE last_oil_change_mileage
+      END
+    WHERE id = ${id}
+  `;
+  return pgGetVehicle(id);
+}
+
+export async function pgListReportPage(query: {
+  includeArchived?: boolean;
+  companyId?: string | null;
+  vehicleId?: string | null;
+  status?: string | null;
+  limit: number;
+  offset: number;
+}): Promise<{ reports: CheckoutReport[]; total: number; flagged: number }> {
+  await pgMigrateAndSeed();
+  const sql = sqlClient();
+  const includeArchived = Boolean(query.includeArchived);
+  const companyId = query.companyId || null;
+  const vehicleId = query.vehicleId || null;
+  const status = query.status && query.status !== "all" ? query.status : null;
+  const countRows = await sql`
+    SELECT
+      (COUNT(*) FILTER (
+        WHERE (
+          ${status}::text IS NULL
+          OR (
+            ${status} = 'flagged'
+            AND (
+              flagged
+              OR review_status IN ('conditional', 'fail')
+              OR btrim(COALESCE(new_damage_notes, '')) <> ''
+            )
+          )
+          OR (
+            ${status} IS NOT NULL
+            AND ${status} <> 'flagged'
+            AND review_status = ${status}
+          )
+        )
+      ))::int AS total,
+      (COUNT(*) FILTER (
+        WHERE
+          flagged
+          OR review_status IN ('conditional', 'fail')
+          OR btrim(COALESCE(new_damage_notes, '')) <> ''
+      ))::int AS flagged
+    FROM checkout_reports
+    WHERE (${includeArchived}::boolean OR archived_at IS NULL)
+      AND (${companyId}::text IS NULL OR company_id = ${companyId})
+      AND (${vehicleId}::text IS NULL OR vehicle_id = ${vehicleId})
+  `;
+  const rows = (await sql`
+    SELECT
+      id, company_id, vehicle_id, unit_number, plate, year, make, model, odometer,
+      driver_name, dispatcher_name, type, status, completed_at, review_status,
+      review_notes, new_damage_notes, retake_angles, reviewed_at, reviewed_by,
+      flagged, created_at, signed_at, inspection_form, archived_at,
+      COALESCE(
+        (
+          SELECT jsonb_agg(
+            jsonb_build_object(
+              'angle', elem.value->>'angle',
+              'capturedAt', elem.value->>'capturedAt',
+              'flaggedDamage', CASE WHEN elem.value->>'flaggedDamage' = 'true' THEN true ELSE NULL END,
+              'damageNote', NULLIF(btrim(COALESCE(elem.value->>'damageNote', '')), '')
+            )
+          )
+          FROM jsonb_array_elements(COALESCE(photos, '[]'::jsonb)) AS elem
+        ),
+        '[]'::jsonb
+      ) AS photos
+    FROM checkout_reports
+    WHERE (${includeArchived}::boolean OR archived_at IS NULL)
+      AND (${companyId}::text IS NULL OR company_id = ${companyId})
+      AND (${vehicleId}::text IS NULL OR vehicle_id = ${vehicleId})
+      AND (
+        ${status}::text IS NULL
+        OR (
+          ${status} = 'flagged'
+          AND (
+            flagged
+            OR review_status IN ('conditional', 'fail')
+            OR btrim(COALESCE(new_damage_notes, '')) <> ''
+          )
+        )
+        OR (
+          ${status} IS NOT NULL
+          AND ${status} <> 'flagged'
+          AND review_status = ${status}
+        )
+      )
+    ORDER BY completed_at DESC
+    LIMIT ${query.limit}
+    OFFSET ${query.offset}
+  `) as ReportRow[];
+  const count = countRows[0] ?? { total: 0, flagged: 0 };
+  return {
+    reports: rows.map(rowToReport),
+    total: Number(count.total ?? 0),
+    flagged: Number(count.flagged ?? 0),
+  };
+}
+
+export async function pgListVehicleReports(
+  vehicleId: string
+): Promise<CheckoutReport[]> {
+  await pgMigrateAndSeed();
+  const sql = sqlClient();
+  const rows = (await sql`
+    SELECT
+      id, company_id, vehicle_id, unit_number, plate, year, make, model, odometer,
+      driver_name, dispatcher_name, type, status, completed_at, review_status,
+      review_notes, new_damage_notes, retake_angles, reviewed_at, reviewed_by,
+      flagged, photos, created_at, signed_at, inspection_form, archived_at
+    FROM checkout_reports
+    WHERE vehicle_id = ${vehicleId} AND archived_at IS NULL
+    ORDER BY completed_at DESC
+  `) as ReportRow[];
+  return rows.map(rowToReport);
 }
 
 export async function pgListReports(): Promise<CheckoutReport[]> {

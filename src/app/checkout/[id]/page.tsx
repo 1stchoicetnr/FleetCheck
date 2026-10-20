@@ -543,7 +543,13 @@ function CheckoutCapturePage() {
                       )}
                       <p className="text-[11px] text-gray-600 leading-tight">
                         {step.label}
-                        {photoFlags[step.angle]?.flaggedDamage ? " · DAMAGE" : ""}
+                        {photoFlags[step.angle]?.flaggedDamage
+                          ? ` · DAMAGE${
+                              photoFlags[step.angle]?.damageNote?.trim()
+                                ? ` — ${photoFlags[step.angle]?.damageNote?.trim()}`
+                                : ""
+                            }`
+                          : ""}
                       </p>
                     </div>
                   ))}
@@ -677,7 +683,16 @@ function CheckoutCapturePage() {
           onFlagDamage={(angle, flaggedDamage) => {
             setPhotoFlags((prev) => ({
               ...prev,
-              [angle]: { flaggedDamage, damageNote: prev[angle]?.damageNote },
+              [angle]: {
+                flaggedDamage,
+                damageNote: flaggedDamage ? prev[angle]?.damageNote : undefined,
+              },
+            }));
+          }}
+          onDamageNote={(angle, damageNote) => {
+            setPhotoFlags((prev) => ({
+              ...prev,
+              [angle]: { flaggedDamage: true, damageNote },
             }));
           }}
           onAllComplete={() => setPhotosReady(true)}

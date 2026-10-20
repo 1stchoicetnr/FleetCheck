@@ -22,9 +22,9 @@ import {
   getImageDimensions,
 } from "./utils";
 import {
-  flaggedDamageAngles,
+  cleanDamageNote,
+  damageFlagText,
   isPhotoDamageFlagged,
-  photoAngleLabel,
 } from "./photo-flags";
 import { companyUsesClover } from "./companies";
 import { INSPEKT_ICON, INSPEKT_NAVY_RGB } from "./brand-mark";
@@ -478,10 +478,10 @@ export async function generateCheckoutReportPDF(
     addWrapped(`Retake requested: ${labels.join(", ")}`);
   }
   if (report.flagged) addWrapped("Flag queue: yes");
-  const damageAngles = flaggedDamageAngles(report);
-  if (damageAngles.length) {
+  const damagedPhotos = report.photos.filter((photo) => isPhotoDamageFlagged(photo));
+  if (damagedPhotos.length) {
     addWrapped(
-      `DAMAGE flagged: ${damageAngles.map(photoAngleLabel).join(", ")}`
+      `DAMAGE flagged: ${damagedPhotos.map((photo) => damageFlagText(photo)).join("; ")}`
     );
   }
 
@@ -513,7 +513,14 @@ export async function generateCheckoutReportPDF(
 
   section("Photo index");
   listed.forEach((item, i) => {
-    const damage = isPhotoDamageFlagged(item.photo) ? " · DAMAGE" : "";
+    const note = isPhotoDamageFlagged(item.photo)
+      ? cleanDamageNote(item.photo?.damageNote)
+      : undefined;
+    const damage = isPhotoDamageFlagged(item.photo)
+      ? note
+        ? ` · DAMAGE — ${note}`
+        : " · DAMAGE"
+      : "";
     addWrapped(
       `${i + 1}. ${item.label}${damage} — ${item.photo?.dataUrl ? "included" : "missing"}`
     );
@@ -532,11 +539,18 @@ export async function generateCheckoutReportPDF(
       const top = 14 + index * slotHeight;
       doc.setFontSize(11);
       doc.setFont("helvetica", "bold");
-      doc.text(
-        `${photoNumber}. ${item.label}${isPhotoDamageFlagged(item.photo) ? " · DAMAGE" : ""}`,
-        14,
-        top
-      );
+      const captionNote = isPhotoDamageFlagged(item.photo)
+        ? cleanDamageNote(item.photo?.damageNote)
+        : undefined;
+      const caption = `${photoNumber}. ${item.label}${
+        isPhotoDamageFlagged(item.photo)
+          ? captionNote
+            ? ` · DAMAGE — ${captionNote}`
+            : " · DAMAGE"
+          : ""
+      }`;
+      const captionLine = String(doc.splitTextToSize(caption, pageWidth - 28)[0] ?? caption);
+      doc.text(captionLine, 14, top);
       const src = item.photo?.dataUrl;
       if (!src) continue;
       try {

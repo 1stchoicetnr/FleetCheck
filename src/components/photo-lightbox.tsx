@@ -43,7 +43,13 @@ export function OfficePhotoThumb({
       className="relative block w-full h-full bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-inset"
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={src} alt={label} className="w-full h-full object-cover" />
+      <img
+        src={src}
+        alt={label}
+        loading="lazy"
+        decoding="async"
+        className="w-full h-full object-cover"
+      />
       <span className="absolute bottom-1.5 right-1.5 rounded-md bg-black/55 p-1 text-white pointer-events-none">
         <Maximize2 className="h-3.5 w-3.5" aria-hidden />
       </span>

@@ -6,6 +6,7 @@ import {
   CheckoutType,
   Company,
   PhotoAngle,
+  VehicleKnownIssue,
 } from "./types";
 import type { FleetSettings } from "./fleet-settings";
 
@@ -20,6 +21,8 @@ export interface SharedVehicle {
   lastMileage?: number;
   archivedAt?: string;
   powertrain?: Powertrain;
+  lastOilChangeMileage?: number;
+  knownIssue?: VehicleKnownIssue;
   createdAt: string;
 }
 
@@ -113,10 +116,41 @@ export async function upsertSharedVehicle(input: {
 
 export async function fetchCheckoutReports(options?: {
   includeArchived?: boolean;
-}): Promise<CheckoutReport[]> {
-  const query = options?.includeArchived ? "?includeArchived=1" : "";
-  const data = await api<{ reports: CheckoutReport[] }>(`/api/checkout-reports${query}`);
-  return data.reports;
+  companyId?: string;
+  vehicleId?: string;
+  status?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<{
+  reports: CheckoutReport[];
+  total: number;
+  flagged: number;
+  limit: number;
+  offset: number;
+}> {
+  const params = new URLSearchParams();
+  if (options?.includeArchived) params.set("includeArchived", "1");
+  if (options?.companyId) params.set("companyId", options.companyId);
+  if (options?.vehicleId) params.set("vehicleId", options.vehicleId);
+  if (options?.status) params.set("status", options.status);
+  if (options?.limit != null) params.set("limit", String(options.limit));
+  if (options?.offset != null) params.set("offset", String(options.offset));
+  const qs = params.toString();
+  return api(`/api/checkout-reports${qs ? `?${qs}` : ""}`);
+}
+
+export async function updateSharedVehicleService(
+  id: string,
+  patch: {
+    knownIssue?: VehicleKnownIssue | null;
+    lastOilChangeMileage?: number | null;
+  }
+): Promise<SharedVehicle> {
+  const data = await api<{ vehicle: SharedVehicle }>(`/api/vehicles/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+  return data.vehicle;
 }
 
 export async function setCheckoutReportArchived(

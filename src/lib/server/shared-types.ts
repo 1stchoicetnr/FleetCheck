@@ -5,6 +5,7 @@ import {
   CheckoutType,
   Company,
   PhotoAngle,
+  VehicleKnownIssue,
   VehiclePhoto,
 } from "@/lib/types";
 import type { FleetSettings } from "@/lib/fleet-settings";
@@ -24,6 +25,8 @@ export interface SharedVehicle {
   archivedAt?: string;
   /** Explicit powertrain. If omitted, inferred from make/model. */
   powertrain?: Powertrain;
+  lastOilChangeMileage?: number;
+  knownIssue?: VehicleKnownIssue;
   createdAt: string;
 }
 

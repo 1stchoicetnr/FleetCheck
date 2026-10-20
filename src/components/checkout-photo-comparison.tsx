@@ -8,7 +8,11 @@ import {
 } from "@/components/photo-lightbox";
 import { CheckoutReport, PHOTO_ANGLES, PhotoAngle } from "@/lib/types";
 import { formatDate } from "@/lib/utils";
-import { isPhotoDamageFlagged, sortAnglesDamageFirst } from "@/lib/photo-flags";
+import {
+  cleanDamageNote,
+  isPhotoDamageFlagged,
+  sortAnglesDamageFirst,
+} from "@/lib/photo-flags";
 
 interface CheckoutPhotoComparisonProps {
   current: CheckoutReport;
@@ -100,9 +104,9 @@ export function CheckoutPhotoComparison({
       <div className="space-y-5">
         {angles.map((a) => {
           const flagged = highlightAngles.includes(a.angle);
-          const damaged = isPhotoDamageFlagged(
-            current.photos.find((p) => p.angle === a.angle)
-          );
+          const currentPhoto = current.photos.find((p) => p.angle === a.angle);
+          const damaged = isPhotoDamageFlagged(currentPhoto);
+          const damageNote = cleanDamageNote(currentPhoto?.damageNote);
           const currentSrc = currentMap[a.angle];
           const priorSrc = priorMap[a.angle];
           return (
@@ -119,6 +123,7 @@ export function CheckoutPhotoComparison({
               <p className="text-sm font-semibold text-gray-800 mb-2">
                 {a.label}
                 {damaged ? " · DAMAGE" : ""}
+                {damageNote ? ` — ${damageNote}` : ""}
                 {flagged ? " · retake requested" : ""}
               </p>
               <div className="grid grid-cols-2 gap-2">

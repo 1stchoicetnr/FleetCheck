@@ -3,23 +3,48 @@ import { assertOfficePin } from "@/lib/server/office-pin";
 import { NextRequest, NextResponse } from "next/server";
 import {
   createReport,
-  listReports,
+  listReportPage,
 } from "@/lib/server/checkout-repo";
+import { OfficeListStatus } from "@/lib/office-list";
 import type { CheckoutInspectionForm } from "@/lib/inspection-form";
 import { CheckoutType } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const LIST_STATUSES = new Set([
+  "all",
+  "flagged",
+  "pending",
+  "pass",
+  "conditional",
+  "fail",
+]);
+
 export async function GET(req: NextRequest) {
   try {
     await assertOfficePin(req);
-    const includeArchived = req.nextUrl.searchParams.get("includeArchived") === "1";
-    const reports = await listReports({ includeArchived });
-    return NextResponse.json(
-      { reports },
-      { headers: { "Cache-Control": "no-store" } }
-    );
+    const params = req.nextUrl.searchParams;
+    const statusParam = params.get("status");
+    if (statusParam && !LIST_STATUSES.has(statusParam)) {
+      return NextResponse.json({ error: "Unknown status filter" }, { status: 400 });
+    }
+    const started = performance.now();
+    const page = await listReportPage({
+      includeArchived: params.get("includeArchived") === "1",
+      companyId: params.get("companyId") || undefined,
+      vehicleId: params.get("vehicleId") || undefined,
+      status: (statusParam as OfficeListStatus | null) || undefined,
+      limit: params.has("limit") ? Number(params.get("limit")) : undefined,
+      offset: params.has("offset") ? Number(params.get("offset")) : undefined,
+    });
+    const dur = (performance.now() - started).toFixed(1);
+    return NextResponse.json(page, {
+      headers: {
+        "Cache-Control": "no-store",
+        "Server-Timing": `list;dur=${dur}`,
+      },
+    });
   } catch (err) {
     return errorResponse(err, "Failed to load reports");
   }

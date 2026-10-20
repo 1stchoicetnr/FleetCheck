@@ -4,6 +4,7 @@ import {
   CheckoutReport,
   Company,
   PhotoAngle,
+  VehicleKnownIssue,
   VehiclePhoto,
 } from "@/lib/types";
 import {
@@ -13,7 +14,13 @@ import {
   validateInspectionForm,
 } from "@/lib/inspection-form";
 import { earlierReports } from "@/lib/report-priors";
-import { reportHasPhotoDamage } from "@/lib/photo-flags";
+import { cleanDamageNote, reportHasPhotoDamage, resolveDamageNote } from "@/lib/photo-flags";
+import {
+  OfficeListQuery,
+  officeReportPage,
+  pageOfficeReports,
+  toOfficeListReport,
+} from "@/lib/office-list";
 import {
   VEHICLE_ARCHIVED_MESSAGE,
   isVehicleArchived,
@@ -37,6 +44,7 @@ import {
   localSetReportArchived,
   localSetVehicleArchived,
   localSetVehiclePowertrain,
+  localSetVehicleService,
   localUpsertVehicle,
   localGetFleetSettings,
   localSetFleetSettings,
@@ -55,13 +63,16 @@ import {
   pgListAlerts,
   pgListUsers,
   pgUpdateUser,
+  pgListReportPage,
   pgListReports,
+  pgListVehicleReports,
   pgListVehicles,
   pgPutReport,
   pgSetAlertArchived,
   pgSetReportArchived,
   pgSetVehicleArchived,
   pgSetVehiclePowertrain,
+  pgSetVehicleService,
   pgUpsertVehicle,
   pgGetFleetSettings,
   pgSetFleetSettings,
@@ -190,6 +201,65 @@ export async function setVehiclePowertrain(
   return vehicle;
 }
 
+const KNOWN_ISSUE_MAX = 1000;
+const OIL_MILEAGE_MAX = 2_000_000;
+
+export async function setVehicleService(
+  id: string,
+  patch: {
+    knownIssue?: VehicleKnownIssue | null;
+    lastOilChangeMileage?: number | null;
+  }
+): Promise<SharedVehicle> {
+  const mode = assertConfigured();
+  const next: {
+    knownIssue?: VehicleKnownIssue | null;
+    lastOilChangeMileage?: number | null;
+  } = {};
+  if (patch.knownIssue !== undefined) {
+    if (patch.knownIssue === null) {
+      next.knownIssue = null;
+    } else {
+      const text = patch.knownIssue.text?.trim() ?? "";
+      if (text.length > KNOWN_ISSUE_MAX) {
+        throw new SharedBackendError("Known issue is too long", 400);
+      }
+      if (typeof patch.knownIssue.isOpen !== "boolean") {
+        throw new SharedBackendError("Known issue isOpen must be true or false", 400);
+      }
+      next.knownIssue = text
+        ? {
+            text,
+            isOpen: patch.knownIssue.isOpen,
+            updatedAt: patch.knownIssue.updatedAt || new Date().toISOString(),
+            updatedBy: patch.knownIssue.updatedBy,
+            updatedByName: patch.knownIssue.updatedByName,
+          }
+        : null;
+    }
+  }
+  if (patch.lastOilChangeMileage !== undefined) {
+    if (patch.lastOilChangeMileage === null) {
+      next.lastOilChangeMileage = null;
+    } else {
+      const mileage = patch.lastOilChangeMileage;
+      if (!Number.isInteger(mileage) || mileage < 0 || mileage > OIL_MILEAGE_MAX) {
+        throw new SharedBackendError(
+          "Oil change mileage must be a whole number from 0 to 2000000",
+          400
+        );
+      }
+      next.lastOilChangeMileage = mileage;
+    }
+  }
+  const vehicle =
+    mode === "postgres"
+      ? await pgSetVehicleService(id, next)
+      : await localSetVehicleService(id, next);
+  if (!vehicle) throw new SharedBackendError("Unit not found", 404);
+  return vehicle;
+}
+
 export async function listReports(options?: {
   includeArchived?: boolean;
 }): Promise<CheckoutReport[]> {
@@ -197,6 +267,29 @@ export async function listReports(options?: {
   const reports = mode === "postgres" ? await pgListReports() : await localListReports();
   if (options?.includeArchived) return reports;
   return reports.filter((report) => !report.archivedAt);
+}
+
+export async function listReportPage(query: OfficeListQuery) {
+  const mode = assertConfigured();
+  const { limit, offset } = officeReportPage(query);
+  if (mode === "postgres") {
+    const status = query.status && query.status !== "all" ? query.status : null;
+    const page = await pgListReportPage({
+      includeArchived: query.includeArchived,
+      companyId: query.companyId,
+      vehicleId: query.vehicleId,
+      status,
+      limit,
+      offset,
+    });
+    return {
+      ...page,
+      reports: page.reports.map(toOfficeListReport),
+      limit,
+      offset,
+    };
+  }
+  return pageOfficeReports(await localListReports(), { ...query, limit, offset });
 }
 
 export async function getReport(id: string): Promise<CheckoutReport | undefined> {
@@ -209,7 +302,13 @@ export async function getPriorReports(
   currentId?: string,
   limit = 2
 ): Promise<CheckoutReport[]> {
-  const reports = (await listReports()).filter((report) => report.vehicleId === vehicleId);
+  const mode = assertConfigured();
+  const reports =
+    mode === "postgres"
+      ? await pgListVehicleReports(vehicleId)
+      : (await localListReports()).filter(
+          (report) => report.vehicleId === vehicleId && !report.archivedAt
+        );
   if (!currentId) return reports.slice(0, limit);
   const current =
     reports.find((report) => report.id === currentId) ?? (await getReport(currentId));
@@ -307,7 +406,7 @@ export async function addReportPhoto(
     dataUrl: url,
     capturedAt: capturedAt || new Date().toISOString(),
     flaggedDamage: flags?.flaggedDamage || undefined,
-    damageNote: flags?.damageNote?.trim() || undefined,
+    damageNote: cleanDamageNote(flags?.damageNote),
   };
   const photos = existing.photos.filter((p) => p.angle !== angle);
   photos.push(photo);
@@ -350,7 +449,7 @@ export async function addReportPhotos(
         dataUrl: url,
         capturedAt: item.capturedAt || new Date().toISOString(),
         flaggedDamage: item.flaggedDamage || undefined,
-        damageNote: item.damageNote?.trim() || undefined,
+        damageNote: cleanDamageNote(item.damageNote),
       };
       return photo;
     })
@@ -393,14 +492,17 @@ export async function patchReportPhotoFlags(
   if (!photo) {
     throw new SharedBackendError("Photo not found", 404);
   }
+  const wasFlagged = Boolean(photo.flaggedDamage);
   const photos = existing.photos.map((p) =>
     p.angle === angle
       ? {
           ...p,
           flaggedDamage: flags.flaggedDamage || undefined,
-          damageNote: flags.flaggedDamage
-            ? flags.damageNote?.trim() || p.damageNote
-            : undefined,
+          damageNote: resolveDamageNote(
+            flags.flaggedDamage,
+            flags.damageNote,
+            p.damageNote
+          ),
         }
       : p
   );
@@ -415,7 +517,7 @@ export async function patchReportPhotoFlags(
       inspectionFormFlagsReport(existing.inspectionForm),
   };
   const saved = mode === "postgres" ? await pgPutReport(updated) : await localPutReport(updated);
-  if (flags.flaggedDamage) {
+  if (flags.flaggedDamage && !wasFlagged) {
     void recordCheckoutAlerts(saved).catch((err) => {
       console.error("[alerts] photo flag alerts failed:", err);
     });

@@ -1,12 +1,16 @@
 import { Vehicle } from "./types";
 
+type OilMileageVehicle = {
+  lastOilChangeMileage?: number;
+};
+
 export const OIL_CHANGE_INTERVAL_MI = 5000;
 export const OIL_CHANGE_WARNING_MI = 500;
 
 export type OilChangeStatus = "ok" | "due_soon" | "overdue" | "unknown";
 
 export function getOilChangeStatus(
-  vehicle: Vehicle,
+  vehicle: OilMileageVehicle,
   currentMileage: number
 ): OilChangeStatus {
   if (vehicle.lastOilChangeMileage == null) return "unknown";
@@ -19,7 +23,7 @@ export function getOilChangeStatus(
 }
 
 export function milesSinceOilChange(
-  vehicle: Vehicle,
+  vehicle: OilMileageVehicle,
   currentMileage: number
 ): number | null {
   if (vehicle.lastOilChangeMileage == null) return null;

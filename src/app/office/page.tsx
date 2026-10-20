@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { AppHeader } from "@/components/app-header";
@@ -21,6 +21,7 @@ import {
   CheckoutReviewStatus,
   Company,
 } from "@/lib/types";
+import { OFFICE_REPORT_PAGE_SIZE } from "@/lib/office-list";
 import { formatDate, formatMileage, formatUnitLabel } from "@/lib/utils";
 import { isVehicleArchived } from "@/lib/vehicle-archive";
 import { Flag, FileSearch } from "lucide-react";
@@ -49,9 +50,13 @@ function OfficeReportsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [reports, setReports] = useState<CheckoutReport[]>([]);
+  const [reportTotal, setReportTotal] = useState(0);
+  const [flagCount, setFlagCount] = useState(0);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [vehicles, setVehicles] = useState<SharedVehicle[]>([]);
   const [loadError, setLoadError] = useState("");
+  const [loadingMore, setLoadingMore] = useState(false);
+  const requestRef = useRef(0);
   const [companyId, setCompanyId] = useState("all");
   const [unitId, setUnitId] = useState("all");
   const [showArchivedUnits, setShowArchivedUnits] = useState(false);
@@ -66,35 +71,59 @@ function OfficeReportsPage() {
     if (user && !canReviewCheckout(user.role)) router.replace("/dashboard");
   }, [user, loading, router]);
 
-  const loadOffice = useCallback(() => {
-    Promise.all([
-      fetchCheckoutReports({ includeArchived: showArchivedReports }),
-      fetchCompanies(),
-      fetchVehicles(undefined, { includeArchived: true }),
-    ])
-      .then(([r, c, v]) => {
-        setReports(r);
-        setCompanies(c);
-        setVehicles(v);
-        setLoadError("");
-      })
-      .catch((err: Error) => {
-        setLoadError(err.message || "Could not load shared checkout reports.");
-      })
-      .finally(() => setListReady(true));
-  }, [showArchivedReports]);
+  const loadOffice = useCallback(
+    (offset = 0, background = false) => {
+      const requestId = ++requestRef.current;
+      if (offset === 0 && !background) setListReady(false);
+      if (offset > 0) setLoadingMore(true);
+      Promise.all([
+        fetchCheckoutReports({
+          includeArchived: showArchivedReports,
+          companyId: companyId === "all" ? undefined : companyId,
+          vehicleId: unitId === "all" ? undefined : unitId,
+          status,
+          limit: OFFICE_REPORT_PAGE_SIZE,
+          offset,
+        }),
+        fetchCompanies(),
+        fetchVehicles(undefined, { includeArchived: true }),
+      ])
+        .then(([page, c, v]) => {
+          if (requestId !== requestRef.current) return;
+          setReports((prev) =>
+            offset === 0 ? page.reports : [...prev, ...page.reports]
+          );
+          setReportTotal(page.total);
+          setFlagCount(page.flagged);
+          setCompanies(c);
+          setVehicles(v);
+          setLoadError("");
+        })
+        .catch((err: Error) => {
+          if (requestId !== requestRef.current) return;
+          setLoadError(err.message || "Could not load shared checkout reports.");
+        })
+        .finally(() => {
+          if (requestId !== requestRef.current) return;
+          setListReady(true);
+          setLoadingMore(false);
+        });
+    },
+    [showArchivedReports, companyId, unitId, status]
+  );
 
   useEffect(() => {
     if (!officeReady) return;
-    loadOffice();
+    loadOffice(0);
     const onVis = () => {
-      if (document.visibilityState === "visible") loadOffice();
+      if (document.visibilityState === "visible") loadOffice(0, true);
     };
+    const onFocus = () => loadOffice(0, true);
     document.addEventListener("visibilitychange", onVis);
-    window.addEventListener("focus", loadOffice);
+    window.addEventListener("focus", onFocus);
     return () => {
       document.removeEventListener("visibilitychange", onVis);
-      window.removeEventListener("focus", loadOffice);
+      window.removeEventListener("focus", onFocus);
     };
   }, [officeReady, loadOffice]);
 
@@ -157,16 +186,7 @@ function OfficeReportsPage() {
     );
   }, [vehicles, reports, companyId, showArchivedUnits, archivedIds, unitId]);
 
-  const filtered = reports.filter((report) => {
-    if (companyId !== "all" && report.companyId !== companyId) return false;
-    if (unitId !== "all" && report.vehicleId !== unitId) return false;
-    if (status === "flagged") return isCheckoutFlagged(report);
-    if (status !== "all" && report.reviewStatus !== status) return false;
-    if (!showArchivedReports && report.archivedAt) return false;
-    return true;
-  });
-
-  const flagCount = reports.filter(isCheckoutFlagged).length;
+  const filtered = reports;
 
   if (loading || !user) return null;
 
@@ -186,13 +206,13 @@ function OfficeReportsPage() {
               </h2>
               <p className="text-sm text-gray-500">
                 {listReady
-                  ? `${filtered.length} shown · ${flagCount} flagged · live Neon list (refresh if a new CR just landed)`
+                  ? `${filtered.length} of ${reportTotal} shown · ${flagCount} flagged · paged Neon list`
                   : "Loading reports…"}
               </p>
               <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1">
                 <button
                   type="button"
-                  onClick={loadOffice}
+                  onClick={() => loadOffice(0)}
                   className="text-xs font-semibold text-brand-700 underline underline-offset-2"
                 >
                   Refresh from server
@@ -391,6 +411,18 @@ function OfficeReportsPage() {
                 </Link>
               );
             })
+          )}
+          {listReady && filtered.length < reportTotal && (
+            <button
+              type="button"
+              disabled={loadingMore}
+              onClick={() => loadOffice(filtered.length)}
+              className="w-full min-h-[48px] rounded-xl border border-gray-200 bg-white text-sm font-semibold text-gray-800"
+            >
+              {loadingMore
+                ? "Loading…"
+                : `Load more (${filtered.length} of ${reportTotal})`}
+            </button>
           )}
         </div>
       </OfficePinGate>

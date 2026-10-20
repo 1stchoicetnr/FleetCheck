@@ -8,7 +8,11 @@ import {
   activeIssueFlagLabels,
   hasInspectionDamageNotes,
 } from "@/lib/inspection-form";
-import { flaggedDamageAngles, photoAngleLabel, reportHasPhotoDamage } from "@/lib/photo-flags";
+import {
+  cleanDamageNote,
+  photoAngleLabel,
+  reportHasPhotoDamage,
+} from "@/lib/photo-flags";
 import { SlackRoute, slackChannelIdForRoute, slackChannelLabel } from "@/lib/slack-config";
 import { CheckoutReport } from "@/lib/types";
 import { formatUnitLabel } from "@/lib/utils";
@@ -35,7 +39,11 @@ function alertMessage(kind: CheckoutAlertKind, report: CheckoutReport): string {
   if (kind === "status_out_of_service") return `${unit} marked out of service`;
   const details = [
     ...activeIssueFlagLabels(report.inspectionForm),
-    ...flaggedDamageAngles(report).map((angle) => photoAngleLabel(angle)),
+    ...report.photos.filter((photo) => photo.flaggedDamage).map((photo) => {
+      const label = photoAngleLabel(photo.angle);
+      const note = cleanDamageNote(photo.damageNote);
+      return note ? `${label} (${note})` : label;
+    }),
   ];
   return details.length
     ? `Damage reported on ${unit}: ${details.join(", ")}`

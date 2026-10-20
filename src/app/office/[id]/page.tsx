@@ -47,6 +47,8 @@ import {
 import { formatDate, formatDateOnly, formatMileage, formatUnitLabel } from "@/lib/utils";
 import { isVehicleArchived } from "@/lib/vehicle-archive";
 import {
+  cleanDamageNote,
+  DAMAGE_NOTE_MAX,
   isPhotoDamageFlagged,
   sortAnglesDamageFirst,
 } from "@/lib/photo-flags";
@@ -104,14 +106,12 @@ export default function OfficeReportDetailPage() {
         setReviewNotes(found.reviewNotes ?? "");
         setNewDamageNotes(found.newDamageNotes ?? "");
         setRetakeAngles(found.retakeAngles ?? []);
-        const [vehicles, companies, prior] = await Promise.all([
+        const [vehicles, companies] = await Promise.all([
           fetchVehicles(found.companyId, { includeArchived: true }),
           fetchCompanies(),
-          fetchPriorReports(found.vehicleId, found.id),
         ]);
         setVehicle(vehicles.find((item) => item.id === found.vehicleId) ?? null);
         setCompany(companies.find((item) => item.id === found.companyId) ?? null);
-        setPriors(prior);
       } catch (err) {
         setSaveError(
           err instanceof Error
@@ -124,6 +124,23 @@ export default function OfficeReportDetailPage() {
     }
     load();
   }, [officeReady, reportId]);
+
+  const priorVehicleId = report?.vehicleId;
+  const priorReportId = report?.id;
+  useEffect(() => {
+    if (!officeReady || tab !== "compare" || !priorVehicleId || !priorReportId) return;
+    let cancelled = false;
+    fetchPriorReports(priorVehicleId, priorReportId)
+      .then((prior) => {
+        if (!cancelled) setPriors(prior);
+      })
+      .catch(() => {
+        if (!cancelled) setPriors([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [officeReady, tab, priorVehicleId, priorReportId]);
 
   const steps = photoStepsForReport(
     getChecklistForCompany(company),
@@ -146,7 +163,13 @@ export default function OfficeReportDetailPage() {
               id: step.angle,
               src: photo.dataUrl,
               label: `${step.label}${
-                isPhotoDamageFlagged(photo) ? " · DAMAGE" : ""
+                isPhotoDamageFlagged(photo)
+                  ? ` · DAMAGE${
+                      cleanDamageNote(photo.damageNote)
+                        ? ` — ${cleanDamageNote(photo.damageNote)}`
+                        : ""
+                    }`
+                  : ""
               }`,
             }]
           : [];
@@ -154,7 +177,11 @@ export default function OfficeReportDetailPage() {
     [photoMap, gallerySteps]
   );
 
-  const handleFlagPhoto = async (angle: PhotoAngle, flaggedDamage: boolean) => {
+  const handleFlagPhoto = async (
+    angle: PhotoAngle,
+    flaggedDamage: boolean,
+    damageNote?: string
+  ) => {
     if (!report) return;
     setFlaggingAngle(angle);
     setSaveError("");
@@ -163,7 +190,8 @@ export default function OfficeReportDetailPage() {
         report.id,
         angle,
         flaggedDamage,
-        getStoredOfficePin()
+        getStoredOfficePin(),
+        damageNote
       );
       setReport(saved);
     } catch (err) {
@@ -494,11 +522,22 @@ export default function OfficeReportDetailPage() {
                         {step.label}
                         {damaged ? " · DAMAGE" : ""}
                       </p>
+                      {damaged && cleanDamageNote(photo?.damageNote) && (
+                        <p className="text-[11px] text-red-800 leading-snug">
+                          {cleanDamageNote(photo?.damageNote)}
+                        </p>
+                      )}
                       {photo?.dataUrl && (
                         <button
                           type="button"
                           disabled={flaggingAngle === step.angle}
-                          onClick={() => handleFlagPhoto(step.angle, !damaged)}
+                          onClick={() =>
+                            handleFlagPhoto(
+                              step.angle,
+                              !damaged,
+                              damaged ? "" : photo.damageNote
+                            )
+                          }
                           className={`w-full min-h-[36px] rounded-lg text-[11px] font-semibold ${
                             damaged
                               ? "bg-red-100 text-red-800"
@@ -511,6 +550,14 @@ export default function OfficeReportDetailPage() {
                               ? "Clear DAMAGE"
                               : "Flag DAMAGE"}
                         </button>
+                      )}
+                      {damaged && photo && (
+                        <DamageNoteEditor
+                          key={`${step.angle}:${photo.damageNote ?? ""}`}
+                          note={photo.damageNote ?? ""}
+                          saving={flaggingAngle === step.angle}
+                          onSave={(note) => handleFlagPhoto(step.angle, true, note)}
+                        />
                       )}
                     </div>
                   </div>
@@ -669,6 +716,41 @@ export default function OfficeReportDetailPage() {
         onClose={() => setLightboxIndex(null)}
         onIndexChange={setLightboxIndex}
       />
+    </div>
+  );
+}
+
+function DamageNoteEditor({
+  note,
+  saving,
+  onSave,
+}: {
+  note: string;
+  saving: boolean;
+  onSave: (note: string) => void;
+}) {
+  const [value, setValue] = useState(note);
+  const dirty = value.trim() !== note.trim();
+  return (
+    <div className="space-y-1">
+      <textarea
+        value={value}
+        maxLength={DAMAGE_NOTE_MAX}
+        rows={2}
+        placeholder="Damage note (optional)"
+        onChange={(e) => setValue(e.target.value)}
+        className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-[11px]"
+      />
+      {dirty && (
+        <button
+          type="button"
+          disabled={saving}
+          onClick={() => onSave(value)}
+          className="w-full min-h-[32px] rounded-lg bg-brand-700 text-white text-[11px] font-semibold"
+        >
+          {saving ? "Saving…" : "Save note"}
+        </button>
+      )}
     </div>
   );
 }

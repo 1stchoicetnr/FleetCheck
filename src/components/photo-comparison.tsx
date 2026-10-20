@@ -88,6 +88,8 @@ export function PhotoComparison({ checkIns }: PhotoComparisonProps) {
                   <img
                     src={prevMap[a.angle]}
                     alt={`Previous ${a.label}`}
+                    loading="lazy"
+                    decoding="async"
                     className="w-full h-full object-cover"
                   />
                 ) : (
@@ -102,6 +104,8 @@ export function PhotoComparison({ checkIns }: PhotoComparisonProps) {
                   <img
                     src={currMap[a.angle]}
                     alt={`Current ${a.label}`}
+                    loading="lazy"
+                    decoding="async"
                     className="w-full h-full object-cover"
                   />
                 ) : (

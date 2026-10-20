@@ -22,6 +22,7 @@ import { Company } from "@/lib/types";
 import { summarizeUnits, unitCountLine } from "@/lib/unit-counts";
 import { formatDate, formatMileage, formatUnitLabel } from "@/lib/utils";
 import { isVehicleArchived } from "@/lib/vehicle-archive";
+import { OfficeUnitService } from "@/components/office-unit-service";
 import { UnitImportNote } from "@/components/unit-import-note";
 import { Archive, ArchiveRestore, Truck } from "lucide-react";
 
@@ -240,6 +241,16 @@ export default function OfficeUnitsPage() {
                         Out of service since {formatDate(vehicle.archivedAt)}
                       </p>
                     )}
+                    <OfficeUnitService
+                      vehicle={vehicle}
+                      userId={user.id}
+                      userName={user.name}
+                      onUpdated={(updated) =>
+                        setVehicles((prev) =>
+                          prev.map((item) => (item.id === updated.id ? updated : item))
+                        )
+                      }
+                    />
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         type="button"

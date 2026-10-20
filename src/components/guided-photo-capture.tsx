@@ -13,6 +13,7 @@ import { ProgressBar } from "./ui/progress-bar";
 import { PhotoExampleCard } from "./photo-example-image";
 import { compressImageFile } from "@/lib/utils";
 import { PHOTO_ANGLES, PhotoAngle, PhotoStep, walkaroundPhotoSteps } from "@/lib/types";
+import { DAMAGE_NOTE_MAX } from "@/lib/photo-flags";
 import { useCheckoutFeedback } from "@/components/checkout-feedback";
 
 interface GuidedPhotoCaptureProps {
@@ -23,6 +24,7 @@ interface GuidedPhotoCaptureProps {
   onAccept: (angle: PhotoAngle, dataUrl: string) => void;
   onClear: (angle: PhotoAngle) => void;
   onFlagDamage?: (angle: PhotoAngle, flaggedDamage: boolean) => void;
+  onDamageNote?: (angle: PhotoAngle, damageNote: string) => void;
   onAllComplete: () => void;
   /** Dev: browse all steps without requiring captures */
   testingBrowseMode?: boolean;
@@ -38,6 +40,7 @@ export function GuidedPhotoCapture({
   onAccept,
   onClear,
   onFlagDamage,
+  onDamageNote,
   onAllComplete,
   testingBrowseMode = false,
   steps = walkaroundPhotoSteps(PHOTO_ANGLES),
@@ -220,6 +223,21 @@ export function GuidedPhotoCapture({
                       ? "DAMAGE flagged — tap to clear"
                       : "Mark this angle as DAMAGE / new damage"}
                   </button>
+                )}
+                {onDamageNote && photoFlags?.[current.angle]?.flaggedDamage && (
+                  <label className="block space-y-1.5">
+                    <span className="text-sm font-semibold text-[#e4e4e7]">
+                      Damage note (optional)
+                    </span>
+                    <textarea
+                      value={photoFlags[current.angle]?.damageNote ?? ""}
+                      maxLength={DAMAGE_NOTE_MAX}
+                      rows={3}
+                      onChange={(e) => onDamageNote(current.angle, e.target.value)}
+                      placeholder="What is damaged? For example, cracked bumper."
+                      className="w-full rounded-xl border border-[#5c5c64] bg-[#1c1c1e] px-3 py-2 text-sm text-white placeholder:text-[#8b8b93]"
+                    />
+                  </label>
                 )}
                 <Button
                   variant="outline"

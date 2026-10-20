@@ -5,7 +5,7 @@ import {
   shouldMoveUnitToTuro,
   TURO_COMPANY_ID,
 } from "@/lib/companies";
-import { CheckoutReport } from "@/lib/types";
+import { CheckoutReport, VehicleKnownIssue } from "@/lib/types";
 import { inferPowertrain } from "@/lib/inspection-form";
 import { displayPlate, normalizePlate } from "@/lib/utils";
 import {
@@ -223,6 +223,8 @@ export async function localUpsertVehicle(
       year: Number(input.year),
       lastMileage: existing?.lastMileage,
       archivedAt: existing?.archivedAt,
+      lastOilChangeMileage: existing?.lastOilChangeMileage,
+      knownIssue: existing?.knownIssue,
       powertrain: inferPowertrain(
         input.make,
         input.model,
@@ -273,6 +275,32 @@ export async function localSetVehiclePowertrain(
     };
     await writeStore(store);
     return store.vehicles[idx];
+  });
+}
+
+export async function localSetVehicleService(
+  id: string,
+  patch: {
+    knownIssue?: VehicleKnownIssue | null;
+    lastOilChangeMileage?: number | null;
+  }
+): Promise<SharedVehicle | undefined> {
+  return enqueueWrite(async () => {
+    const store = await loadAndSeedUnlocked();
+    const idx = store.vehicles.findIndex((v) => v.id === id);
+    if (idx < 0) return undefined;
+    const next = { ...store.vehicles[idx] };
+    if (patch.knownIssue !== undefined) {
+      if (patch.knownIssue) next.knownIssue = patch.knownIssue;
+      else delete next.knownIssue;
+    }
+    if (patch.lastOilChangeMileage !== undefined) {
+      if (patch.lastOilChangeMileage == null) delete next.lastOilChangeMileage;
+      else next.lastOilChangeMileage = patch.lastOilChangeMileage;
+    }
+    store.vehicles[idx] = next;
+    await writeStore(store);
+    return next;
   });
 }
 
