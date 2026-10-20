@@ -56,6 +56,12 @@ export function canEditFleets(user: MenuUser): boolean {
   );
 }
 
+/** A menu count is shown only when there is something to do. */
+export function visibleMenuBadge(count: number | null | undefined): number | null {
+  if (typeof count !== "number" || !Number.isFinite(count) || count <= 0) return null;
+  return Math.trunc(count);
+}
+
 /** Daily actions first, then the combined vehicles and settings tiles. */
 export function homeTiles(user: MenuUser): HomeTileId[] {
   const tiles: HomeTileId[] = ["my-checks"];

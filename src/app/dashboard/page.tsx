@@ -9,6 +9,7 @@ import {
   canSeeAlerts,
   canStartCheck,
   homeTiles,
+  visibleMenuBadge,
   type HomeTileId,
 } from "@/lib/home-menu";
 import { AppHeader } from "@/components/app-header";
@@ -90,8 +91,8 @@ export default function DashboardPage() {
     let cancelled = false;
     void (async () => {
       try {
-        const page = await fetchCheckoutReports({ limit: 1 });
-        if (!cancelled) setReviewCount(page.flagged);
+        const page = await fetchCheckoutReports({ status: "pending", limit: 1 });
+        if (!cancelled) setReviewCount(page.total);
       } catch {
         if (!cancelled) setReviewCount(null);
       }
@@ -162,7 +163,7 @@ export default function DashboardPage() {
           {tiles.map((id) => {
             const tile = TILES[id];
             const Icon = tile.icon;
-            const badge = badges[id];
+            const badge = visibleMenuBadge(badges[id]);
             const vehicleDesc =
               id === "vehicles" && canAddVehicle(user.role)
                 ? "Fleet list, add, and archived units"
@@ -180,7 +181,7 @@ export default function DashboardPage() {
                       <CardTitle className="text-base">{tile.label}</CardTitle>
                       <p className="text-xs text-muted">{vehicleDesc}</p>
                     </div>
-                    {typeof badge === "number" && (
+                    {badge != null && (
                       <span className="min-w-6 h-6 px-1.5 rounded-full bg-red-600 text-white text-xs font-bold inline-flex items-center justify-center">
                         {badge}
                       </span>

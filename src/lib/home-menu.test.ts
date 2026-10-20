@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canEditFleets, canStartCheck, homeTiles, settingsSections } from "./home-menu.ts";
+import {
+  canEditFleets,
+  canStartCheck,
+  homeTiles,
+  settingsSections,
+  visibleMenuBadge,
+} from "./home-menu.ts";
 
 test("a driver sees the check, recent checks, and vehicles", () => {
   const user = { role: "driver", roleTitle: "Driver" };
@@ -43,6 +49,13 @@ test("office and owner can edit fleets, and driver and tech cannot", () => {
   assert.equal(canEditFleets({ role: "super_admin", roleTitle: "Owner" }), true);
   assert.equal(canEditFleets({ role: "driver", roleTitle: "Driver" }), false);
   assert.equal(canEditFleets({ role: "tech", roleTitle: "Tech" }), false);
+});
+
+test("menu counts stay hidden at zero and show a positive total", () => {
+  assert.equal(visibleMenuBadge(0), null);
+  assert.equal(visibleMenuBadge(null), null);
+  assert.equal(visibleMenuBadge(undefined), null);
+  assert.equal(visibleMenuBadge(3), 3);
 });
 
 test("tech keeps review, alerts, vehicles, settings, and issue reports", () => {
