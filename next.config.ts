@@ -14,6 +14,10 @@ const nextConfig: NextConfig = {
   redirects: async () => [
     { source: "/check-in", destination: "/checkout", permanent: false },
     { source: "/check-in/:path*", destination: "/checkout", permanent: false },
+    { source: "/office/settings", destination: "/settings?section=company", permanent: false },
+    { source: "/alerts/settings", destination: "/settings?section=notifications", permanent: false },
+    { source: "/admin", destination: "/settings?section=people", permanent: false },
+    { source: "/office/units", destination: "/vehicles", permanent: false },
   ],
   headers: async () => [
     {

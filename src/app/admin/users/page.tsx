@@ -89,7 +89,7 @@ export default function AdminUsersPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <AppHeader title="Users" backHref="/admin" />
+      <AppHeader title="Users" backHref="/settings?section=people" />
       <OfficePinGate onUnlocked={() => setReady(true)}>
         <div className="max-w-lg mx-auto px-4 py-6 space-y-4">
           <p className="text-sm text-gray-600">

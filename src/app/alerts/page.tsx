@@ -166,7 +166,7 @@ export default function AlertsPage() {
                 Mark all read
               </Button>
             )}
-            <Link href="/alerts/settings">
+            <Link href="/settings?section=notifications">
               <Button size="sm" variant="outline">
                 <Settings className="h-4 w-4 mr-1" />
                 Settings
@@ -211,7 +211,7 @@ export default function AlertsPage() {
 
         {!showCheckEvents && filter === "all" && (
           <p className="text-xs text-gray-400">
-            Check-in/out alerts are hidden. Enable them in Alert Settings.
+            Check-in/out alerts are hidden. Enable them in Settings.
           </p>
         )}
 

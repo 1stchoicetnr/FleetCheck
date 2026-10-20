@@ -226,7 +226,7 @@ function OfficeReportsPage() {
                   Refresh from server
                 </button>
                 <Link
-                  href="/office/units"
+                  href="/vehicles"
                   className="text-xs font-semibold text-brand-700 underline underline-offset-2"
                 >
                   Manage units (archive)
@@ -239,7 +239,7 @@ function OfficeReportsPage() {
                 </Link>
                 {(canManageFleet(user.role) || user.role === "management" || user.roleTitle === "Owner") && (
                   <Link
-                    href="/office/settings"
+                    href="/settings"
                     className="text-xs font-semibold text-brand-700 underline underline-offset-2"
                   >
                     Settings

@@ -92,7 +92,7 @@ export default function NewVehiclePage() {
         powertrain,
       });
 
-      router.push("/office/units");
+      router.push("/vehicles");
     } catch (err) {
       setError(
         err instanceof Error
@@ -113,7 +113,7 @@ export default function NewVehiclePage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <AppHeader title="Add Vehicle" backHref="/admin" />
+      <AppHeader title="Add Vehicle" backHref="/vehicles" />
       <div className="max-w-lg mx-auto px-4 py-6 space-y-4">
         <p className="text-sm text-gray-600">
           Super Admin add writes to the same shared unit list Checkout uses.

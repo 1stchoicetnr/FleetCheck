@@ -50,7 +50,7 @@ export function FleetStatusStats() {
           return (
             <Link
               key={company.id}
-              href="/office/units"
+              href="/vehicles"
               className="rounded-xl border border-slate-200 bg-white p-4 text-center transition-shadow hover:shadow-md active:scale-[0.98]"
             >
               <p className="text-2xl font-bold text-gray-900">{bucket.active}</p>
