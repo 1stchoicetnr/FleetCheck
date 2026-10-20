@@ -27,6 +27,7 @@ import {
   photoAngleLabel,
 } from "./photo-flags";
 import { companyUsesClover } from "./companies";
+import { INSPEKT_ICON, INSPEKT_NAVY_RGB } from "./brand-mark";
 import {
   formatCloverSerial,
   inspectionFormSummaryLines,
@@ -41,7 +42,7 @@ export type CheckoutPdfOptions = {
 async function inspektLogoDataUrl(): Promise<string | null> {
   if (typeof fetch !== "function") return null;
   try {
-    const res = await fetch("/icons/icon-192.png");
+    const res = await fetch(INSPEKT_ICON);
     if (!res.ok) return null;
     const blob = await res.blob();
     return await new Promise((resolve) => {
@@ -56,14 +57,14 @@ async function inspektLogoDataUrl(): Promise<string | null> {
   }
 }
 
-/** Charcoal band with the Inspekt mark. Returns the y where body copy starts. */
+/** Navy band with the Inspekt mark. Returns the y where body copy starts. */
 function paintInspektHeader(
   doc: jsPDF,
   logo: string | null,
   subtitle: string
 ): number {
   const pageWidth = doc.internal.pageSize.getWidth();
-  doc.setFillColor(26, 26, 26);
+  doc.setFillColor(INSPEKT_NAVY_RGB[0], INSPEKT_NAVY_RGB[1], INSPEKT_NAVY_RGB[2]);
   doc.rect(0, 0, pageWidth, 32, "F");
   doc.setFillColor(34, 197, 94);
   doc.rect(0, 32, pageWidth, 1.4, "F");

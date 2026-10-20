@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { UserRole } from "@/lib/types";
 import { Truck, Shield, Wrench, Car, ChevronRight } from "lucide-react";
+import { INSPEKT_ICON, INSPEKT_ICON_LARGE, INSPEKT_NAVY } from "@/lib/brand-mark";
 
 const LOGIN_OPTIONS: {
   role: UserRole;
@@ -85,10 +86,22 @@ export default function LoginPage() {
 
   if (loading || user) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-pulse text-brand-600 font-semibold text-lg">
+      <div
+        className="flex min-h-screen items-center justify-center"
+        style={{ background: INSPEKT_NAVY }}
+      >
+        <Image
+          src={INSPEKT_ICON_LARGE}
+          alt=""
+          width={512}
+          height={512}
+          priority
+          unoptimized
+          className="h-[100vmin] w-[100vmin] max-w-none"
+        />
+        <span className="sr-only">
           {user ? "Opening dashboard..." : "Loading Inspekt..."}
-        </div>
+        </span>
       </div>
     );
   }
@@ -97,7 +110,8 @@ export default function LoginPage() {
     <div className="min-h-screen flex flex-col bg-canvas">
       <div className="px-6 pt-12 pb-6 text-center">
         <Image
-          src="/icons/icon-192.png"
+          src={INSPEKT_ICON}
+          unoptimized
           alt=""
           width={88}
           height={88}

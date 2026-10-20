@@ -4,6 +4,7 @@ import { CheckoutFeedbackButton } from "@/components/checkout-feedback";
 import { useAuth } from "@/hooks/use-auth";
 import Image from "next/image";
 import { ROLE_LABELS } from "@/lib/types";
+import { INSPEKT_ICON } from "@/lib/brand-mark";
 import { ArrowLeft, Home, LogOut } from "lucide-react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
@@ -63,7 +64,8 @@ export function AppHeader({
 
         <div className="flex-1 min-w-0 flex items-center gap-2">
           <Image
-            src="/icons/icon-192.png"
+            src={INSPEKT_ICON}
+            unoptimized
             alt=""
             width={32}
             height={32}
