@@ -206,7 +206,8 @@ export async function pgMigrateAndSeed(): Promise<void> {
     )
   `;
   await applyOrgStamp({
-    query: (text, params) => sql.query(text, params ?? []),
+    query: async (text, params) =>
+      (await sql.query(text, params ?? [])) as Array<Record<string, unknown>>,
   });
   await sql`
     INSERT INTO fleet_settings (id, allow_driver_add_vehicles, org_id)

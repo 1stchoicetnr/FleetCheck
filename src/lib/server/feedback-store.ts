@@ -58,7 +58,8 @@ async function ensureFeedbackTable(): Promise<void> {
     )
   `;
   await applyOrgStamp({
-    query: (text, params) => sql.query(text, params ?? []),
+    query: async (text, params) =>
+      (await sql.query(text, params ?? [])) as Array<Record<string, unknown>>,
   });
   tableReady = true;
 }

@@ -25,10 +25,10 @@ export type OrgStampResult = {
 };
 
 export type SqlRunner = {
-  query<T extends Record<string, unknown> = Record<string, unknown>>(
+  query(
     text: string,
     params?: unknown[]
-  ): Promise<T[]>;
+  ): Promise<Array<Record<string, unknown>>>;
 };
 
 export class OrgStampError extends Error {
@@ -51,22 +51,17 @@ function emptyCounts(): OrgCounts {
 }
 
 async function tableExists(db: SqlRunner, table: string): Promise<boolean> {
-  const rows = await db.query<{ reg: string | null }>(
-    "SELECT to_regclass($1) AS reg",
-    [`public.${table}`]
-  );
+  const rows = await db.query("SELECT to_regclass($1) AS reg", [`public.${table}`]);
   return rows[0]?.reg != null;
 }
 
 async function countRows(db: SqlRunner, table: TenantTable): Promise<number> {
-  const rows = await db.query<{ n: number | string }>(
-    `SELECT COUNT(*)::int AS n FROM ${table}`
-  );
+  const rows = await db.query(`SELECT COUNT(*)::int AS n FROM ${table}`);
   return Number(rows[0]?.n ?? 0);
 }
 
 async function nullOrgRows(db: SqlRunner, table: TenantTable): Promise<number> {
-  const rows = await db.query<{ n: number | string }>(
+  const rows = await db.query(
     `SELECT COUNT(*)::int AS n FROM ${table} WHERE org_id IS NULL`
   );
   return Number(rows[0]?.n ?? 0);
@@ -127,11 +122,10 @@ export async function applyOrgStamp(db: SqlRunner): Promise<OrgStampResult> {
       FIRST_CHOICE_ORG_CREATED_AT,
     ]
   );
-  const orgRows = await db.query<{ id: string }>(
-    "SELECT id FROM orgs WHERE slug = $1",
-    [FIRST_CHOICE_ORG_SLUG]
-  );
-  const orgId = orgRows[0]?.id;
+  const orgRows = await db.query("SELECT id FROM orgs WHERE slug = $1", [
+    FIRST_CHOICE_ORG_SLUG,
+  ]);
+  const orgId = orgRows[0]?.id ? String(orgRows[0].id) : "";
   if (!orgId) throw new OrgStampError("1st Choice / Rad Cab org was not created");
 
   const present: TenantTable[] = [];
