@@ -166,13 +166,13 @@ export function GuidedPhotoCapture({
         </p>
       )}
 
-      <div className="photo-step-card bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden shadow-lg">
-        <div className="photo-step-heading px-5 pt-5 pb-4 border-b border-gray-800">
+      <div className="photo-step-card bg-[#121214] rounded-2xl border border-[#2e2e32] overflow-hidden shadow-card">
+        <div className="photo-step-heading px-5 pt-5 pb-4 border-b border-[#2e2e32]">
               <span className="inline-block bg-emerald-500/15 text-emerald-300 text-sm font-bold px-3 py-1 rounded-full mb-2">
                 Photo {currentIndex + 1} of {requiredPhotos.length}
               </span>
               <h2 className="text-xl font-bold text-white">{current.label}</h2>
-              <p className="photo-step-instruction text-base text-gray-300 mt-2 leading-relaxed">
+              <p className="photo-step-instruction text-base text-[#d4d4d8] mt-2 leading-relaxed">
                 {current.instruction}
               </p>
               {current.helper && (
@@ -213,7 +213,7 @@ export function GuidedPhotoCapture({
                     className={`w-full min-h-[48px] rounded-xl border-2 text-sm font-semibold ${
                       photoFlags?.[current.angle]?.flaggedDamage
                         ? "border-red-500 bg-red-950/40 text-red-100"
-                        : "border-gray-600 bg-gray-800 text-gray-200"
+                        : "border-[#5c5c64] bg-[#1c1c1e] text-[#e4e4e7]"
                     }`}
                   >
                     {photoFlags?.[current.angle]?.flaggedDamage
@@ -273,7 +273,7 @@ export function GuidedPhotoCapture({
                     type="button"
                     onClick={openNativeCamera}
                     disabled={busy}
-                    className="photo-take-btn w-full h-16 rounded-2xl bg-brand-600 hover:bg-brand-500 active:scale-[0.98] transition-all shadow-lg flex items-center justify-center gap-3 text-white font-bold text-lg disabled:opacity-60"
+                    className="photo-take-btn w-full h-16 rounded-2xl bg-accent hover:bg-emerald-400 active:scale-[0.98] transition-all shadow-card flex items-center justify-center gap-3 text-[#052e16] font-bold text-lg disabled:opacity-60"
                   >
                     <Camera className="h-7 w-7" />
                     {busy ? "Saving photo…" : "Take photo"}
@@ -322,13 +322,13 @@ export function GuidedPhotoCapture({
                 disabled={!canView}
                 onClick={() => canView && goToStep(i)}
                 title={p.label}
-                className={`flex-shrink-0 min-w-[32px] h-8 px-1.5 rounded-md text-[10px] font-bold transition-colors ${
+                className={`flex-shrink-0 min-w-[44px] h-11 px-1.5 rounded-lg text-xs font-bold transition-colors ${
                   damaged
                     ? "bg-red-600 text-white"
                     : done
                     ? "bg-emerald-600 text-white"
                     : isCurrent
-                    ? "bg-brand-600 text-white ring-2 ring-brand-300"
+                    ? "bg-accent text-[#052e16] ring-2 ring-emerald-300"
                     : testingBrowseMode
                     ? "bg-gray-300 text-gray-700"
                     : "bg-gray-200 text-gray-400"

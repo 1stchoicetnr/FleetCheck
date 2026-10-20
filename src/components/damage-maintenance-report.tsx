@@ -96,7 +96,7 @@ export function DamageMaintenanceReport({
               <div
                 className={`w-7 h-7 rounded-lg border-2 flex items-center justify-center flex-shrink-0 mt-0.5 ${
                   checked
-                    ? "border-brand-600 bg-brand-600 text-white"
+                    ? "border-accent bg-accent text-[#052e16]"
                     : "border-gray-300 bg-white"
                 }`}
                 aria-hidden

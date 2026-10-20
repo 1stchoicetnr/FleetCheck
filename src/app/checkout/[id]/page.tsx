@@ -575,7 +575,7 @@ function CheckoutCapturePage() {
                   <span>{uploadPercent}%</span>
                 </div>
                 <div className="h-3 w-full rounded-full bg-gray-200 overflow-hidden">
-                  <div className="h-full bg-brand-600 transition-all" style={{ width: `${uploadPercent}%` }} />
+                  <div className="h-full bg-accent transition-all" style={{ width: `${uploadPercent}%` }} />
                 </div>
                 <p className="text-xs text-gray-500 mt-1">{uploadEstimate}</p>
               </div>

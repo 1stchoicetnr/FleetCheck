@@ -294,9 +294,10 @@ function OfficeReportsPage() {
           {!listReady ? (
             <p className="text-center text-brand-600 font-semibold py-12">Loading reports…</p>
           ) : filtered.length === 0 ? (
-            <div className="text-center py-12">
-              <FileSearch className="h-12 w-12 mx-auto text-gray-300 mb-3" />
-              <p className="text-gray-500">No checkout reports match.</p>
+            <div className="text-center py-14 rounded-2xl border border-dashed border-line bg-surface">
+              <FileSearch className="h-12 w-12 mx-auto text-muted mb-3" />
+              <p className="text-ink font-semibold">No checkout reports match.</p>
+              <p className="text-sm text-muted mt-1">Try another company, unit, or status.</p>
             </div>
           ) : (
             filtered.map((report) => {
@@ -326,7 +327,7 @@ function OfficeReportsPage() {
                         <div className="flex flex-col items-end gap-1">
                           <ReviewStatusBadge status={report.reviewStatus} />
                           {flagged && (
-                            <span className="text-[11px] font-semibold text-red-700">
+                            <span className="text-[11px] font-semibold text-red-300">
                               Flagged
                             </span>
                           )}

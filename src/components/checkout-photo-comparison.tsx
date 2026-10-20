@@ -83,7 +83,7 @@ export function CheckoutPhotoComparison({
             onClick={() => setPriorId(p.id)}
             className={`px-3 py-2 rounded-full text-sm font-medium min-h-[40px] ${
               priorId === p.id
-                ? "bg-brand-600 text-white"
+                ? "bg-accent text-[#052e16]"
                 : "bg-white border border-gray-200 text-gray-700"
             }`}
           >

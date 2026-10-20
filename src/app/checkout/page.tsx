@@ -339,10 +339,13 @@ function CheckoutStartPage() {
       <AppHeader title="Checkout Report" />
       <div className="max-w-lg mx-auto px-4 py-6 space-y-5">
         <div className="text-center space-y-1">
-          <div className="inline-flex bg-brand-100 text-brand-700 rounded-2xl p-3 mb-1">
+          <p className="text-xs font-semibold uppercase tracking-wide text-accent">
+            Step 1 · Start
+          </p>
+          <div className="inline-flex bg-brand-100 text-accent rounded-2xl p-3 mb-1">
             <ClipboardCheck className="h-7 w-7" />
           </div>
-          <h2 className="text-xl font-bold text-gray-900">
+          <h2 className="text-xl font-bold text-ink">
             Start a vehicle checkout
           </h2>
           <p className="text-sm text-gray-600">

@@ -21,8 +21,8 @@ const LOGIN_OPTIONS: {
     title: "Driver",
     description: "Checkout Report — the only path Office can see",
     icon: Car,
-    color: "text-green-700",
-    bg: "bg-green-100 hover:bg-green-200 border-green-300",
+    color: "text-emerald-300",
+    bg: "bg-surface hover:bg-raised border-line",
     href: "/checkout",
   },
   {
@@ -30,8 +30,8 @@ const LOGIN_OPTIONS: {
     title: "Office",
     description: "Review checkout reports",
     icon: Truck,
-    color: "text-indigo-700",
-    bg: "bg-indigo-100 hover:bg-indigo-200 border-indigo-300",
+    color: "text-sky-300",
+    bg: "bg-surface hover:bg-raised border-line",
     href: "/office",
   },
   {
@@ -39,16 +39,16 @@ const LOGIN_OPTIONS: {
     title: "Tech",
     description: "Maintenance alerts and vehicle status",
     icon: Wrench,
-    color: "text-orange-700",
-    bg: "bg-orange-100 hover:bg-orange-200 border-orange-300",
+    color: "text-orange-300",
+    bg: "bg-surface hover:bg-raised border-line",
   },
   {
     role: "super_admin",
     title: "Super Admin",
     description: "Full access — can override steps",
     icon: Shield,
-    color: "text-purple-700",
-    bg: "bg-purple-100 hover:bg-purple-200 border-purple-300",
+    color: "text-violet-300",
+    bg: "bg-surface hover:bg-raised border-line",
   },
 ];
 
@@ -94,30 +94,30 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
-      <div className="bg-[#1A1A1A] text-white px-6 pt-12 pb-10 text-center">
+    <div className="min-h-screen flex flex-col bg-canvas">
+      <div className="px-6 pt-12 pb-6 text-center">
         <Image
           src="/icons/icon-192.png"
           alt=""
           width={88}
           height={88}
           priority
-          className="mx-auto mb-4 h-[88px] w-[88px]"
+          className="mx-auto mb-4 h-[88px] w-[88px] drop-shadow-lg"
         />
-        <h1 className="text-3xl font-bold">Inspekt</h1>
-        <p className="text-white/70 mt-2 text-base">
+        <h1 className="text-3xl font-bold tracking-tight">Inspekt</h1>
+        <p className="text-muted mt-2 text-base">
           Vehicle docs, damage tracking & accountability
         </p>
       </div>
 
-      <div className="flex-1 px-4 py-8 max-w-lg mx-auto w-full">
-        <h2 className="text-xl font-bold text-gray-900 mb-2 text-center">
+      <div className="flex-1 px-4 pb-10 max-w-lg mx-auto w-full">
+        <h2 className="text-xl font-bold text-ink mb-2 text-center">
           Select your role to continue
         </h2>
-        <p className="text-gray-500 text-center mb-4">
+        <p className="text-muted text-center mb-4">
           Tap your role below to sign in
         </p>
-        <p className="text-sm text-center text-brand-800 bg-brand-50 border border-brand-200 rounded-xl px-3 py-2 mb-6">
+        <p className="text-sm text-center text-emerald-100 bg-brand-50 border border-brand-200 rounded-xl px-3 py-2 mb-6">
           Office only lists <strong>Checkout Reports</strong>. The old Check In /
           Out Slack PDF does not appear in Office.
         </p>
@@ -126,10 +126,10 @@ export default function LoginPage() {
           type="button"
           disabled={signingIn !== null}
           onClick={() => handleSelect("driver", "/checkout")}
-          className="w-full mb-4 rounded-2xl bg-brand-600 text-white p-5 text-left shadow-md active:scale-[0.98] disabled:opacity-60"
+          className="w-full mb-4 rounded-2xl bg-accent text-[#052e16] p-5 text-left shadow-card active:scale-[0.98] disabled:opacity-60 min-h-[80px]"
         >
           <p className="text-xl font-bold">Start Checkout Report</p>
-          <p className="text-brand-100 text-sm mt-1">
+          <p className="text-[#14532d] text-sm mt-1 font-medium">
             Dispatchers: use this. Office reviews these reports only.
           </p>
         </button>
@@ -146,7 +146,7 @@ export default function LoginPage() {
                 onClick={() => handleSelect(option.role, option.href)}
                 className={`w-full flex items-center gap-4 p-5 rounded-2xl border-2 text-left transition-all active:scale-[0.98] min-h-[80px] disabled:opacity-60 ${option.bg}`}
               >
-                <div className={`rounded-xl p-3 bg-white/70 ${option.color}`}>
+                <div className={`rounded-xl p-3 bg-raised ${option.color}`}>
                   <Icon className="h-8 w-8" />
                 </div>
                 <div className="flex-1 min-w-0">

@@ -38,6 +38,69 @@ export type CheckoutPdfOptions = {
   steps?: PhotoStep[];
 };
 
+async function inspektLogoDataUrl(): Promise<string | null> {
+  if (typeof fetch !== "function") return null;
+  try {
+    const res = await fetch("/icons/icon-192.png");
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () =>
+        resolve(typeof reader.result === "string" ? reader.result : null);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
+/** Charcoal band with the Inspekt mark. Returns the y where body copy starts. */
+function paintInspektHeader(
+  doc: jsPDF,
+  logo: string | null,
+  subtitle: string
+): number {
+  const pageWidth = doc.internal.pageSize.getWidth();
+  doc.setFillColor(26, 26, 26);
+  doc.rect(0, 0, pageWidth, 32, "F");
+  doc.setFillColor(34, 197, 94);
+  doc.rect(0, 32, pageWidth, 1.4, "F");
+  if (logo) {
+    try {
+      doc.addImage(logo, "PNG", 10, 6, 20, 20);
+    } catch {
+      // Wordmark still prints if the icon cannot be embedded.
+    }
+  }
+  const textX = logo ? 34 : 14;
+  doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(16);
+  doc.text("Inspekt", textX, 14);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(212, 212, 216);
+  doc.text(subtitle, textX, 22);
+  doc.setTextColor(26, 26, 26);
+  return 42;
+}
+
+function paintSectionRule(doc: jsPDF, title: string, y: number): void {
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(12);
+  doc.setTextColor(26, 26, 26);
+  doc.text(title, 14, y);
+  const width = Math.min(doc.getTextWidth(title), 72);
+  doc.setDrawColor(34, 197, 94);
+  doc.setLineWidth(0.7);
+  doc.line(14, y + 1.5, 14 + width, y + 1.5);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(38, 38, 38);
+}
+
 function blobToDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -102,27 +165,15 @@ export async function generateCheckPDF(
 ): Promise<Blob> {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
-  let y = 20;
+  const logo = await inspektLogoDataUrl();
+  let y = paintInspektHeader(
+    doc,
+    logo,
+    `Report · ${formatDate(new Date().toISOString())}`
+  );
 
-  doc.setFontSize(20);
-  doc.setFont("helvetica", "bold");
-  doc.text("Inspekt Report", pageWidth / 2, y, { align: "center" });
-  y += 12;
-
-  doc.setFontSize(10);
-  doc.setFont("helvetica", "normal");
-  doc.text(`Generated: ${formatDate(new Date().toISOString())}`, pageWidth / 2, y, {
-    align: "center",
-  });
-  y += 15;
-
-  doc.setFontSize(14);
-  doc.setFont("helvetica", "bold");
-  doc.text("Vehicle Information", 14, y);
+  paintSectionRule(doc, "Vehicle Information", y);
   y += 8;
-
-  doc.setFontSize(10);
-  doc.setFont("helvetica", "normal");
   const vehicleInfo = [
     `Plate: ${vehicle.plate}`,
     `Vehicle: ${vehicle.year} ${vehicle.make} ${vehicle.model}`,
@@ -137,12 +188,8 @@ export async function generateCheckPDF(
   }
   y += 5;
 
-  doc.setFontSize(14);
-  doc.setFont("helvetica", "bold");
-  doc.text("Mileage", 14, y);
+  paintSectionRule(doc, "Mileage", y);
   y += 8;
-  doc.setFontSize(10);
-  doc.setFont("helvetica", "normal");
   doc.text(`Start Odometer: ${formatMileage(check.startOdometer)}`, 14, y);
   y += 6;
   if (check.endOdometer) {
@@ -158,12 +205,8 @@ export async function generateCheckPDF(
   y += 5;
 
   if (check.fuelLevel) {
-    doc.setFontSize(14);
-    doc.setFont("helvetica", "bold");
-    doc.text("Fuel Level", 14, y);
+    paintSectionRule(doc, "Fuel Level", y);
     y += 8;
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
     doc.text(FUEL_LEVEL_LABELS[check.fuelLevel], 14, y);
     y += 10;
   }
@@ -174,12 +217,8 @@ export async function generateCheckPDF(
   y += 10;
 
   if (check.maintenanceIssues.length > 0) {
-    doc.setFontSize(14);
-    doc.setFont("helvetica", "bold");
-    doc.text("Reported Issues", 14, y);
+    paintSectionRule(doc, "Reported Issues", y);
     y += 8;
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
     for (const issue of check.maintenanceIssues) {
       const label =
         MAINTENANCE_ISSUES.find((m) => m.id === issue)?.label ?? issue;
@@ -195,12 +234,8 @@ export async function generateCheckPDF(
   }
 
   if (check.towEquipmentCheck) {
-    doc.setFontSize(14);
-    doc.setFont("helvetica", "bold");
-    doc.text("Tow Equipment Check", 14, y);
+    paintSectionRule(doc, "Tow Equipment Check", y);
     y += 8;
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
     const te = check.towEquipmentCheck;
     doc.text(`Winch Operational: ${te.winchOperational ? "Yes" : "No"}`, 14, y);
     y += 6;
@@ -231,12 +266,8 @@ export async function generateCheckPDF(
   }
 
   if (check.notes) {
-    doc.setFontSize(14);
-    doc.setFont("helvetica", "bold");
-    doc.text("Additional Notes", 14, y);
+    paintSectionRule(doc, "Additional Notes", y);
     y += 8;
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
     const splitNotes = doc.splitTextToSize(check.notes, pageWidth - 28);
     doc.text(splitNotes, 14, y);
     y += splitNotes.length * 6 + 5;
@@ -247,12 +278,8 @@ export async function generateCheckPDF(
       doc.addPage();
       y = 20;
     }
-    doc.setFontSize(14);
-    doc.setFont("helvetica", "bold");
-    doc.text("Known Issue Consent", 14, y);
+    paintSectionRule(doc, "Known Issue Consent", y);
     y += 8;
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
     const consent = check.knownIssueConsent;
     doc.text(`Driver: ${consent.driverName}`, 14, y);
     y += 6;
@@ -272,10 +299,8 @@ export async function generateCheckPDF(
       doc.addPage();
       y = 20;
     }
-    doc.setFontSize(14);
-    doc.setFont("helvetica", "bold");
-    doc.text("Driver Signature", 14, y);
-    y += 5;
+    paintSectionRule(doc, "Driver Signature", y);
+    y += 6;
     try {
       doc.addImage(check.signatureDataUrl, "PNG", 14, y, 80, 30);
       y += 35;
@@ -290,9 +315,7 @@ export async function generateCheckPDF(
   if (photos.length > 0) {
     doc.addPage();
     y = 20;
-    doc.setFontSize(14);
-    doc.setFont("helvetica", "bold");
-    doc.text("Vehicle Photos", 14, y);
+    paintSectionRule(doc, "Vehicle Photos", y);
     y += 10;
 
     let col = 0;
@@ -341,6 +364,7 @@ export async function generateCheckoutReportPDF(
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
+  const logo = await inspektLogoDataUrl();
   const plate = options.plate ?? report.plate;
   const steps = walkaroundPhotoSteps(
     options.steps?.length ? options.steps : PHOTO_ANGLES
@@ -366,23 +390,19 @@ export async function generateCheckoutReportPDF(
   }
   const present = listed.filter((item) => item.photo?.dataUrl);
 
-  let y = 20;
-  doc.setFontSize(20);
-  doc.setFont("helvetica", "bold");
-  doc.text("Inspekt Checkout Report", pageWidth / 2, y, { align: "center" });
-  y += 8;
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
+  let y = paintInspektHeader(
+    doc,
+    logo,
+    `Checkout Report · ${formatDate(report.completedAt)}`
+  );
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(55, 55, 55);
   doc.text("Inspection form + picture report", pageWidth / 2, y, {
     align: "center",
   });
   y += 8;
-  doc.setFontSize(10);
-  doc.setFont("helvetica", "normal");
-  doc.text(`Completed: ${formatDate(report.completedAt)}`, pageWidth / 2, y, {
-    align: "center",
-  });
-  y += 12;
+  doc.setTextColor(26, 26, 26);
 
   const addWrapped = (text: string, indent = 14) => {
     const lines = doc.splitTextToSize(text, pageWidth - indent - 14);
@@ -400,12 +420,8 @@ export async function generateCheckoutReportPDF(
       y = 20;
     }
     y += 2;
-    doc.setFontSize(13);
-    doc.setFont("helvetica", "bold");
-    doc.text(title, 14, y);
+    paintSectionRule(doc, title, y);
     y += 8;
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
   };
 
   section("Precheck");
@@ -545,7 +561,7 @@ export async function generateCheckoutReportPDF(
     doc.setFontSize(8);
     doc.setFont("helvetica", "normal");
     doc.text(
-      `${formatUnitLabel(report.unitNumber, plate)} · Page ${i} of ${pages}`,
+      `Inspekt · ${formatUnitLabel(report.unitNumber, plate)} · Page ${i} of ${pages}`,
       pageWidth / 2,
       pageHeight - 8,
       { align: "center" }

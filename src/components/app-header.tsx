@@ -29,6 +29,13 @@ export function AppHeader({
   const onCheckout = pathname.startsWith("/checkout");
 
   const shouldShowBack = showBack ?? (!!title && !onDashboard);
+  const roleLabel = user ? ROLE_LABELS[user.role] : "";
+  const subtitle =
+    user && user.name.trim().toLowerCase() === roleLabel.trim().toLowerCase()
+      ? roleLabel
+      : user
+        ? `${user.name} · ${roleLabel}`
+        : "";
 
   const handleBack = useCallback(() => {
     router.push(backHref);
@@ -39,13 +46,13 @@ export function AppHeader({
   }, [router]);
 
   return (
-    <header className="sticky top-0 z-50 bg-white border-b border-gray-200">
+    <header className="sticky top-0 z-50 bg-surface/95 backdrop-blur border-b border-line">
       <div className="max-w-lg mx-auto px-4 py-3 flex items-center gap-2">
         {shouldShowBack ? (
           <button
             type="button"
             onClick={handleBack}
-            className="flex-shrink-0 p-2 -ml-2 rounded-xl hover:bg-gray-100 text-gray-700 active:bg-gray-200 min-h-[44px] min-w-[44px] flex items-center justify-center touch-manipulation"
+            className="flex-shrink-0 p-2 -ml-2 rounded-xl hover:bg-raised text-ink active:bg-line min-h-[44px] min-w-[44px] flex items-center justify-center touch-manipulation"
             aria-label="Go back"
           >
             <ArrowLeft className="h-6 w-6" />
@@ -74,9 +81,7 @@ export function AppHeader({
               </Link>
             )}
             {user && (
-              <p className="text-xs text-gray-500 truncate">
-                {user.name} · {ROLE_LABELS[user.role]}
-              </p>
+              <p className="text-xs text-muted truncate">{subtitle}</p>
             )}
           </div>
         </div>
@@ -87,7 +92,7 @@ export function AppHeader({
           <button
             type="button"
             onClick={goHome}
-            className="flex-shrink-0 p-2 rounded-xl hover:bg-gray-100 text-brand-700 active:bg-gray-200 min-h-[44px] min-w-[44px] flex items-center justify-center touch-manipulation"
+            className="flex-shrink-0 p-2 rounded-xl hover:bg-raised text-accent active:bg-line min-h-[44px] min-w-[44px] flex items-center justify-center touch-manipulation"
             aria-label="Home — go to dashboard"
           >
             <Home className="h-5 w-5" />
@@ -97,7 +102,7 @@ export function AppHeader({
         <button
           type="button"
           onClick={() => logout()}
-          className="flex-shrink-0 p-2 rounded-xl hover:bg-gray-100 text-gray-600 active:bg-gray-200 min-h-[44px] min-w-[44px] flex items-center justify-center touch-manipulation"
+          className="flex-shrink-0 p-2 rounded-xl hover:bg-raised text-muted active:bg-line min-h-[44px] min-w-[44px] flex items-center justify-center touch-manipulation"
           aria-label="Log out"
         >
           <LogOut className="h-5 w-5" />

@@ -2,15 +2,42 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --canvas: #101012;
+  --surface: #1c1c1e;
+  --raised: #2a2a2e;
+  --line: #3a3a40;
+  --ink: #f7f7f8;
+  --muted: #a1a1aa;
+  --accent: #22c55e;
+  --accent-deep: #166534;
+  --damage: #ff7a18;
+  --pass: #22c55e;
+  --tw-ring-offset-color: #101012;
+}
+
 @layer base {
   html {
     -webkit-tap-highlight-color: transparent;
+    color-scheme: dark;
     /* Follow the device. Never fake-landscape the document. */
     transform: none;
   }
   body {
-    @apply bg-gray-50 text-gray-900 antialiased;
+    background: var(--canvas);
+    color: var(--ink);
+    @apply antialiased;
     transform: none;
+  }
+  input,
+  select,
+  textarea {
+    background-color: #141416;
+    color: var(--ink);
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: #9ca3af;
   }
 }
 

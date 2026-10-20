@@ -183,20 +183,20 @@ export default function DashboardPage() {
 
         {canStartCheckout(role) && (
           <Link href="/checkout" className="block">
-            <div className="rounded-2xl bg-brand-600 text-white p-5 shadow-md active:scale-[0.98] transition-transform">
+            <div className="rounded-2xl bg-accent text-[#052e16] p-5 shadow-card active:scale-[0.98] transition-transform">
               <div className="flex items-center gap-4">
-                <div className="rounded-xl bg-white/20 p-3">
+                <div className="rounded-xl bg-black/15 p-3">
                   <ClipboardCheck className="h-8 w-8" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-xl font-bold leading-tight">
                     Checkout Report
                   </p>
-                  <p className="text-brand-100 text-sm mt-1">
+                  <p className="text-[#14532d] text-sm mt-1 font-medium">
                     The only handoff Office can see — Precheck, then photos
                   </p>
                 </div>
-                <span className="text-sm font-semibold bg-white text-brand-700 rounded-full px-3 py-1.5 shrink-0">
+                <span className="text-sm font-semibold bg-[#052e16] text-accent rounded-full px-3 py-1.5 shrink-0">
                   Start
                 </span>
               </div>

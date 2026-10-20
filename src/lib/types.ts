@@ -109,10 +109,10 @@ export const CHECKOUT_REVIEW_LABELS: Record<CheckoutReviewStatus, string> = {
 };
 
 export const CHECKOUT_REVIEW_COLORS: Record<CheckoutReviewStatus, string> = {
-  pending: "bg-amber-100 text-amber-800",
-  pass: "bg-green-100 text-green-800",
-  conditional: "bg-orange-100 text-orange-800",
-  fail: "bg-red-100 text-red-800",
+  pending: "bg-amber-400/15 text-amber-200 ring-1 ring-amber-400/40",
+  pass: "bg-emerald-400/15 text-emerald-200 ring-1 ring-emerald-400/50",
+  conditional: "bg-orange-400/15 text-orange-200 ring-1 ring-orange-400/50",
+  fail: "bg-red-400/15 text-red-200 ring-1 ring-red-400/50",
 };
 
 export interface CheckoutReport {
@@ -788,8 +788,8 @@ export const STATUS_LABELS: Record<VehicleStatus, string> = {
 };
 
 export const STATUS_COLORS: Record<VehicleStatus, string> = {
-  ready: "bg-green-100 text-green-800",
-  checked_out: "bg-blue-100 text-blue-800",
-  needs_work: "bg-yellow-100 text-yellow-800",
-  out_of_service: "bg-red-100 text-red-800",
+  ready: "bg-emerald-400/15 text-emerald-200 ring-1 ring-emerald-400/50",
+  checked_out: "bg-sky-400/15 text-sky-200 ring-1 ring-sky-400/40",
+  needs_work: "bg-orange-400/15 text-orange-200 ring-1 ring-orange-400/50",
+  out_of_service: "bg-red-400/15 text-red-200 ring-1 ring-red-400/50",
 };

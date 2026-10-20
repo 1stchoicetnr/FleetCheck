@@ -182,7 +182,7 @@ export default function AlertsPage() {
               onClick={() => setFilter(key)}
               className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap ${
                 filter === key
-                  ? "bg-brand-600 text-white"
+                  ? "bg-accent text-[#052e16]"
                   : "bg-white text-gray-600 border border-gray-200"
               }`}
             >
@@ -249,7 +249,7 @@ export default function AlertsPage() {
                         {ALERT_TYPE_LABELS[alert.type]}
                       </span>
                       {!alert.read && (
-                        <span className="text-xs bg-brand-600 text-white px-2 py-0.5 rounded-full">
+                        <span className="text-xs bg-accent text-[#052e16] px-2 py-0.5 rounded-full">
                           New
                         </span>
                       )}
