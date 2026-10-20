@@ -8,6 +8,7 @@ import {
   checkPassword,
   issueLink,
   previewLink,
+  removeThrowawayUser,
   AuthError,
 } from "./server/auth-accounts.ts";
 import { revokeInvite } from "./server/auth-store.ts";
@@ -249,5 +250,13 @@ test("invites are single-use, expiring, and revocable", async () => {
     (err: unknown) => err instanceof AuthError && err.status === 409
   );
   assert.throws(() => assertCanRemoveUser("user-ashley"), AuthError);
+
+  const removed = await removeThrowawayUser(db, ORG, created.id, created.email);
+  assert.equal(removed, true);
+  const leftover = await db.query(
+    "SELECT id FROM app_users WHERE id = $1 UNION ALL SELECT id FROM auth_invites WHERE lower(email) = lower($2)",
+    [created.id, created.email]
+  );
+  assert.deepEqual(leftover, []);
   await pg.close();
 });
