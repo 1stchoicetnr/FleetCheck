@@ -88,7 +88,7 @@ export function LiveCameraFrame({
           className="h-full w-full object-cover"
           aria-label="Live camera"
         />
-        <FramingOutline kind={guide.kind} />
+        <FramingOutline style={guide.style} kind={guide.kind} />
       </div>
       <p className="text-sm text-amber-100/90 leading-relaxed">{guide.tip}</p>
       <button

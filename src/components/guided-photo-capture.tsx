@@ -277,11 +277,11 @@ export function GuidedPhotoCapture({
                   />
                 )}
                 <div className="photo-capture-actions space-y-3">
-                  <p className="photo-capture-hint text-center text-xs text-gray-500">
-                    {cameraOff
-                      ? "Match the example, then take the photo with your phone camera"
-                      : "Line the vehicle up with the outline, then capture."}
-                  </p>
+                  {cameraOff && (
+                    <p className="photo-capture-hint text-center text-xs text-gray-500">
+                      Match the example, then take the photo with your phone camera
+                    </p>
+                  )}
 
                   {pickError && (
                     <p className="text-center text-sm text-red-300 font-medium">

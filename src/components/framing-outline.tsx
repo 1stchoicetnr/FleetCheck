@@ -1,46 +1,80 @@
-import { FramingKind, outlineShapes } from "@/lib/photo-guides";
+import { OutlineShape, outlineShapes, SilhouetteKind, GuideStyle } from "@/lib/photo-guides";
 
-export function FramingOutline({ kind }: { kind: FramingKind }) {
-  const shapes = outlineShapes(kind);
+const CORNER_MARKS = [
+  "M14 26 V14 H26",
+  "M74 14 H86 V26",
+  "M86 44 V56 H74",
+  "M14 56 H26 V44",
+];
+
+function Shape({ shape }: { shape: OutlineShape }) {
+  const dark = {
+    fill: "none",
+    stroke: "rgba(0,0,0,0.4)",
+    strokeWidth: 1.75,
+    strokeLinejoin: "round" as const,
+    strokeLinecap: "round" as const,
+    vectorEffect: "non-scaling-stroke" as const,
+  };
+  const light = {
+    ...dark,
+    stroke: "rgba(255,255,255,0.72)",
+    strokeWidth: 1.05,
+  };
+  if (shape.cx != null && shape.cy != null && shape.r != null) {
+    return (
+      <g>
+        <circle {...dark} cx={shape.cx} cy={shape.cy} r={shape.r} />
+        <circle {...light} cx={shape.cx} cy={shape.cy} r={shape.r} />
+      </g>
+    );
+  }
+  return (
+    <g>
+      <path {...dark} d={shape.d} />
+      <path {...light} d={shape.d} />
+    </g>
+  );
+}
+
+export function FramingOutline({
+  style,
+  kind,
+}: {
+  style: GuideStyle;
+  kind: SilhouetteKind;
+}) {
+  const marks = style === "corners" ? CORNER_MARKS : null;
+  const shapes = style === "silhouette" ? outlineShapes(kind) : [];
   return (
     <svg
       viewBox="0 0 100 70"
       className="absolute inset-0 h-full w-full pointer-events-none"
       aria-hidden="true"
     >
-      {shapes.map((shape, index) => {
-        const shared = {
-          fill: "none",
-          stroke: "rgba(0,0,0,0.55)",
-          strokeWidth: 2.4,
-          strokeLinejoin: "round" as const,
-          strokeLinecap: "round" as const,
-        };
-        const light = { ...shared, stroke: "white", strokeWidth: 1.4 };
-        if (shape.rect) {
-          const { x, y, width, height, rx } = shape.rect;
-          return (
-            <g key={index}>
-              <rect {...shared} x={x} y={y} width={width} height={height} rx={rx} />
-              <rect {...light} x={x} y={y} width={width} height={height} rx={rx} />
-            </g>
-          );
-        }
-        if (shape.cx != null && shape.cy != null && shape.r != null) {
-          return (
-            <g key={index}>
-              <circle {...shared} cx={shape.cx} cy={shape.cy} r={shape.r} />
-              <circle {...light} cx={shape.cx} cy={shape.cy} r={shape.r} />
-            </g>
-          );
-        }
-        return (
-          <g key={index}>
-            <path {...shared} d={shape.d} />
-            <path {...light} d={shape.d} />
-          </g>
-        );
-      })}
+      {marks?.map((d) => (
+        <g key={d}>
+          <path
+            d={d}
+            fill="none"
+            stroke="rgba(0,0,0,0.5)"
+            strokeWidth="2.25"
+            strokeLinecap="round"
+            vectorEffect="non-scaling-stroke"
+          />
+          <path
+            d={d}
+            fill="none"
+            stroke="rgba(255,255,255,0.92)"
+            strokeWidth="1.25"
+            strokeLinecap="round"
+            vectorEffect="non-scaling-stroke"
+          />
+        </g>
+      ))}
+      {shapes.map((shape, index) => (
+        <Shape key={index} shape={shape} />
+      ))}
     </svg>
   );
 }
