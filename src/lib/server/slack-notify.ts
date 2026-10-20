@@ -1,3 +1,4 @@
+import { companyUsesClover } from "@/lib/companies";
 import { activeIssueFlagLabels, formatCloverSerial, trafficLightLabel } from "@/lib/inspection-form";
 import { CheckoutReport } from "@/lib/types";
 import { formatMileage, formatUnitLabel } from "@/lib/utils";
@@ -17,7 +18,7 @@ export async function notifyCheckoutReport(report: CheckoutReport): Promise<void
   const text = [
     "*Checkout Report saved to Office*",
     `*Unit:* ${unit}`,
-    report.inspectionForm
+    companyUsesClover(report.companyId) && report.inspectionForm
       ? `*Clover serial:* ${formatCloverSerial(report.inspectionForm)}`
       : "",
     `*Vehicle:* ${report.year} ${report.make} ${report.model}`,

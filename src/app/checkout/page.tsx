@@ -17,7 +17,7 @@ import {
   upsertSharedVehicle,
 } from "@/lib/checkout-api";
 import { Company, CheckoutType } from "@/lib/types";
-import { defaultCompanyId } from "@/lib/companies";
+import { companyUsesClover, defaultCompanyId } from "@/lib/companies";
 import {
   applyPowertrainToForm,
   CLOVER_SERIAL_HINT,
@@ -283,18 +283,23 @@ function CheckoutStartPage() {
         model.trim(),
         vehicle.powertrain || inferredPowertrain
       );
+      const usesClover = companyUsesClover(companyId);
       const inspectionForm = applyPowertrainToForm(
         {
           ...(existing?.inspectionForm ??
             createEmptyInspectionForm(powertrain, {
               inspectedAt: new Date().toISOString(),
             })),
-          ...(cloverSerial.trim()
+          ...(usesClover && cloverSerial.trim()
             ? { cloverSerial: cloverSerial.trim() }
             : {}),
         },
         powertrain
       );
+      if (!usesClover) {
+        delete inspectionForm.cloverSerial;
+        delete inspectionForm.cloverNumber;
+      }
       await saveCheckoutDraft({
         id,
         companyId,
@@ -354,8 +359,9 @@ function CheckoutStartPage() {
                   <span className="font-semibold">Date:</span> {inspectionDate}
                 </p>
                 <p className="text-xs text-gray-500 mt-1">
-                  Same header as the paper form — date, name, vehicle, optional
-                  Clover serial (last digits), odometer start.
+                  {companyUsesClover(companyId)
+                    ? "Same header as the paper form — date, name, vehicle, optional Clover serial (last digits), odometer start."
+                    : "Same header as the paper form — date, name, vehicle, and odometer start."}
                 </p>
               </div>
               <div>
@@ -530,6 +536,7 @@ function CheckoutStartPage() {
                 }
                 hint="Mileage on the dash — must be readable in the odometer photo"
               />
+              {companyUsesClover(companyId) ? (
               <Input
                 label={`${CLOVER_SERIAL_LABEL} (optional)`}
                 value={cloverSerial}
@@ -542,6 +549,7 @@ function CheckoutStartPage() {
                 placeholder="e.g. 4821"
                 hint={CLOVER_SERIAL_HINT}
               />
+              ) : null}
               <Input
                 label="Name (driver)"
                 value={driverName}

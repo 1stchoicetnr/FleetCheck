@@ -16,7 +16,7 @@ import {
 } from "@/components/photo-lightbox";
 import { useAuth } from "@/hooks/use-auth";
 import { canManageOfficeRecords, canReviewCheckout } from "@/lib/fleet-config";
-import { getChecklistForCompany } from "@/lib/companies";
+import { companyUsesClover, getChecklistForCompany } from "@/lib/companies";
 import { isCheckoutFlagged } from "@/lib/storage";
 import {
   deleteCheckoutReport,
@@ -321,9 +321,11 @@ export default function OfficeReportDetailPage() {
                 <p>
                   {UNIT_NUMBER_LABEL}: {report.unitNumber}
                 </p>
+                {companyUsesClover(report.companyId) ? (
                 <p>
                   {CLOVER_SERIAL_LABEL}: {formatCloverSerial(report.inspectionForm)}
                 </p>
+                ) : null}
                 <p>Odometer start: {formatMileage(report.odometer)}</p>
                 <p>Dispatcher: {report.dispatcherName}</p>
                 <p>Photos: {report.photos.length}</p>
@@ -401,7 +403,10 @@ export default function OfficeReportDetailPage() {
             <CardContent className="py-4 space-y-3">
               <CardTitle className="text-base">Precheck</CardTitle>
               {report.inspectionForm ? (
-                <InspectionFormSummary form={report.inspectionForm} />
+                <InspectionFormSummary
+                  form={report.inspectionForm}
+                  showClover={companyUsesClover(report.companyId)}
+                />
               ) : (
                 <p className="text-sm text-gray-500">
                   No Precheck on this report (submitted before Precheck was

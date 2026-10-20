@@ -1,6 +1,10 @@
 import { mkdir, readFile, writeFile } from "fs/promises";
 import path from "path";
-import { SEEDED_COMPANIES } from "@/lib/companies";
+import {
+  SEEDED_COMPANIES,
+  shouldMoveUnitToTuro,
+  TURO_COMPANY_ID,
+} from "@/lib/companies";
 import { CheckoutReport } from "@/lib/types";
 import { inferPowertrain } from "@/lib/inspection-form";
 import { displayPlate, normalizePlate } from "@/lib/utils";
@@ -56,6 +60,14 @@ async function loadAndSeedUnlocked(): Promise<SharedStore> {
   if (store.companies.length === 0) {
     store.companies = SEEDED_COMPANIES;
     changed = true;
+  } else {
+    const haveCompanies = new Set(store.companies.map((company) => company.id));
+    for (const company of SEEDED_COMPANIES) {
+      if (!haveCompanies.has(company.id)) {
+        store.companies.push(company);
+        changed = true;
+      }
+    }
   }
   const seedVehicles = sharedSeedVehicles();
   if (store.vehicles.length === 0) {
@@ -83,6 +95,23 @@ async function loadAndSeedUnlocked(): Promise<SharedStore> {
   }
   if (!store.users?.length) {
     store.users = SEEDED_APP_USERS;
+    changed = true;
+  }
+  for (const vehicle of store.vehicles) {
+    if (!shouldMoveUnitToTuro(vehicle)) continue;
+    vehicle.companyId = TURO_COMPANY_ID;
+    changed = true;
+  }
+  const turoVehicleIds = new Set(
+    store.vehicles
+      .filter((vehicle) => vehicle.companyId === TURO_COMPANY_ID)
+      .map((vehicle) => vehicle.id)
+  );
+  for (const report of store.reports) {
+    if (!turoVehicleIds.has(report.vehicleId) || report.companyId === TURO_COMPANY_ID) {
+      continue;
+    }
+    report.companyId = TURO_COMPANY_ID;
     changed = true;
   }
   if (changed) await writeStore(store);

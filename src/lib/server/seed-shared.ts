@@ -2,6 +2,7 @@ import { PHOTO_EXAMPLE_PATHS } from "@/lib/photo-examples";
 import {
   FIRST_CHOICE_COMPANY_ID,
   OTHER_FLEETS_COMPANY_ID,
+  TURO_COMPANY_ID,
   RAD_CAB_COMPANY_ID,
   SEEDED_COMPANIES,
 } from "@/lib/companies";
@@ -118,7 +119,7 @@ export function sharedSeedVehicles(): SharedVehicle[] {
     },
     {
       id: "vehicle-other-9012",
-      companyId: OTHER_FLEETS_COMPANY_ID,
+      companyId: TURO_COMPANY_ID,
       unitNumber: "9012",
       plate: "TUR-9012",
       make: "Honda",

@@ -1,5 +1,5 @@
 import { neon } from "@neondatabase/serverless";
-import { SEEDED_COMPANIES } from "@/lib/companies";
+import { SEEDED_COMPANIES, TURO_COMPANY_ID, shouldMoveUnitToTuro } from "@/lib/companies";
 import {
   CheckoutInspectionForm,
   inferPowertrain,
@@ -216,6 +216,33 @@ export async function pgMigrateAndSeed(): Promise<void> {
       ON CONFLICT (id) DO NOTHING
     `;
   }
+  const parkedWithOther = await sql`
+    SELECT id, company_id, unit_number, plate FROM vehicles
+    WHERE company_id <> ${TURO_COMPANY_ID}
+  `;
+  for (const row of parkedWithOther) {
+    const unit = {
+      companyId: String(row.company_id),
+      unitNumber: String(row.unit_number),
+      plate: String(row.plate),
+    };
+    if (!shouldMoveUnitToTuro(unit)) continue;
+    await sql`
+      UPDATE vehicles SET company_id = ${TURO_COMPANY_ID} WHERE id = ${String(row.id)}
+    `;
+    await sql`
+      UPDATE checkout_reports SET company_id = ${TURO_COMPANY_ID}
+      WHERE vehicle_id = ${String(row.id)}
+    `;
+  }
+  await sql`
+    UPDATE checkout_reports
+    SET company_id = ${TURO_COMPANY_ID}
+    WHERE company_id <> ${TURO_COMPANY_ID}
+      AND vehicle_id IN (
+        SELECT id FROM vehicles WHERE company_id = ${TURO_COMPANY_ID}
+      )
+  `;
   for (const vehicle of sharedSeedVehicles()) {
     await sql`
       INSERT INTO vehicles (id, company_id, unit_number, plate, make, model, year, last_mileage, created_at, powertrain)

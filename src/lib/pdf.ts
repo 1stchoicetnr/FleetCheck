@@ -26,6 +26,7 @@ import {
   isPhotoDamageFlagged,
   photoAngleLabel,
 } from "./photo-flags";
+import { companyUsesClover } from "./companies";
 import {
   formatCloverSerial,
   inspectionFormSummaryLines,
@@ -408,12 +409,15 @@ export async function generateCheckoutReportPDF(
   };
 
   section("Precheck");
+  const usesClover = companyUsesClover(report.companyId);
   const formLines = [
     `Date: ${formatDateOnly(report.inspectionForm?.inspectedAt || report.completedAt)}`,
     `Name: ${report.driverName}`,
     `Vehicle: ${report.year} ${report.make} ${report.model}`,
     `Unit #: ${report.unitNumber}`,
-    `Clover serial (last digits): ${formatCloverSerial(report.inspectionForm)}`,
+    ...(usesClover
+      ? [`Clover serial (last digits): ${formatCloverSerial(report.inspectionForm)}`]
+      : []),
     `Company: ${options.companyName || "—"}`,
     `Plate: ${plate || "—"}`,
     `Type: ${report.type === "check_in" ? "Check In" : "Check Out"}`,
@@ -427,7 +431,9 @@ export async function generateCheckoutReportPDF(
 
   section("Precheck answers");
   if (report.inspectionForm) {
-    for (const line of inspectionFormSummaryLines(report.inspectionForm)) {
+    for (const line of inspectionFormSummaryLines(report.inspectionForm, {
+      includeClover: usesClover,
+    })) {
       addWrapped(line);
     }
   } else {

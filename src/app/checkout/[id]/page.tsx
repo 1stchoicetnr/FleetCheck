@@ -9,7 +9,7 @@ import { SignaturePad } from "@/components/signature-pad";
 import { useAuth } from "@/hooks/use-auth";
 import { canStartCheckout } from "@/lib/fleet-config";
 import { canSkipPhotosForTesting } from "@/lib/dev-config";
-import { getChecklistForCompany } from "@/lib/companies";
+import { companyUsesClover, getChecklistForCompany } from "@/lib/companies";
 import {
   deleteCheckoutDraft,
   getCheckoutDraft,
@@ -122,7 +122,9 @@ function CheckoutCapturePage() {
         powertrain
       );
       setInspectionForm(form);
-      const formOk = validateInspectionForm(form, powertrain).ok;
+      const formOk = validateInspectionForm(form, powertrain, {
+        includeClover: companyUsesClover(d.companyId),
+      }).ok;
       const resumeReview = searchParams.get("phase") === "review" && formOk;
       setPhase(resumeReview ? "review" : formOk && !isPrecheckRed(form) ? "photos" : "inspect");
       try {
@@ -182,7 +184,13 @@ function CheckoutCapturePage() {
     draft?.model,
     vehicle?.powertrain || inspectionForm.powertrain
   );
-  const inspectionValid = validateInspectionForm(inspectionForm, powertrain);
+  const usesClover = companyUsesClover(draft?.companyId);
+  const inspectionOptions = { includeClover: usesClover };
+  const inspectionValid = validateInspectionForm(
+    inspectionForm,
+    powertrain,
+    inspectionOptions
+  );
   const redPark = isPrecheckRed(inspectionValid.ok ? inspectionValid.form : inspectionForm);
   const photosNeeded = !redPark;
   const photosComplete =
@@ -191,7 +199,7 @@ function CheckoutCapturePage() {
     photosComplete && Boolean(signatureDataUrl) && inspectionValid.ok;
 
   const tryContinueToPhotos = () => {
-    if (!canContinueToPhotos(inspectionForm, powertrain)) {
+    if (!canContinueToPhotos(inspectionForm, powertrain, inspectionOptions)) {
       setShowPrecheckErrors(true);
       setPhase("inspect");
       window.setTimeout(() => {
@@ -425,7 +433,7 @@ function CheckoutCapturePage() {
           </p>
           <p className="text-gray-500">
             {UNIT_NUMBER_LABEL} {vehicle.unitNumber}
-            {cloverSerialOf(inspectionForm)
+            {usesClover && cloverSerialOf(inspectionForm)
               ? ` · ${CLOVER_SERIAL_LABEL} ${cloverSerialOf(inspectionForm)}`
               : ""}
           </p>
@@ -504,7 +512,7 @@ function CheckoutCapturePage() {
               </p>
               <p>
                 {formatDateOnly(inspectionForm.inspectedAt || new Date().toISOString())}
-                {cloverSerialOf(inspectionForm) ? ` · ${CLOVER_SERIAL_LABEL} ${cloverSerialOf(inspectionForm)}` : ""}
+                {usesClover && cloverSerialOf(inspectionForm) ? ` · ${CLOVER_SERIAL_LABEL} ${cloverSerialOf(inspectionForm)}` : ""}
               </p>
             </section>
             <section className="space-y-2">
@@ -514,7 +522,7 @@ function CheckoutCapturePage() {
                   Edit
                 </button>
               </div>
-              <InspectionFormSummary form={inspectionForm} />
+              <InspectionFormSummary form={inspectionForm} showClover={usesClover} />
             </section>
             {photosNeeded && (
               <section className="space-y-2">
@@ -593,6 +601,7 @@ function CheckoutCapturePage() {
               unitNumber={vehicle.unitNumber}
               onChange={setInspectionForm}
               showErrors={showPrecheckErrors}
+              showClover={usesClover}
             />
             {redPark && inspectionValid.ok ? (
               <div className="space-y-3">
@@ -635,7 +644,7 @@ function CheckoutCapturePage() {
                 className="w-full"
                 onClick={tryContinueToPhotos}
               >
-                {canContinueToPhotos(inspectionForm, powertrain)
+                {canContinueToPhotos(inspectionForm, powertrain, inspectionOptions)
                   ? "Continue to photo walkaround"
                   : "Continue — fill required fields"}
               </Button>

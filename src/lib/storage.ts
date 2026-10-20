@@ -31,6 +31,8 @@ import {
   OTHER_FLEETS_COMPANY_ID,
   RAD_CAB_COMPANY_ID,
   SEEDED_COMPANIES,
+  shouldMoveUnitToTuro,
+  TURO_COMPANY_ID,
 } from "./companies";
 
 interface FleetCheckDB extends DBSchema {
@@ -249,11 +251,11 @@ async function migrateCompaniesAndCheckout(
 
   const fleets = await db.getAll("fleets");
   for (const fleet of fleets) {
-    if (!fleet.companyId) {
-      await db.put("fleets", {
-        ...fleet,
-        companyId: companyIdForFleetType(normalizeFleetType(fleet.type)),
-      });
+    const type = normalizeFleetType(fleet.type);
+    const companyId =
+      type === "turo" ? TURO_COMPANY_ID : companyIdForFleetType(type);
+    if (!fleet.companyId || (type === "turo" && fleet.companyId !== TURO_COMPANY_ID)) {
+      await db.put("fleets", { ...fleet, companyId });
     }
   }
 
@@ -263,11 +265,22 @@ async function migrateCompaniesAndCheckout(
   );
   for (const vehicle of vehicles) {
     const fleet = fleetsById[vehicle.fleetId];
-    const companyId =
-      vehicle.companyId ||
-      fleet?.companyId ||
-      companyIdForFleetType("taxi");
+    const currentCompany =
+      vehicle.companyId || fleet?.companyId || companyIdForFleetType("taxi");
     const unitNumber = vehicle.unitNumber || unitFromPlate(vehicle.plate);
+    let companyId = currentCompany;
+    if (fleet && normalizeFleetType(fleet.type) === "turo") {
+      companyId = TURO_COMPANY_ID;
+    }
+    if (
+      shouldMoveUnitToTuro({
+        companyId: currentCompany,
+        unitNumber,
+        plate: vehicle.plate,
+      })
+    ) {
+      companyId = TURO_COMPANY_ID;
+    }
     if (vehicle.companyId !== companyId || vehicle.unitNumber !== unitNumber) {
       await db.put("vehicles", { ...vehicle, companyId, unitNumber });
     }
@@ -572,7 +585,7 @@ export async function seedDatabase() {
       id: turoFleetId,
       name: "Turo",
       type: "turo",
-      companyId: OTHER_FLEETS_COMPANY_ID,
+      companyId: TURO_COMPANY_ID,
       createdAt: new Date().toISOString(),
     },
   ];
@@ -616,7 +629,7 @@ export async function seedDatabase() {
     {
       id: generateId(),
       fleetId: turoFleetId,
-      companyId: OTHER_FLEETS_COMPANY_ID,
+      companyId: TURO_COMPANY_ID,
       unitNumber: "9012",
       plate: "TUR-9012",
       make: "Honda",

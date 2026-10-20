@@ -13,6 +13,7 @@ import {
   OTHER_FLEETS_COMPANY_ID,
   RAD_CAB_COMPANY_ID,
   SEEDED_COMPANIES,
+  TURO_COMPANY_ID,
 } from "@/lib/companies";
 import { fetchVehicles, SharedVehicle } from "@/lib/checkout-api";
 import { summarizeUnits, unitCountLine } from "@/lib/unit-counts";
@@ -22,7 +23,8 @@ import { UnitImportNote } from "@/components/unit-import-note";
 const GROUPS = [
   { id: RAD_CAB_COMPANY_ID, label: "Taxi / Rad Cab" },
   { id: FIRST_CHOICE_COMPANY_ID, label: "Tow" },
-  { id: OTHER_FLEETS_COMPANY_ID, label: "Turo and service" },
+  { id: TURO_COMPANY_ID, label: "Turo" },
+  { id: OTHER_FLEETS_COMPANY_ID, label: "Service" },
 ];
 
 function VehiclesPageContent() {

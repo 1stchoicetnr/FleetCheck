@@ -1,3 +1,4 @@
+import { companyUsesClover } from "@/lib/companies";
 import { displayPlate, generateId } from "@/lib/utils";
 import {
   CheckoutReport,
@@ -238,7 +239,9 @@ export async function createReport(
     input.model,
     vehicle?.powertrain
   );
-  const inspection = validateInspectionForm(input.inspectionForm, powertrain);
+  const inspection = validateInspectionForm(input.inspectionForm, powertrain, {
+    includeClover: companyUsesClover(input.companyId),
+  });
   if (!inspection.ok) {
     throw new SharedBackendError(inspection.error, 400);
   }

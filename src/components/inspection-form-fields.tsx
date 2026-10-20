@@ -88,15 +88,19 @@ export function InspectionFormFields({
   unitNumber,
   onChange,
   showErrors = false,
+  showClover = false,
 }: {
   form: CheckoutInspectionForm;
   powertrain: Powertrain;
   unitNumber?: string;
   onChange: (next: CheckoutInspectionForm) => void;
   showErrors?: boolean;
+  showClover?: boolean;
 }) {
   const synced = applyPowertrainToForm(form, powertrain);
-  const validation = validateInspectionForm(synced, powertrain);
+  const validation = validateInspectionForm(synced, powertrain, {
+    includeClover: showClover,
+  });
   const missing = new Set(showErrors ? validation.missing : []);
   const suggested = suggestedTrafficLight(synced);
   const tread = asTreadByTire(synced.treadByTire, synced.treadLevel);
@@ -143,10 +147,13 @@ export function InspectionFormFields({
               {unitNumber}
             </p>
             <p className="mt-1.5 text-sm text-gray-500">
-              Vehicle number for this van — not the Clover.
+              {showClover
+                ? "Vehicle number for this van — not the Clover."
+                : "Vehicle number for this van."}
             </p>
           </div>
         ) : null}
+        {showClover ? (
         <label className="block" data-precheck-field="cloverSerial">
           <span className="block text-base font-semibold text-gray-900 mb-1.5">
             {CLOVER_SERIAL_LABEL}{" "}
@@ -183,6 +190,7 @@ export function InspectionFormFields({
               : CLOVER_SERIAL_HINT}
           </span>
         </label>
+        ) : null}
       </div>
 
       <div className="space-y-2">

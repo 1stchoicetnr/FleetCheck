@@ -8,8 +8,11 @@ import {
 
 export const RAD_CAB_COMPANY_ID = "company-rad-cab";
 export const FIRST_CHOICE_COMPANY_ID = "company-1st-choice";
+export const TURO_COMPANY_ID = "company-turo";
 export const PINKIE_TOW_COMPANY_ID = "company-pinkie-tow";
 export const OTHER_FLEETS_COMPANY_ID = "company-other-fleets";
+
+export { companyUsesClover, shouldMoveUnitToTuro } from "./company-rules";
 
 export const RAD_CAB_SLUG = "rad-cab";
 
@@ -32,6 +35,13 @@ export const SEEDED_COMPANIES: Company[] = [
     createdAt: "2024-01-01T00:00:00.000Z",
   },
   {
+    id: TURO_COMPANY_ID,
+    name: "Turo",
+    slug: "turo",
+    checklistId: "generic_30",
+    createdAt: "2024-01-01T00:00:00.000Z",
+  },
+  {
     id: PINKIE_TOW_COMPANY_ID,
     name: "Pinkie Tow",
     slug: "pinkie-tow",
@@ -50,6 +60,7 @@ export const SEEDED_COMPANIES: Company[] = [
 export function companyIdForFleetType(type: string): string {
   if (type === "taxi") return RAD_CAB_COMPANY_ID;
   if (type === "tow") return FIRST_CHOICE_COMPANY_ID;
+  if (type === "turo") return TURO_COMPANY_ID;
   return OTHER_FLEETS_COMPANY_ID;
 }
 

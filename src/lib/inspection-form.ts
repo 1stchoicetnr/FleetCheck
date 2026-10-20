@@ -517,9 +517,23 @@ export type InspectionValidation =
   | { ok: true; form: CheckoutInspectionForm; missing: InspectionFieldKey[] }
   | { ok: false; error: string; missing: InspectionFieldKey[] };
 
+export type InspectionFormOptions = {
+  /** Rad Cab borrows a Clover reader. Other companies skip the field. */
+  includeClover?: boolean;
+};
+
+function withoutClover(form: CheckoutInspectionForm): CheckoutInspectionForm {
+  if (!form.cloverSerial && !form.cloverNumber) return form;
+  const next = { ...form };
+  delete next.cloverSerial;
+  delete next.cloverNumber;
+  return next;
+}
+
 export function validateInspectionForm(
   form: CheckoutInspectionForm | undefined,
-  powertrain: Powertrain
+  powertrain: Powertrain,
+  options?: InspectionFormOptions
 ): InspectionValidation {
   if (!form) {
     return {
@@ -528,11 +542,14 @@ export function validateInspectionForm(
       missing: ["trafficLight"],
     };
   }
+  const includeClover = options?.includeClover !== false;
   const normalized = applyTrafficLightDefaults(
     applyPowertrainToForm(form, powertrain)
   );
   const missing: InspectionFieldKey[] = [];
-  const cloverError = cloverSerialError(cloverSerialOf(normalized));
+  const cloverError = includeClover
+    ? cloverSerialError(cloverSerialOf(normalized))
+    : null;
   if (cloverError) missing.push("cloverSerial");
   for (const item of INSPECTION_CHECK_ITEMS) {
     const state = normalized.checks[item.id];
@@ -578,7 +595,16 @@ export function validateInspectionForm(
       missing,
     };
   }
-  return { ok: true, form: { ...normalized, treadByTire: tread, treadLevel: worstTreadLevel(tread) }, missing: [] };
+  const saved = {
+    ...normalized,
+    treadByTire: tread,
+    treadLevel: worstTreadLevel(tread),
+  };
+  return {
+    ok: true,
+    form: includeClover ? saved : withoutClover(saved),
+    missing: [],
+  };
 }
 
 export function inspectionFieldLabel(key: InspectionFieldKey): string {
@@ -597,9 +623,10 @@ export function inspectionFieldLabel(key: InspectionFieldKey): string {
 
 export function canContinueToPhotos(
   form: CheckoutInspectionForm | undefined,
-  powertrain: Powertrain
+  powertrain: Powertrain,
+  options?: InspectionFormOptions
 ): boolean {
-  const result = validateInspectionForm(form, powertrain);
+  const result = validateInspectionForm(form, powertrain, options);
   return result.ok && result.form.trafficLight !== "red";
 }
 
@@ -693,10 +720,13 @@ export function activeIssueFlagLabels(
 }
 
 export function inspectionFormSummaryLines(
-  form: CheckoutInspectionForm
+  form: CheckoutInspectionForm,
+  options?: InspectionFormOptions
 ): string[] {
   const lines: string[] = [];
-  lines.push(`${CLOVER_SERIAL_LABEL}: ${formatCloverSerial(form)}`);
+  if (options?.includeClover !== false) {
+    lines.push(`${CLOVER_SERIAL_LABEL}: ${formatCloverSerial(form)}`);
+  }
   lines.push(`Traffic light: ${trafficLightLabel(form.trafficLight)}`);
   if (precheckNote(form)) {
     lines.push(`Traffic note: ${precheckNote(form)}`);

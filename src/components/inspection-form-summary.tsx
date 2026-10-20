@@ -40,9 +40,11 @@ export function TrafficLightBadge({
 export function InspectionFormSummary({
   form,
   compact = false,
+  showClover = false,
 }: {
   form: CheckoutInspectionForm;
   compact?: boolean;
+  showClover?: boolean;
 }) {
   const flags = activeIssueFlagLabels(form);
   const traffic = form.trafficNote?.trim();
@@ -51,10 +53,12 @@ export function InspectionFormSummary({
   const worst = worstTreadLevel(tread);
   return (
     <div className="space-y-3">
-      <p className="text-sm text-gray-800">
-        <span className="font-semibold">{CLOVER_SERIAL_LABEL}:</span>{" "}
-        {formatCloverSerial(form)}
-      </p>
+      {showClover ? (
+        <p className="text-sm text-gray-800">
+          <span className="font-semibold">{CLOVER_SERIAL_LABEL}:</span>{" "}
+          {formatCloverSerial(form)}
+        </p>
+      ) : null}
       <div className="flex flex-wrap gap-2 text-xs font-semibold">
         <TrafficLightBadge form={form} />
         <span
