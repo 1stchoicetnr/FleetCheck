@@ -542,7 +542,11 @@ export async function seedDatabase() {
   const existingUsers = await db.count("users");
   if (existingUsers > 0) return;
 
-  const taxiFleetId = generateId();
+  const already = await db.getAll("fleets");
+  const existingTaxi = already.find(
+    (fleet) => normalizeFleetType(fleet.type) === "taxi"
+  );
+  const taxiFleetId = existingTaxi?.id ?? generateId();
   const towFleetId = generateId();
   const turoFleetId = generateId();
   const serviceFleetId = generateId();
@@ -591,14 +595,17 @@ export async function seedDatabase() {
     },
   ];
 
-  const fleets: Fleet[] = [
-    {
+  const fleets: Fleet[] = [];
+  if (!existingTaxi) {
+    fleets.push({
       id: taxiFleetId,
       name: "Taxi",
       type: "taxi",
       companyId: RAD_CAB_COMPANY_ID,
       createdAt: new Date().toISOString(),
-    },
+    });
+  }
+  fleets.push(
     {
       id: towFleetId,
       name: "Tow Trucks",
@@ -619,8 +626,8 @@ export async function seedDatabase() {
       type: "turo",
       companyId: TURO_COMPANY_ID,
       createdAt: new Date().toISOString(),
-    },
-  ];
+    }
+  );
 
   const vehicles: Vehicle[] = [
     {
