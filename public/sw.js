@@ -1,11 +1,22 @@
-const CACHE_NAME = "inspekt-v4";
+const CACHE_NAME = "inspekt-v5";
 
 /** Never cache Next.js bundles — they change every build. */
-function isDynamicAsset(url: URL): boolean {
+function isDynamicAsset(url) {
   return (
     url.pathname.startsWith("/_next/") ||
     url.pathname.startsWith("/api/") ||
     url.search.includes("_rsc=")
+  );
+}
+
+/** Icons, splash, and the manifest must come from the network when it is up. */
+function isBrandAsset(url) {
+  return (
+    url.pathname === "/manifest.json" ||
+    url.pathname === "/favicon.ico" ||
+    url.pathname === "/apple-touch-icon.png" ||
+    url.pathname.startsWith("/icons/") ||
+    url.pathname.startsWith("/splash/")
   );
 }
 
@@ -14,13 +25,13 @@ self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) =>
       cache.addAll([
-        "/manifest.json?v=4",
-        "/favicon.ico?v=4",
-        "/apple-touch-icon.png?v=4",
-        "/icons/icon-192.png?v=4",
-        "/icons/icon-512.png?v=4",
-        "/icons/icon-maskable-192.png?v=4",
-        "/icons/icon-maskable-512.png?v=4",
+        "/manifest.json?v=5",
+        "/favicon.ico?v=5",
+        "/apple-touch-icon.png?v=5",
+        "/icons/icon-192.png?v=5",
+        "/icons/icon-512.png?v=5",
+        "/icons/icon-maskable-192.png?v=5",
+        "/icons/icon-maskable-512.png?v=5",
       ])
     )
   );
@@ -28,13 +39,13 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
-        keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))
+    caches
+      .keys()
+      .then((keys) =>
+        Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
       )
-    )
+      .then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
 self.addEventListener("fetch", (event) => {
@@ -43,15 +54,26 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
 
-  // Always network-first for JS/CSS chunks and pages.
   if (isDynamicAsset(url) || event.request.mode === "navigate") {
+    event.respondWith(fetch(event.request).catch(() => caches.match(event.request)));
+    return;
+  }
+
+  if (isBrandAsset(url)) {
     event.respondWith(
-      fetch(event.request).catch(() => caches.match(event.request))
+      fetch(event.request)
+        .then((response) => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match(event.request))
     );
     return;
   }
 
-  // Cache-first only for static icons/manifest.
   event.respondWith(
     caches.match(event.request).then(
       (cached) =>
