@@ -317,9 +317,22 @@ export async function localGetReport(id: string): Promise<CheckoutReport | undef
   return store.reports.find((r) => r.id === id);
 }
 
+export async function localFindReportByIdempotency(
+  key: string
+): Promise<CheckoutReport | undefined> {
+  const store = await localEnsureSeed();
+  return store.reports.find((report) => report.idempotencyKey === key);
+}
+
 export async function localPutReport(report: CheckoutReport): Promise<CheckoutReport> {
   return enqueueWrite(async () => {
     const store = await loadAndSeedUnlocked();
+    if (report.idempotencyKey) {
+      const existing = store.reports.find(
+        (row) => row.idempotencyKey === report.idempotencyKey && row.id !== report.id
+      );
+      if (existing) return existing;
+    }
     const idx = store.reports.findIndex((r) => r.id === report.id);
     if (idx >= 0) store.reports[idx] = report;
     else store.reports.unshift(report);

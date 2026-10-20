@@ -1,15 +1,16 @@
-const CACHE_NAME = "inspekt-v5";
+const CACHE_NAME = "inspekt-v6";
+const SHELL_CACHE = "inspekt-shell-v6";
+const STATIC_CACHE = "inspekt-static-v6";
+const CURRENT_CACHES = [CACHE_NAME, SHELL_CACHE, STATIC_CACHE];
 
-/** Never cache Next.js bundles — they change every build. */
-function isDynamicAsset(url) {
-  return (
-    url.pathname.startsWith("/_next/") ||
-    url.pathname.startsWith("/api/") ||
-    url.search.includes("_rsc=")
-  );
+function isApi(url) {
+  return url.pathname.startsWith("/api/");
 }
 
-/** Icons, splash, and the manifest must come from the network when it is up. */
+function isNextStatic(url) {
+  return url.pathname.startsWith("/_next/static/");
+}
+
 function isBrandAsset(url) {
   return (
     url.pathname === "/manifest.json" ||
@@ -18,6 +19,25 @@ function isBrandAsset(url) {
     url.pathname.startsWith("/icons/") ||
     url.pathname.startsWith("/splash/")
   );
+}
+
+async function networkFirst(request, cacheName) {
+  const cache = await caches.open(cacheName);
+  try {
+    const response = await fetch(request);
+    if (response.ok && response.type === "basic") {
+      await cache.put(request, response.clone());
+    }
+    return response;
+  } catch (err) {
+    const cached = await cache.match(request);
+    if (cached) return cached;
+    if (request.mode === "navigate") {
+      const home = await cache.match("/");
+      if (home) return home;
+    }
+    throw err;
+  }
 }
 
 self.addEventListener("install", (event) => {
@@ -42,7 +62,7 @@ self.addEventListener("activate", (event) => {
     caches
       .keys()
       .then((keys) =>
-        Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+        Promise.all(keys.filter((key) => !CURRENT_CACHES.includes(key)).map((key) => caches.delete(key)))
       )
       .then(() => self.clients.claim())
   );
@@ -53,38 +73,42 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
+  if (isApi(url)) return;
 
-  if (isDynamicAsset(url) || event.request.mode === "navigate") {
-    event.respondWith(fetch(event.request).catch(() => caches.match(event.request)));
+  if (event.request.mode === "navigate" || url.search.includes("_rsc=")) {
+    event.respondWith(networkFirst(event.request, SHELL_CACHE));
     return;
   }
 
-  if (isBrandAsset(url)) {
+  if (isNextStatic(url)) {
     event.respondWith(
-      fetch(event.request)
-        .then((response) => {
-          if (response.ok) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-          }
-          return response;
-        })
-        .catch(() => caches.match(event.request))
+      caches.open(STATIC_CACHE).then(async (cache) => {
+        const cached = await cache.match(event.request);
+        if (cached) return cached;
+        const response = await fetch(event.request);
+        if (response.ok) await cache.put(event.request, response.clone());
+        return response;
+      })
     );
     return;
   }
 
+  if (url.pathname.startsWith("/_next/")) return;
+
+  if (isBrandAsset(url)) {
+    event.respondWith(networkFirst(event.request, CACHE_NAME));
+    return;
+  }
+
   event.respondWith(
-    caches.match(event.request).then(
-      (cached) =>
-        cached ||
-        fetch(event.request).then((response) => {
-          if (response.ok) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-          }
-          return response;
-        })
-    )
+    caches.open(CACHE_NAME).then(async (cache) => {
+      const cached = await cache.match(event.request);
+      if (cached) return cached;
+      const response = await fetch(event.request);
+      if (response.ok && response.type === "basic") {
+        await cache.put(event.request, response.clone());
+      }
+      return response;
+    })
   );
 });

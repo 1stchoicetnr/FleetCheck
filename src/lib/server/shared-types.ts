@@ -49,6 +49,8 @@ export interface CheckoutReportInput {
   inspectionForm?: CheckoutInspectionForm;
   signatureDataUrl?: string;
   signedAt?: string;
+  /** Stable client key. A replay returns the original report and does not notify again. */
+  idempotencyKey?: string;
 }
 
 export interface UpsertVehicleInput {

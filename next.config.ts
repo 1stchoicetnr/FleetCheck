@@ -3,6 +3,9 @@ import path from "path";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  experimental: {
+    optimizePackageImports: ["lucide-react"],
+  },
   // Allow phone on LAN to load dev assets
   allowedDevOrigins: ["192.168.1.217"],
   turbopack: {

@@ -8,7 +8,15 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { useAuth } from "@/hooks/use-auth";
 import { canStartCheckout } from "@/lib/fleet-config";
-import { checkoutDraftId, getCheckoutDraft, saveCheckoutDraft } from "@/lib/storage";
+import {
+  checkoutDraftId,
+  getCachedCompanies,
+  getCachedVehicles,
+  getCheckoutDraft,
+  saveCachedCompanies,
+  saveCachedVehicles,
+  saveCheckoutDraft,
+} from "@/lib/storage";
 import {
   fetchCompanies,
   fetchFleetSettings,
@@ -87,14 +95,28 @@ function CheckoutStartPage() {
   }, [user]);
 
   useEffect(() => {
+    void getCachedCompanies().then((cached) => {
+      if (!cached?.length) return;
+      setCompanies((prev) => (prev.length ? prev : cached));
+      setCompanyId((prev) => prev || defaultCompanyId(cached));
+    });
     fetchCompanies()
       .then((list) => {
         setCompanies(list);
         setCompanyId((prev) => prev || defaultCompanyId(list));
         setLoadError("");
+        void saveCachedCompanies(list);
       })
       .catch((err: Error) => {
-        setLoadError(err.message || "Could not load companies from the shared server.");
+        void getCachedCompanies().then((cached) => {
+          if (cached?.length) {
+            setCompanies(cached);
+            setCompanyId((prev) => prev || defaultCompanyId(cached));
+            setLoadError("");
+            return;
+          }
+          setLoadError(err.message || "Could not load companies from the shared server.");
+        });
       });
     fetchFleetSettings()
       .then((settings) => setAllowDriverAdd(settings.allowDriverAddVehicles))
@@ -127,23 +149,38 @@ function CheckoutStartPage() {
     let cancelled = false;
     setUnitsLoading(true);
     setUnitQuery("");
+    const applyList = (list: SharedVehicle[]) => {
+      const sorted = unitsForCompany(list, companyId).sort((a, b) =>
+        a.unitNumber.localeCompare(b.unitNumber, undefined, { numeric: true })
+      );
+      setVehicles(sorted);
+      setVehicleId((prev) => {
+        if (sorted.some((v) => v.id === prev)) return prev;
+        const last = getLastVehicleId(companyId);
+        if (last && sorted.some((v) => v.id === last)) return last;
+        return sorted[0]?.id ?? "";
+      });
+    };
+    void getCachedVehicles(companyId).then((cached) => {
+      if (cancelled || !cached?.length) return;
+      setVehicles((prev) => (prev.length ? prev : (cached as SharedVehicle[])));
+    });
     fetchVehicles(companyId)
       .then((list) => {
         if (cancelled) return;
-        const sorted = unitsForCompany(list, companyId).sort((a, b) =>
-          a.unitNumber.localeCompare(b.unitNumber, undefined, { numeric: true })
-        );
-        setVehicles(sorted);
-        setVehicleId((prev) => {
-          if (sorted.some((v) => v.id === prev)) return prev;
-          const last = getLastVehicleId(companyId);
-          if (last && sorted.some((v) => v.id === last)) return last;
-          return sorted[0]?.id ?? "";
-        });
+        applyList(list);
         setLoadError("");
+        void saveCachedVehicles(companyId, list);
       })
-      .catch((err: Error) => {
-        if (!cancelled) setLoadError(err.message || "Could not load units from the shared server.");
+      .catch(async (err: Error) => {
+        if (cancelled) return;
+        const cached = await getCachedVehicles(companyId);
+        if (cached?.length) {
+          applyList(cached as SharedVehicle[]);
+          setLoadError("");
+          return;
+        }
+        setLoadError(err.message || "Could not load units from the shared server.");
       })
       .finally(() => {
         if (!cancelled) setUnitsLoading(false);
@@ -300,6 +337,7 @@ function CheckoutStartPage() {
         delete inspectionForm.cloverSerial;
         delete inspectionForm.cloverNumber;
       }
+      const company = companies.find((item) => item.id === companyId);
       await saveCheckoutDraft({
         id,
         companyId,
@@ -317,6 +355,10 @@ function CheckoutStartPage() {
         inspectionForm,
         signatureDataUrl: existing?.signatureDataUrl,
         signedAt: existing?.signedAt,
+        unitNumber: vehicle.unitNumber,
+        plate: vehicle.plate,
+        companyName: company?.name,
+        checklistId: company?.checklistId,
         updatedAt: new Date().toISOString(),
       });
       saveLastDispatcherName(dispatcherName.trim());

@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { alreadyUploadReady } from "./checkout-idempotency";
 import { displayPlate, normalizePlate } from "./plate";
 import { Vehicle } from "./types";
 
@@ -65,11 +66,13 @@ export async function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
-/** Longest edge and JPEG quality for checkout / check-in uploads. */
-export const PHOTO_UPLOAD_MAX_EDGE = 1920;
-export const PHOTO_UPLOAD_JPEG_QUALITY = 0.75;
+/** Longest edge and JPEG quality for photos saved on the phone and uploaded. */
+export const PHOTO_UPLOAD_MAX_EDGE = 1600;
+export const PHOTO_UPLOAD_JPEG_QUALITY = 0.68;
 
 export async function compressUploadPhoto(dataUrl: string): Promise<string> {
+  if (!dataUrl.startsWith("data:")) return dataUrl;
+  if (alreadyUploadReady(dataUrl)) return dataUrl;
   return compressImage(
     dataUrl,
     PHOTO_UPLOAD_MAX_EDGE,

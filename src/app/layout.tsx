@@ -5,6 +5,7 @@ import { AuthProvider } from "@/hooks/use-auth";
 import { ServiceWorkerRegister } from "@/components/service-worker-register";
 import { OrientationUnlock } from "@/components/orientation-unlock";
 import { OfflineBanner } from "@/components/offline-banner";
+import { NavTiming } from "@/components/nav-timing";
 import { appleStartupImages } from "@/lib/apple-startup-images";
 import { INSPEKT_NAVY } from "@/lib/brand-mark";
 
@@ -52,6 +53,7 @@ export default function RootLayout({
       <body className={`${inter.className} min-h-screen`}>
         <AuthProvider>
           <ServiceWorkerRegister />
+          <NavTiming />
           <OrientationUnlock />
           <OfflineBanner />
           <main className="min-h-screen safe-bottom">{children}</main>

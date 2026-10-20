@@ -21,6 +21,7 @@ import {
   VehiclePhoto,
 } from "./types";
 import { generateId } from "./utils";
+import type { CheckoutOutboxItem } from "./checkout-idempotency";
 import { inspectionFormFlagsReport } from "./inspection-form";
 import { SLACK_CHANNEL_DEFAULTS } from "./slack-config";
 import { PHOTO_EXAMPLE_PATHS } from "./photo-examples";
@@ -71,6 +72,31 @@ interface FleetCheckDB extends DBSchema {
     };
   };
   checkoutDrafts: { key: string; value: CheckoutDraft };
+  checkoutOutbox: { key: string; value: CheckoutOutboxItem };
+  catalogCache: {
+    key: string;
+    value: {
+      id: string;
+      savedAt: string;
+      companies?: Company[];
+      vehicles?: CachedUnit[];
+    };
+  };
+}
+
+export interface CachedUnit {
+  id: string;
+  companyId: string;
+  unitNumber: string;
+  plate: string;
+  make: string;
+  model: string;
+  year: number;
+  lastMileage?: number;
+  archivedAt?: string;
+  powertrain?: string;
+  lastOilChangeMileage?: number;
+  createdAt: string;
 }
 
 let dbPromise: Promise<IDBPDatabase<FleetCheckDB>> | null = null;
@@ -157,7 +183,7 @@ async function migrateFleetCategories(
 
 function getDB() {
   if (!dbPromise) {
-    dbPromise = openDB<FleetCheckDB>("fleetcheck-db", 6, {
+    dbPromise = openDB<FleetCheckDB>("fleetcheck-db", 7, {
       upgrade(db, oldVersion) {
         if (oldVersion < 1) {
           const users = db.createObjectStore("users", { keyPath: "id" });
@@ -205,6 +231,14 @@ function getDB() {
           }
           if (!db.objectStoreNames.contains("checkoutDrafts")) {
             db.createObjectStore("checkoutDrafts", { keyPath: "id" });
+          }
+        }
+        if (oldVersion < 7) {
+          if (!db.objectStoreNames.contains("checkoutOutbox")) {
+            db.createObjectStore("checkoutOutbox", { keyPath: "id" });
+          }
+          if (!db.objectStoreNames.contains("catalogCache")) {
+            db.createObjectStore("catalogCache", { keyPath: "id" });
           }
         }
       },
@@ -850,7 +884,12 @@ export async function saveSettings(settings: AppSettings): Promise<void> {
 
 // Pending sync
 export async function getPendingSyncCount(): Promise<number> {
-  return (await getDB()).count("pendingSync");
+  const db = await getDB();
+  const [checks, uploads] = await Promise.all([
+    db.count("pendingSync"),
+    db.count("checkoutOutbox"),
+  ]);
+  return checks + uploads;
 }
 
 export async function clearPendingSync(): Promise<void> {
@@ -1108,4 +1147,53 @@ export async function getCheckoutDraft(
 
 export async function deleteCheckoutDraft(id: string): Promise<void> {
   await (await getDB()).delete("checkoutDrafts", id);
+}
+
+export async function listCheckoutOutbox(): Promise<CheckoutOutboxItem[]> {
+  return (await getDB()).getAll("checkoutOutbox");
+}
+
+export async function getCheckoutOutboxItem(
+  id: string
+): Promise<CheckoutOutboxItem | undefined> {
+  return (await getDB()).get("checkoutOutbox", id);
+}
+
+export async function saveCheckoutOutboxItem(item: CheckoutOutboxItem): Promise<void> {
+  await (await getDB()).put("checkoutOutbox", item);
+}
+
+export async function deleteCheckoutOutboxItem(id: string): Promise<void> {
+  await (await getDB()).delete("checkoutOutbox", id);
+}
+
+export async function saveCachedCompanies(companies: Company[]): Promise<void> {
+  await (await getDB()).put("catalogCache", {
+    id: "companies",
+    savedAt: new Date().toISOString(),
+    companies,
+  });
+}
+
+export async function getCachedCompanies(): Promise<Company[] | undefined> {
+  const row = await (await getDB()).get("catalogCache", "companies");
+  return row?.companies;
+}
+
+export async function saveCachedVehicles(
+  companyId: string,
+  vehicles: CachedUnit[]
+): Promise<void> {
+  await (await getDB()).put("catalogCache", {
+    id: `vehicles:${companyId}`,
+    savedAt: new Date().toISOString(),
+    vehicles,
+  });
+}
+
+export async function getCachedVehicles(
+  companyId: string
+): Promise<CachedUnit[] | undefined> {
+  const row = await (await getDB()).get("catalogCache", `vehicles:${companyId}`);
+  return row?.vehicles;
 }

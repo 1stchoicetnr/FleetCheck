@@ -68,6 +68,7 @@ export async function POST(req: Request) {
       inspectionForm?: CheckoutInspectionForm;
       signatureDataUrl?: string;
       signedAt?: string;
+      idempotencyKey?: string;
     };
     if (
       !body.companyId ||
@@ -107,6 +108,8 @@ export async function POST(req: Request) {
       inspectionForm: body.inspectionForm,
       signatureDataUrl: body.signatureDataUrl,
       signedAt: body.signedAt,
+      idempotencyKey:
+        typeof body.idempotencyKey === "string" ? body.idempotencyKey : undefined,
     });
     return NextResponse.json({ report }, { status: 201 });
   } catch (err) {

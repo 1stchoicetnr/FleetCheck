@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { flushCheckoutOutbox } from "@/lib/checkout-outbox";
 import { getPendingSyncCount, syncPendingRecords } from "@/lib/storage";
 
 export function useOnlineStatus() {
@@ -26,21 +27,18 @@ export function usePendingSync() {
   const online = useOnlineStatus();
 
   useEffect(() => {
-    async function check() {
-      const c = await getPendingSyncCount();
-      setCount(c);
+    let cancelled = false;
+    async function refresh() {
+      if (online) await syncPendingRecords();
+      const pending = online ? await flushCheckoutOutbox() : await getPendingSyncCount();
+      if (!cancelled) setCount(pending);
     }
-    check();
-    const interval = setInterval(check, 5000);
-    return () => clearInterval(interval);
-  }, [online]);
-
-  useEffect(() => {
-    if (online) {
-      syncPendingRecords().then((n) => {
-        if (n > 0) setCount(0);
-      });
-    }
+    void refresh();
+    const interval = setInterval(() => void refresh(), online ? 15000 : 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, [online]);
 
   return count;

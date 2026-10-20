@@ -149,6 +149,8 @@ export interface CheckoutReport {
   /** Driver signature image (data URL or Blob URL). */
   signatureDataUrl?: string;
   signedAt?: string;
+  /** Set when the phone submitted this check. Retries reuse it. */
+  idempotencyKey?: string;
   /** ISO timestamp when Office archived this report. Absent = visible in the default list. */
   archivedAt?: string;
 }
@@ -173,6 +175,11 @@ export interface CheckoutDraft {
   inspectionForm?: CheckoutInspectionForm;
   signatureDataUrl?: string;
   signedAt?: string;
+  /** Copied onto the draft so the check can continue with no signal. */
+  unitNumber?: string;
+  plate?: string;
+  companyName?: string;
+  checklistId?: ChecklistId;
   updatedAt: string;
 }
 

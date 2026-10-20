@@ -32,6 +32,15 @@ function officePinHeader(): Record<string, string> {
   return pin ? { "x-office-pin": pin } : {};
 }
 
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...init,
@@ -44,7 +53,7 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   });
   const data = (await res.json().catch(() => ({}))) as T & { error?: string };
   if (!res.ok) {
-    throw new Error(data.error || `Request failed (${res.status})`);
+    throw new ApiError(data.error || `Request failed (${res.status})`, res.status);
   }
   return data;
 }
@@ -240,6 +249,7 @@ export async function createCheckoutReport(input: {
   inspectionForm?: CheckoutInspectionForm;
   signatureDataUrl?: string;
   signedAt?: string;
+  idempotencyKey?: string;
 }): Promise<CheckoutReport> {
   const data = await api<{ report: CheckoutReport }>("/api/checkout-reports", {
     method: "POST",

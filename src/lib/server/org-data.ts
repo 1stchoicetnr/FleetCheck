@@ -309,6 +309,14 @@ export async function getReport(db: OrgDb, orgId: string, id: string) {
   return rows[0];
 }
 
+export async function getReportByIdempotency(db: OrgDb, orgId: string, key: string) {
+  const rows = await db.query(
+    "SELECT * FROM checkout_reports WHERE org_id = $1 AND idempotency_key = $2 LIMIT 1",
+    [org(orgId), key]
+  );
+  return rows[0];
+}
+
 export async function upsertReport(
   db: OrgDb,
   orgId: string,
@@ -339,6 +347,7 @@ export async function upsertReport(
     signatureDataUrl: string | null;
     signedAt: string | null;
     inspectionFormJson: string;
+    idempotencyKey?: string | null;
   }
 ) {
   await assertFleetInOrg(db, orgId, report.companyId);
@@ -347,12 +356,13 @@ export async function upsertReport(
       id, org_id, company_id, vehicle_id, unit_number, plate, year, make, model, odometer,
       driver_name, dispatcher_name, type, status, completed_at, review_status,
       review_notes, new_damage_notes, retake_angles, reviewed_at, reviewed_by,
-      flagged, photos, created_at, signature_data_url, signed_at, inspection_form
+      flagged, photos, created_at, signature_data_url, signed_at, inspection_form,
+      idempotency_key
     ) VALUES (
       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
       $11,$12,$13,$14,$15,$16,
       $17,$18,CAST($19 AS jsonb),$20,$21,
-      $22,CAST($23 AS jsonb),$24,$25,$26,CAST($27 AS jsonb)
+      $22,CAST($23 AS jsonb),$24,$25,$26,CAST($27 AS jsonb),$28
     )
     ON CONFLICT (id) DO UPDATE SET
       review_status = EXCLUDED.review_status,
@@ -398,6 +408,7 @@ export async function upsertReport(
       report.signatureDataUrl,
       report.signedAt,
       report.inspectionFormJson,
+      report.idempotencyKey || null,
     ]
   );
   if (!rows[0]) throw new OrgAccessError();

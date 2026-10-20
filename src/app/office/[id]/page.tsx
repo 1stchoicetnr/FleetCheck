@@ -39,11 +39,7 @@ import {
   photoStepsForReport,
   walkaroundPhotoSteps,
 } from "@/lib/types";
-import {
-  checkoutReportPdfFilename,
-  downloadPDF,
-  generateCheckoutReportPDF,
-} from "@/lib/pdf";
+import { downloadCheckoutReportFile } from "@/lib/pdf-download";
 import { formatDate, formatDateOnly, formatMileage, formatUnitLabel } from "@/lib/utils";
 import { isVehicleArchived } from "@/lib/vehicle-archive";
 import {
@@ -214,15 +210,11 @@ export default function OfficeReportDetailPage() {
     setDownloading(true);
     setDownloadError("");
     try {
-      const blob = await generateCheckoutReportPDF(report, {
+      await downloadCheckoutReportFile(report, {
         companyName: company?.name,
         plate: report.plate ?? vehicle?.plate,
         steps,
       });
-      downloadPDF(
-        blob,
-        checkoutReportPdfFilename(report, report.plate ?? vehicle?.plate)
-      );
     } catch (err) {
       setDownloadError(
         err instanceof Error ? err.message : "Could not build the report PDF."

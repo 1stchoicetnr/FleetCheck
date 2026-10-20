@@ -20,7 +20,7 @@ import {
 } from "@/lib/storage";
 import { CheckRecord, Vehicle, Fleet, FUEL_LEVEL_LABELS } from "@/lib/types";
 import { formatDate, formatMileage, formatUnitLabel } from "@/lib/utils";
-import { generateCheckPDF, downloadPDF } from "@/lib/pdf";
+import { downloadCheckFile } from "@/lib/pdf-download";
 import { Download, FileText } from "lucide-react";
 import { checksToCsv, downloadCsv } from "@/lib/export-checks";
 
@@ -64,8 +64,12 @@ export default function ReportsPage() {
     const vehicle = vehicles[check.vehicleId] || (await getVehicleById(check.vehicleId));
     const fleet = fleets[check.fleetId] || (await getFleetById(check.fleetId));
     if (!vehicle || !fleet) return;
-    const blob = await generateCheckPDF(check, vehicle, fleet);
-    downloadPDF(blob, `inspekt-${vehicle.plate}-${check.id}.pdf`);
+    await downloadCheckFile(
+      check,
+      vehicle,
+      fleet,
+      `inspekt-${vehicle.plate}-${check.id}.pdf`
+    );
   };
 
   if (loading || !user) return null;

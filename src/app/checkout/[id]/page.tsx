@@ -11,28 +11,26 @@ import { canStartCheckout } from "@/lib/fleet-config";
 import { canSkipPhotosForTesting } from "@/lib/dev-config";
 import { companyUsesClover, getChecklistForCompany } from "@/lib/companies";
 import {
-  deleteCheckoutDraft,
+  getCachedCompanies,
+  getCachedVehicles,
   getCheckoutDraft,
+  saveCachedCompanies,
+  saveCachedVehicles,
   saveCheckoutDraft,
 } from "@/lib/storage";
 import {
-  createCheckoutReport,
   fetchCompanies,
   fetchVehicles,
   SharedVehicle,
-  uploadCheckoutPhotos,
 } from "@/lib/checkout-api";
+import { submitCheckoutFromDraft } from "@/lib/checkout-outbox";
 import {
   CheckoutDraft,
   CheckoutReport,
   Company,
   PhotoAngle,
 } from "@/lib/types";
-import {
-  checkoutReportPdfFilename,
-  downloadPDF,
-  generateCheckoutReportPDF,
-} from "@/lib/pdf";
+import { downloadCheckoutReportFile } from "@/lib/pdf-download";
 import {
   applyPowertrainToForm,
   canContinueToPhotos,
@@ -45,14 +43,36 @@ import {
   UNIT_NUMBER_LABEL,
   validateInspectionForm,
 } from "@/lib/inspection-form";
-import { compressUploadPhoto, formatDate, formatDateOnly, formatUnitLabel } from "@/lib/utils";
-import { uploadProgress as describeUpload } from "@/lib/upload-progress";
+import { formatDate, formatDateOnly, formatUnitLabel } from "@/lib/utils";
 import { PHOTO_EXAMPLE_PATHS } from "@/lib/photo-examples";
 import { InspectionFormFields } from "@/components/inspection-form-fields";
 import { InspectionFormSummary } from "@/components/inspection-form-summary";
 import { Check } from "lucide-react";
 import { restoreNaturalOrientation } from "@/lib/orientation";
 import { useCheckoutFeedbackMeta } from "@/components/checkout-feedback";
+
+function vehicleFromDraft(draft: CheckoutDraft): SharedVehicle {
+  return {
+    id: draft.vehicleId,
+    companyId: draft.companyId,
+    unitNumber: draft.unitNumber || "Unit",
+    plate: draft.plate || "",
+    make: draft.make,
+    model: draft.model,
+    year: Number(draft.year) || 0,
+    createdAt: draft.updatedAt,
+  };
+}
+
+function companyFromDraft(draft: CheckoutDraft): Company {
+  return {
+    id: draft.companyId,
+    name: draft.companyName || "Company",
+    slug: "cached",
+    checklistId: draft.checklistId || "radcab_default",
+    createdAt: draft.updatedAt,
+  };
+}
 
 function CheckoutCapturePage() {
   const params = useParams();
@@ -76,6 +96,7 @@ function CheckoutCapturePage() {
   const [uploadEstimate, setUploadEstimate] = useState("");
   const [submitError, setSubmitError] = useState("");
   const [completed, setCompleted] = useState<CheckoutReport | null>(null);
+  const [savedOnPhone, setSavedOnPhone] = useState(false);
   const [photosReady, setPhotosReady] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [inspectionForm, setInspectionForm] = useState(() =>
@@ -127,25 +148,32 @@ function CheckoutCapturePage() {
       }).ok;
       const resumeReview = searchParams.get("phase") === "review" && formOk;
       setPhase(resumeReview ? "review" : formOk && !isPrecheckRed(form) ? "photos" : "inspect");
-      try {
-        const [vehicles, companies] = await Promise.all([
-          fetchVehicles(d.companyId, { includeArchived: true }),
-          fetchCompanies(),
-        ]);
-        const found = vehicles.find((item) => item.id === d.vehicleId) ?? null;
+      const applyUnit = (found: SharedVehicle | null, companies: Company[]) => {
         setVehicle(found);
         if (found?.archivedAt) {
           setLoadError(
             "This unit is archived / out of service. Ask Office to unarchive it before submitting a new checkout."
           );
         }
-        setCompany(companies.find((item) => item.id === d.companyId) ?? null);
-      } catch (err) {
-        setLoadError(
-          err instanceof Error
-            ? err.message
-            : "Could not load this unit from the shared server."
-        );
+        setCompany(companies.find((item) => item.id === d.companyId) ?? companyFromDraft(d));
+      };
+      try {
+        const [vehicles, companies] = await Promise.all([
+          fetchVehicles(d.companyId, { includeArchived: true }),
+          fetchCompanies(),
+        ]);
+        void saveCachedCompanies(companies);
+        void saveCachedVehicles(d.companyId, vehicles);
+        applyUnit(vehicles.find((item) => item.id === d.vehicleId) ?? null, companies);
+      } catch {
+        const [cachedVehicles, cachedCompanies] = await Promise.all([
+          getCachedVehicles(d.companyId),
+          getCachedCompanies(),
+        ]);
+        const companies = cachedCompanies?.length ? cachedCompanies : [companyFromDraft(d)];
+        const cached = cachedVehicles?.find((item) => item.id === d.vehicleId);
+        const found = (cached as SharedVehicle | undefined) ?? vehicleFromDraft(d);
+        applyUnit(found, companies);
       }
     }
     load();
@@ -167,10 +195,14 @@ function CheckoutCapturePage() {
         inspectionForm,
         signatureDataUrl: signatureDataUrl || undefined,
         signedAt: signedAt || undefined,
+        unitNumber: vehicle?.unitNumber || draft.unitNumber,
+        plate: vehicle?.plate || draft.plate,
+        companyName: company?.name || draft.companyName,
+        checklistId: company?.checklistId || draft.checklistId,
       });
     }, 600);
     return () => clearTimeout(timer);
-  }, [draft, photos, photoFlags, inspectionForm, signatureDataUrl, signedAt]);
+  }, [draft, photos, photoFlags, inspectionForm, signatureDataUrl, signedAt, vehicle, company]);
 
   useEffect(() => {
     if (inspectionForm.trafficLight === "red") setPhase("inspect");
@@ -240,10 +272,12 @@ function CheckoutCapturePage() {
     }
     setSubmitting(true);
     setSubmitError("");
+    setSavedOnPhone(false);
     setUploadProgress("Saving report…");
     try {
       const capturedAt = new Date().toISOString();
-      let report = await createCheckoutReport({
+      const result = await submitCheckoutFromDraft({
+        draftId: draft.id,
         companyId: draft.companyId,
         vehicleId: draft.vehicleId,
         unitNumber: vehicle.unitNumber,
@@ -261,57 +295,25 @@ function CheckoutCapturePage() {
         },
         signatureDataUrl,
         signedAt: signedAt || capturedAt,
+        photos,
+        photoFlags,
+        onProgress: (message, percent) => {
+          setUploadProgress(message);
+          setUploadPercent(percent);
+          setUploadEstimate(message);
+        },
       });
-
-      const entries = Object.entries(photos).filter(([, dataUrl]) => dataUrl) as [
-        PhotoAngle,
-        string,
-      ][];
-      const started = Date.now();
-      setUploadPercent(0);
-      setUploadEstimate("Preparing photos");
-      const prepared = await Promise.all(
-        entries.map(async ([angle, dataUrl], index) => {
-          const compressed = dataUrl.startsWith("data:")
-            ? await compressUploadPhoto(dataUrl)
-            : dataUrl;
-          setUploadProgress(`Preparing photos ${index + 1}/${entries.length}`);
-          return [angle, compressed] as const;
-        })
-      );
-      const batchSize = 4;
-      let uploaded = 0;
-      for (let i = 0; i < prepared.length; i += batchSize) {
-        const slice = prepared.slice(i, i + batchSize);
-        const before = describeUpload(uploaded, prepared.length, started);
-        setUploadPercent(before.percent);
-        setUploadEstimate(before.estimate);
-        setUploadProgress(
-          `Uploading photos ${uploaded + 1}–${Math.min(uploaded + slice.length, prepared.length)} of ${prepared.length}`
-        );
-        report = await uploadCheckoutPhotos(
-          report.id,
-          slice.map(([angle, dataUrl]) => ({
-            angle,
-            dataUrl,
-            capturedAt,
-            flaggedDamage: photoFlags[angle]?.flaggedDamage,
-            damageNote: photoFlags[angle]?.damageNote,
-          }))
-        );
-        uploaded += slice.length;
-        const after = describeUpload(uploaded, prepared.length, started);
-        setUploadPercent(after.percent);
-        setUploadEstimate(after.estimate);
+      if (result.state === "sent") setCompleted(result.report);
+      else {
+        setSavedOnPhone(true);
+        if (result.error) setSubmitError(result.error);
       }
-
-      await deleteCheckoutDraft(draft.id);
-      setCompleted(report);
     } catch (err) {
+      setSavedOnPhone(true);
       setSubmitError(
         err instanceof Error
           ? err.message
-          : "Could not save to the shared server. Check your connection and try again."
+          : "Saved on this phone. It will send when the signal is back."
       );
     } finally {
       setSubmitting(false);
@@ -351,6 +353,32 @@ function CheckoutCapturePage() {
     );
   }
 
+  if (savedOnPhone && !completed) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <AppHeader title="Saved on this phone" backHref="/dashboard" />
+        <div className="max-w-lg mx-auto px-4 py-12 text-center space-y-5">
+          <div className="bg-amber-100 rounded-full p-6 inline-flex">
+            <Check className="h-12 w-12 text-amber-700" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900">Saved on this phone</h2>
+          <p className="text-gray-600">
+            {formatUnitLabel(vehicle.unitNumber, vehicle.plate)} — {draft.year} {draft.make}{" "}
+            {draft.model}
+          </p>
+          <p className="text-sm text-gray-500">
+            The check and its photos stay on this phone and upload when the signal
+            comes back. Submitting again will not create a second report.
+          </p>
+          {submitError && <p className="text-sm text-red-600 font-medium">{submitError}</p>}
+          <Button size="lg" className="w-full" onClick={() => router.push("/dashboard")}>
+            Back to dashboard
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   if (completed) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -377,13 +405,12 @@ function CheckoutCapturePage() {
             <Button
               size="xl"
               className="w-full"
-              onClick={async () => {
-                const blob = await generateCheckoutReportPDF(completed, {
+              onClick={() =>
+                downloadCheckoutReportFile(completed, {
                   companyName: company?.name,
                   plate: completed.plate ?? vehicle.plate,
-                });
-                downloadPDF(blob, checkoutReportPdfFilename(completed));
-              }}
+                })
+              }
             >
               Download PDF for Slack
             </Button>

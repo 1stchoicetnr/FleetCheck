@@ -20,12 +20,12 @@ export function OfflineBanner() {
       {!online ? (
         <>
           <WifiOff className="h-4 w-4" />
-          Offline mode — changes saved locally
+          Offline — checks and photos stay on this phone
         </>
       ) : pending > 0 ? (
         <>
           <CloudOff className="h-4 w-4" />
-          {pending} record{pending > 1 ? "s" : ""} waiting to sync
+          {pending} pending upload{pending > 1 ? "s" : ""}
         </>
       ) : (
         <>

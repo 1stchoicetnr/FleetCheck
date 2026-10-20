@@ -27,6 +27,7 @@ import {
 } from "@/lib/vehicle-archive";
 import {
   localFindVehicleByPlate,
+  localFindReportByIdempotency,
   localGetReport,
   localGetVehicle,
   localListCompanies,
@@ -52,9 +53,11 @@ import {
 import { deleteStoredPhoto, persistCheckoutPhoto } from "./photo-store";
 import { recordCheckoutAlerts } from "./report-alerts";
 import { notifyCheckoutReport } from "./slack-notify";
+import { assertIdempotencyKey, isUniqueViolation } from "@/lib/checkout-idempotency";
 import {
   pgAssertFleetInOrg,
   pgFindVehicleByPlate,
+  pgFindReportByIdempotency,
   pgGetReport,
   pgGetVehicle,
   pgListCompanies,
@@ -352,11 +355,31 @@ export async function getPriorReports(
   );
 }
 
+async function reportForIdempotencyKey(
+  mode: "postgres" | "local-dev",
+  orgId: string,
+  key: string | undefined
+): Promise<CheckoutReport | undefined> {
+  if (!key) return undefined;
+  return mode === "postgres"
+    ? pgFindReportByIdempotency(orgId, key)
+    : localFindReportByIdempotency(key);
+}
+
 export async function createReport(
   orgId: string,
   input: CheckoutReportInput
 ): Promise<CheckoutReport> {
   const mode = assertConfigured();
+  if (input.idempotencyKey) {
+    try {
+      assertIdempotencyKey(input.idempotencyKey);
+    } catch {
+      throw new SharedBackendError("Idempotency key is invalid", 400);
+    }
+  }
+  const replay = await reportForIdempotencyKey(mode, orgId, input.idempotencyKey);
+  if (replay) return replay;
   await assertFleet(mode, orgId, input.companyId);
   const now = new Date().toISOString();
   let vehicle =
@@ -411,9 +434,18 @@ export async function createReport(
     createdAt: now,
     signatureDataUrl: input.signatureDataUrl,
     signedAt: input.signedAt,
+    idempotencyKey: input.idempotencyKey,
   };
-  const saved =
-    mode === "postgres" ? await pgPutReport(orgId, report) : await localPutReport(report);
+  let saved: CheckoutReport;
+  try {
+    saved =
+      mode === "postgres" ? await pgPutReport(orgId, report) : await localPutReport(report);
+  } catch (err) {
+    const raced = await reportForIdempotencyKey(mode, orgId, input.idempotencyKey);
+    if (raced && isUniqueViolation(err)) return raced;
+    throw err;
+  }
+  if (saved.id !== report.id) return saved;
   void notifyCheckoutReport(saved);
   void recordCheckoutAlerts(orgId, saved).catch((err) => {
     console.error("[alerts] checkout report alerts failed:", err);

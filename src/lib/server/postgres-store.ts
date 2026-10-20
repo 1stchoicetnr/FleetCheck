@@ -81,6 +81,7 @@ type ReportRow = {
   signed_at: string | null;
   inspection_form: CheckoutInspectionForm | null;
   archived_at?: string | null;
+  idempotency_key?: string | null;
 };
 
 function rowToReport(row: ReportRow): CheckoutReport {
@@ -117,6 +118,7 @@ function rowToReport(row: ReportRow): CheckoutReport {
     signatureDataUrl: row.signature_data_url ?? undefined,
     signedAt: row.signed_at ? new Date(row.signed_at).toISOString() : undefined,
     inspectionForm: row.inspection_form ?? undefined,
+    idempotencyKey: row.idempotency_key ?? undefined,
     archivedAt: row.archived_at
       ? new Date(row.archived_at).toISOString()
       : undefined,
@@ -259,6 +261,12 @@ export async function pgMigrateAndSeed(): Promise<void> {
   `;
   const db = orgDb();
   await applyOrgStamp(db);
+  await sql`ALTER TABLE checkout_reports ADD COLUMN IF NOT EXISTS idempotency_key TEXT`;
+  await sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS checkout_reports_org_idempotency_idx
+    ON checkout_reports (org_id, idempotency_key)
+    WHERE idempotency_key IS NOT NULL
+  `;
   const orgId = orgFromSession();
   await orgData.seedFleetSettings(db, orgId);
   for (const user of SEEDED_APP_USERS) {
@@ -577,6 +585,15 @@ export async function pgGetReport(orgId: string, id: string): Promise<CheckoutRe
   return row ? rowToReport(row as ReportRow) : undefined;
 }
 
+export async function pgFindReportByIdempotency(
+  orgId: string,
+  key: string
+): Promise<CheckoutReport | undefined> {
+  await pgMigrateAndSeed();
+  const row = await orgData.getReportByIdempotency(orgDb(), orgId, key);
+  return row ? rowToReport(row as ReportRow) : undefined;
+}
+
 async function upsertReportRow(orgId: string, report: CheckoutReport): Promise<void> {
   const db = orgDb();
   await orgData.upsertReport(db, orgId, {
@@ -606,6 +623,7 @@ async function upsertReportRow(orgId: string, report: CheckoutReport): Promise<v
     signatureDataUrl: report.signatureDataUrl ?? null,
     signedAt: report.signedAt ?? null,
     inspectionFormJson: JSON.stringify(report.inspectionForm ?? null),
+    idempotencyKey: report.idempotencyKey ?? null,
   });
   await orgData.setVehicleMileage(db, orgId, report.vehicleId, report.odometer);
 }
