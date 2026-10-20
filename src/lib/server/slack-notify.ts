@@ -46,7 +46,7 @@ export async function notifyCheckoutReport(report: CheckoutReport): Promise<void
     await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, username: "FleetCheck" }),
+      body: JSON.stringify({ text, username: "Inspekt" }),
     });
   } catch {
     // Office already has the row.

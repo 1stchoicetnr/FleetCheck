@@ -1,4 +1,4 @@
-const CACHE_NAME = "fleetcheck-v10";
+const CACHE_NAME = "inspekt-v1";
 
 /** Never cache Next.js bundles — they change every build. */
 function isDynamicAsset(url: URL): boolean {
@@ -13,7 +13,16 @@ self.addEventListener("install", (event) => {
   self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) =>
-      cache.addAll(["/manifest.json", "/icons/icon.svg"])
+      cache.addAll([
+        "/manifest.json",
+        "/favicon.ico",
+        "/apple-touch-icon.png",
+        "/icons/icon.svg",
+        "/icons/icon-192.png",
+        "/icons/icon-512.png",
+        "/icons/icon-maskable-192.png",
+        "/icons/icon-maskable-512.png",
+      ])
     )
   );
 });

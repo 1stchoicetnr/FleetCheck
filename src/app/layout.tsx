@@ -11,13 +11,23 @@ const inter = Inter({
   display: "swap",
 });
 export const metadata: Metadata = {
-  title: "FleetCheck",
+  title: "Inspekt",
   description: "Vehicle documentation, damage tracking, and accountability",
+  applicationName: "Inspekt",
   manifest: "/manifest.json",
+  icons: {
+    icon: [
+      { url: "/favicon.ico" },
+      { url: "/icons/icon.svg", type: "image/svg+xml" },
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
   appleWebApp: {
     capable: true,
-    statusBarStyle: "default",
-    title: "FleetCheck",
+    statusBarStyle: "black",
+    title: "Inspekt",
   },
 };
 
@@ -27,7 +37,7 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: "cover",
-  themeColor: "#2563eb",
+  themeColor: "#1A1A1A",
 };
 
 export default function RootLayout({
@@ -37,11 +47,8 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <head>
-        <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
-        <link rel="apple-touch-icon" href="/icons/icon.svg" />
-      </head>
-      <body className={`${inter.className} min-h-screen`}>        <AuthProvider>
+      <body className={`${inter.className} min-h-screen`}>
+        <AuthProvider>
           <ServiceWorkerRegister />
           <OrientationUnlock />
           <OfflineBanner />

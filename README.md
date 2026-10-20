@@ -1,4 +1,6 @@
-# FleetCheck
+# Inspekt
+
+Inspekt is the app name. The GitHub repo and the Vercel project stay named FleetCheck.
 
 A professional, mobile-first internal web app for vehicle documentation, damage tracking, mileage tracking, and **checkout reports (CR)** across multiple companies.
 

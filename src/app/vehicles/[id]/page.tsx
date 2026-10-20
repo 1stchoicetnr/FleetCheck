@@ -127,7 +127,7 @@ export default function VehicleDetailPage() {
   const exportCsv = () => {
     const map = { [vehicle.id]: vehicle };
     const csv = checksToCsv(checks, map);
-    downloadCsv(csv, `fleetcheck-${vehicle.plate}-history.csv`);
+    downloadCsv(csv, `inspekt-${vehicle.plate}-history.csv`);
   };
 
   return (

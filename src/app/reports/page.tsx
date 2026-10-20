@@ -65,7 +65,7 @@ export default function ReportsPage() {
     const fleet = fleets[check.fleetId] || (await getFleetById(check.fleetId));
     if (!vehicle || !fleet) return;
     const blob = await generateCheckPDF(check, vehicle, fleet);
-    downloadPDF(blob, `fleetcheck-${vehicle.plate}-${check.id}.pdf`);
+    downloadPDF(blob, `inspekt-${vehicle.plate}-${check.id}.pdf`);
   };
 
   if (loading || !user) return null;
@@ -103,7 +103,7 @@ export default function ReportsPage() {
 
   const exportAll = () => {
     const csv = checksToCsv(filteredChecks, vehicles);
-    downloadCsv(csv, `fleetcheck-records-${Date.now()}.csv`);
+    downloadCsv(csv, `inspekt-records-${Date.now()}.csv`);
   };
 
   return (

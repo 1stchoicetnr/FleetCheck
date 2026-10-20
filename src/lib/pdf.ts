@@ -88,7 +88,7 @@ export function checkoutReportPdfFilename(
   const slug = raw.replace(/[^\w]+/g, "").toUpperCase() || "REPORT";
   const when = Date.parse(report.completedAt);
   const stamp = Number.isFinite(when) ? String(when) : String(Date.now());
-  return `fleetcheck-${slug}-${stamp}.pdf`;
+  return `inspekt-${slug}-${stamp}.pdf`;
 }
 
 function checkoutPhotoProxyUrl(reportId: string, angle: PhotoAngle): string {
@@ -106,7 +106,7 @@ export async function generateCheckPDF(
 
   doc.setFontSize(20);
   doc.setFont("helvetica", "bold");
-  doc.text("FleetCheck Report", pageWidth / 2, y, { align: "center" });
+  doc.text("Inspekt Report", pageWidth / 2, y, { align: "center" });
   y += 12;
 
   doc.setFontSize(10);
@@ -369,7 +369,7 @@ export async function generateCheckoutReportPDF(
   let y = 20;
   doc.setFontSize(20);
   doc.setFont("helvetica", "bold");
-  doc.text("FleetCheck Checkout Report", pageWidth / 2, y, { align: "center" });
+  doc.text("Inspekt Checkout Report", pageWidth / 2, y, { align: "center" });
   y += 8;
   doc.setFontSize(11);
   doc.setFont("helvetica", "bold");

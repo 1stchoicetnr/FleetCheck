@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         channel: channelId,
         text: message,
-        username: "FleetCheck",
+        username: "Inspekt",
         icon_emoji: ":warning:",
         blocks: [
           {

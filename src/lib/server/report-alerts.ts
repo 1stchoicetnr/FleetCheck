@@ -61,7 +61,7 @@ async function postRepairSlack(
   if (!url) return;
   const unit = formatUnitLabel(report.unitNumber, report.plate);
   const text = [
-    `*FleetCheck alert* (${slackChannelLabel(route)})`,
+    `*Inspekt alert* (${slackChannelLabel(route)})`,
     `*Unit:* ${unit}`,
     `*Vehicle:* ${report.year} ${report.make} ${report.model}`,
     `*Driver:* ${report.driverName}`,
@@ -74,7 +74,7 @@ async function postRepairSlack(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         text,
-        username: "FleetCheck",
+        username: "Inspekt",
         channel: slackChannelIdForRoute(route),
       }),
     });

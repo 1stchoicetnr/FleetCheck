@@ -53,22 +53,31 @@ export function AppHeader({
           <div className="w-10 flex-shrink-0" />
         )}
 
-        <div className="flex-1 min-w-0">
-          {title ? (
-            <h1 className="text-lg font-bold text-gray-900 truncate">{title}</h1>
-          ) : (
-            <Link
-              href="/dashboard"
-              className="text-lg font-bold text-brand-600 inline-block py-1"
-            >
-              FleetCheck
-            </Link>
-          )}
-          {user && (
-            <p className="text-xs text-gray-500 truncate">
-              {user.name} · {ROLE_LABELS[user.role]}
-            </p>
-          )}
+        <div className="flex-1 min-w-0 flex items-center gap-2">
+          <img
+            src="/icons/icon-192.png"
+            alt=""
+            width={32}
+            height={32}
+            className="h-8 w-8 flex-shrink-0"
+          />
+          <div className="min-w-0">
+            {title ? (
+              <h1 className="text-lg font-bold text-gray-900 truncate">{title}</h1>
+            ) : (
+              <Link
+                href="/dashboard"
+                className="text-lg font-bold text-gray-900 inline-block py-1"
+              >
+                Inspekt
+              </Link>
+            )}
+            {user && (
+              <p className="text-xs text-gray-500 truncate">
+                {user.name} · {ROLE_LABELS[user.role]}
+              </p>
+            )}
+          </div>
         </div>
 
         {onCheckout && <CheckoutFeedbackButton />}

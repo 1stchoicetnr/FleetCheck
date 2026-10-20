@@ -81,7 +81,7 @@ function channelIdForRoute(
 function formatSlackMessage(payload: AlertPayload, route: SlackChannel): string {
   const channelLabel = slackChannelLabel(route);
   const lines = [
-    `*FleetCheck Alert* (${channelLabel})`,
+    `*Inspekt Alert* (${channelLabel})`,
     `*Vehicle:* ${formatVehicleSlackLabel(payload.vehicle)}`,
     `*Event:* ${payload.message}`,
   ];
@@ -193,7 +193,7 @@ export async function sendTestSlackAlert(
   return sendSlackAlert(
     {
       type: "known_issue_updated",
-      message: "Test message from FleetCheck",
+      message: "Test message from Inspekt",
       note: "If you see this, Slack is configured correctly.",
       vehicle: {
         id: "test",
@@ -209,7 +209,7 @@ export async function sendTestSlackAlert(
         createdAt: new Date().toISOString(),
       },
       fleetType,
-      actorName: "FleetCheck",
+      actorName: "Inspekt",
     },
     ns
   );

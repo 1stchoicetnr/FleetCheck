@@ -86,7 +86,7 @@ export default function LoginPage() {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="animate-pulse text-brand-600 font-semibold text-lg">
-          {user ? "Opening dashboard..." : "Loading FleetCheck..."}
+          {user ? "Opening dashboard..." : "Loading Inspekt..."}
         </div>
       </div>
     );
@@ -94,12 +94,16 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
-      <div className="bg-brand-600 text-white px-6 py-10 text-center">
-        <div className="inline-flex bg-white/20 rounded-2xl p-4 mb-4">
-          <Truck className="h-10 w-10" />
-        </div>
-        <h1 className="text-3xl font-bold">FleetCheck</h1>
-        <p className="text-brand-100 mt-2 text-base">
+      <div className="bg-[#1A1A1A] text-white px-6 pt-12 pb-10 text-center">
+        <img
+          src="/icons/icon-192.png"
+          alt=""
+          width={88}
+          height={88}
+          className="mx-auto mb-4 h-[88px] w-[88px]"
+        />
+        <h1 className="text-3xl font-bold">Inspekt</h1>
+        <p className="text-white/70 mt-2 text-base">
           Vehicle docs, damage tracking & accountability
         </p>
       </div>

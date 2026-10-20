@@ -13,7 +13,7 @@ export function feedbackToEmail(): string {
 export function feedbackFromEmail(): string {
   return (
     process.env.FEEDBACK_FROM_EMAIL ||
-    "FleetCheck <beth.t@example.com>"
+    "Inspekt <beth.t@example.com>"
   ).trim();
 }
 
@@ -72,7 +72,7 @@ export function formatFeedbackEmail(payload: FeedbackPayload): {
   ];
   const html = `
     <div style="font-family:ui-sans-serif,system-ui,sans-serif;font-size:14px;line-height:1.45;">
-      <p style="margin:0 0 12px;"><strong>FleetCheck app feedback</strong> (not a vehicle damage/oil report)</p>
+      <p style="margin:0 0 12px;"><strong>Inspekt app feedback</strong> (not a vehicle damage/oil report)</p>
       ${payload.note?.trim() ? `<p style="margin:0 0 16px;white-space:pre-wrap;">${escapeHtml(payload.note.trim())}</p>` : "<p style=\"margin:0 0 16px;color:#6b7280;\">(no note)</p>"}
       <table style="border-collapse:collapse;font-size:13px;">
         ${row("Type", payload.type)}

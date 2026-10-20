@@ -68,8 +68,8 @@ export function feedbackSubject(input: {
     : "Unit unknown";
   const step = feedbackStepLabel(input.photoStep, input.pagePhase);
   return step
-    ? `[FleetCheck Feedback] ${input.type} — ${unit} — ${step}`
-    : `[FleetCheck Feedback] ${input.type} — ${unit}`;
+    ? `[Inspekt Feedback] ${input.type} — ${unit} — ${step}`
+    : `[Inspekt Feedback] ${input.type} — ${unit}`;
 }
 
 export function feedbackStepLabel(
@@ -143,7 +143,7 @@ export function formatFeedbackSlack(input: {
   const { payload } = input;
   const who = payload.userName?.trim() || payload.driverName?.trim() || "Unknown";
   const lines = [
-    `*FleetCheck feedback* — ${payload.type}`,
+    `*Inspekt feedback* — ${payload.type}`,
     `*Note:* ${payload.note?.trim() || "(no note)"}`,
     `*From:* ${who} · ${feedbackRoleLabel(payload.userRole)}`,
   ];

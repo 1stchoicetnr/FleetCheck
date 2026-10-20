@@ -696,7 +696,7 @@ export async function seedDatabase() {
   for (const vehicle of vehicles) await tx.objectStore("vehicles").put(vehicle);
   await tx.objectStore("settings").put({
     id: "app",
-    companyName: "FleetCheck",
+    companyName: "Inspekt",
     officePin: DEFAULT_OFFICE_PIN,
     notificationSettings: DEFAULT_NOTIFICATIONS,
   });
@@ -833,10 +833,10 @@ export async function getSettings(): Promise<AppSettings> {
   return {
     ...(settings ?? {
       id: "app",
-      companyName: "FleetCheck",
+      companyName: "Inspekt",
     }),
     id: "app",
-    companyName: settings?.companyName ?? "FleetCheck",
+    companyName: settings?.companyName ?? "Inspekt",
     officePin: settings?.officePin ?? DEFAULT_OFFICE_PIN,
     notificationSettings: normalizeNotificationSettings(
       settings?.notificationSettings
