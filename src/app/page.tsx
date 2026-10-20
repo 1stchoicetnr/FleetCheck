@@ -1,6 +1,7 @@
 "use client";
 
 import { useLayoutEffect, useRef, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { UserRole } from "@/lib/types";
@@ -95,11 +96,12 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
       <div className="bg-[#1A1A1A] text-white px-6 pt-12 pb-10 text-center">
-        <img
+        <Image
           src="/icons/icon-192.png"
           alt=""
           width={88}
           height={88}
+          priority
           className="mx-auto mb-4 h-[88px] w-[88px]"
         />
         <h1 className="text-3xl font-bold">Inspekt</h1>

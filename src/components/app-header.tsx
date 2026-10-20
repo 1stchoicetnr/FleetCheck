@@ -2,6 +2,7 @@
 
 import { CheckoutFeedbackButton } from "@/components/checkout-feedback";
 import { useAuth } from "@/hooks/use-auth";
+import Image from "next/image";
 import { ROLE_LABELS } from "@/lib/types";
 import { ArrowLeft, Home, LogOut } from "lucide-react";
 import Link from "next/link";
@@ -54,7 +55,7 @@ export function AppHeader({
         )}
 
         <div className="flex-1 min-w-0 flex items-center gap-2">
-          <img
+          <Image
             src="/icons/icon-192.png"
             alt=""
             width={32}
