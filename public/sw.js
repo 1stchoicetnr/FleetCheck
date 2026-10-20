@@ -1,4 +1,4 @@
-const CACHE_NAME = "inspekt-v2";
+const CACHE_NAME = "inspekt-v3";
 
 /** Never cache Next.js bundles — they change every build. */
 function isDynamicAsset(url: URL): boolean {
@@ -14,14 +14,13 @@ self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) =>
       cache.addAll([
-        "/manifest.json?v=2",
-        "/favicon.ico?v=2",
-        "/apple-touch-icon.png?v=2",
-        "/icons/icon.svg?v=2",
-        "/icons/icon-192.png?v=2",
-        "/icons/icon-512.png?v=2",
-        "/icons/icon-maskable-192.png?v=2",
-        "/icons/icon-maskable-512.png?v=2",
+        "/manifest.json?v=3",
+        "/favicon.ico?v=3",
+        "/apple-touch-icon.png?v=3",
+        "/icons/icon-192.png?v=3",
+        "/icons/icon-512.png?v=3",
+        "/icons/icon-maskable-192.png?v=3",
+        "/icons/icon-maskable-512.png?v=3",
       ])
     )
   );

@@ -16,15 +16,14 @@ export const metadata: Metadata = {
   title: "Inspekt",
   description: "Vehicle documentation, damage tracking, and accountability",
   applicationName: "Inspekt",
-  manifest: "/manifest.json?v=2",
+  manifest: "/manifest.json?v=3",
   icons: {
     icon: [
-      { url: "/favicon.ico?v=2" },
-      { url: "/icons/icon.svg?v=2", type: "image/svg+xml" },
-      { url: "/icons/icon-192.png?v=2", sizes: "192x192", type: "image/png" },
-      { url: "/icons/icon-512.png?v=2", sizes: "512x512", type: "image/png" },
+      { url: "/favicon.ico?v=3" },
+      { url: "/icons/icon-192.png?v=3", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512.png?v=3", sizes: "512x512", type: "image/png" },
     ],
-    apple: [{ url: "/apple-touch-icon.png?v=2", sizes: "180x180", type: "image/png" }],
+    apple: [{ url: "/apple-touch-icon.png?v=3", sizes: "180x180", type: "image/png" }],
   },
   appleWebApp: {
     capable: true,
