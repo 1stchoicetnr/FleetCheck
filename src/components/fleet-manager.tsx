@@ -20,6 +20,7 @@ import { Company, FLEET_TYPE_LABELS, Fleet, FleetType } from "@/lib/types";
 const TYPE_OPTIONS: FleetType[] = ["taxi", "tow", "turo", "service_vehicle"];
 
 export function FleetManager({ canEdit }: { canEdit: boolean }) {
+  const [ready, setReady] = useState(false);
   const [fleets, setFleets] = useState<SharedFleet[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [vehicles, setVehicles] = useState<SharedVehicle[]>([]);
@@ -46,6 +47,7 @@ export function FleetManager({ canEdit }: { canEdit: boolean }) {
       setCompanyId((current) => current || nextCompanies[0]?.id || "");
       setOffline(false);
       setError("");
+      setReady(true);
     } catch (err) {
       const [cachedFleets, cachedVehicles, cachedCompanies] = await Promise.all([
         getFleets(),
@@ -57,6 +59,7 @@ export function FleetManager({ canEdit }: { canEdit: boolean }) {
       setCompanies(cachedCompanies);
       setOffline(true);
       setError(err instanceof Error ? err.message : "Showing fleets saved on this phone.");
+      setReady(true);
     }
   }
 
@@ -175,7 +178,8 @@ export function FleetManager({ canEdit }: { canEdit: boolean }) {
             Show archived
           </label>
         ) : null}
-        {visible.map((fleet) => {
+        {!ready ? <p className="text-sm text-gray-600">Loading fleets…</p> : null}
+        {ready ? visible.map((fleet) => {
           const company = companies.find((item) => item.id === fleet.companyId);
           const title = fleetTitle(fleet, company?.name);
           const subtitle = fleetSubtitle(title, fleet.type);
@@ -233,8 +237,8 @@ export function FleetManager({ canEdit }: { canEdit: boolean }) {
               ) : null}
             </div>
           );
-        })}
-        {visible.length === 0 ? <p className="text-sm text-gray-600">No fleets yet.</p> : null}
+        }) : null}
+        {ready && visible.length === 0 ? <p className="text-sm text-gray-600">No fleets yet.</p> : null}
       </CardContent>
     </Card>
   );
