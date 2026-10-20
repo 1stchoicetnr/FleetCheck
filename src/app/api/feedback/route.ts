@@ -167,7 +167,7 @@ export async function POST(req: Request) {
           id: saved.id,
           delivered: "office",
           message:
-            "Saved for Office. Email did not send. Slack isn't connected yet — set SLACK_WEBHOOK_FEEDBACK.",
+            "Saved for Office. Email did not send. Set SLACK_WEBHOOK_FEEDBACK to an incoming webhook aimed at a DM with @ashley.",
         });
       }
     }

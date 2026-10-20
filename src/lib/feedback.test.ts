@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   feedbackDeliveryChannel,
   feedbackSavedMessage,
+  feedbackSlackBody,
   formatFeedbackSlack,
 } from "./feedback.ts";
 
@@ -60,5 +61,15 @@ test("a private screenshot is not pasted into Slack", () => {
 
 test("Office-only copy names the Slack env var", () => {
   assert.match(feedbackSavedMessage("office"), /SLACK_WEBHOOK_FEEDBACK/);
-  assert.match(feedbackSavedMessage("slack"), /Sent to Slack/);
+  assert.match(feedbackSavedMessage("office"), /@ashley/);
+  assert.match(feedbackSavedMessage("slack"), /Ashley/);
+});
+
+test("the Slack payload does not pick a channel", () => {
+  const body = feedbackSlackBody({
+    payload: { type: "Bug", note: "Hello", userName: "James", userRole: "driver" },
+  });
+  assert.equal("channel" in body, false);
+  assert.equal("username" in body, false);
+  assert.match(body.text, /James · Driver/);
 });

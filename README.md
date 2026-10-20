@@ -107,17 +107,17 @@ Walkaround order (photo slots after Precheck — tire-tread photos dropped; same
 - Dash / odometer: office mainly needs mileage readable.
 - Night interiors: turn the lights on.
 - **Take photo** opens the phone’s native rear camera. **Choose from library** is the backup. There is no in-app Live Preview or flashlight.
-- Checkout header has a **Feedback** pill (Bug / Glitch / Idea, optional note + screenshot) on start, Precheck, and photo walkaround. It posts to Slack (`SLACK_WEBHOOK_FEEDBACK`) and Office keeps a copy at `/office/feedback`.
+- Checkout header has a **Feedback** pill (Bug / Glitch / Idea, optional note + screenshot) on start, Precheck, and photo walkaround. It DMs Ashley on Slack (`SLACK_WEBHOOK_FEEDBACK` pointed at her DM) and Office keeps a copy at `/office/feedback`.
 - Super Admin **Add Vehicle** writes to the shared checkout unit list (not IndexedDB-only).
 - Super Admin can allow/deny **drivers adding vehicles** on Checkout (default off).
 
 ## Feedback (Vercel)
 
-The Feedback button always saves a row Office can open at `/office/feedback`. Slack is the notification. Add the webhook on Vercel, then redeploy.
+The Feedback button always saves a row Office can open at `/office/feedback`. Slack delivery is a direct message to Ashley. In the Slack app, add an incoming webhook and choose the DM with @ashley, not a channel. Put that URL in `SLACK_WEBHOOK_FEEDBACK` on Vercel, then redeploy. The app does not pick a channel; Slack delivers only where that webhook was created.
 
 | Var | Required | Notes |
 |---|---|---|
-| `SLACK_WEBHOOK_FEEDBACK` | for Slack delivery | Incoming webhook. The message includes type, note, who/role, page, unit, and a screenshot link when the image has a public URL. |
+| `SLACK_WEBHOOK_FEEDBACK` | for Ashley's DM | Incoming webhook created against a DM with @ashley. The message includes type, note, who/role, page, unit, and a screenshot link when the image has a public URL. |
 | `RESEND_API_KEY` | no | Email fallback, used only when the Slack webhook is unset |
 | `FEEDBACK_FROM_EMAIL` | with Resend | Verified Resend from-address |
 | `FEEDBACK_TO_EMAIL` | no | Defaults to `ashley@warecovery.com` |

@@ -109,12 +109,31 @@ export function feedbackSavedMessage(
   delivered: FeedbackDelivery,
   options?: { slackFailed?: boolean }
 ): string {
-  if (delivered === "slack") return "Sent to Slack. Office has a copy too.";
+  if (delivered === "slack") return "Sent to Ashley on Slack. Office has a copy too.";
   if (delivered === "email") return "Emailed. Office has a copy too.";
   if (options?.slackFailed) {
-    return "Saved for Office. Slack did not accept it. Check SLACK_WEBHOOK_FEEDBACK.";
+    return "Saved for Office. Slack did not accept it. SLACK_WEBHOOK_FEEDBACK must be an incoming webhook for a DM with @ashley.";
   }
-  return "Saved for Office. Slack isn't connected yet. Set SLACK_WEBHOOK_FEEDBACK so the next note posts there.";
+  return "Saved for Office. Slack isn't connected yet. Set SLACK_WEBHOOK_FEEDBACK to an incoming webhook aimed at a DM with @ashley.";
+}
+
+/** Incoming webhooks post only to the conversation picked when the URL was created. */
+export function feedbackSlackBody(input: {
+  payload: FeedbackPayload;
+  screenshotUrl?: string;
+}): { text: string; blocks: Array<Record<string, unknown>> } {
+  const { text, imageUrl } = formatFeedbackSlack(input);
+  const blocks: Array<Record<string, unknown>> = [
+    { type: "section", text: { type: "mrkdwn", text } },
+  ];
+  if (imageUrl) {
+    blocks.push({
+      type: "image",
+      image_url: imageUrl,
+      alt_text: "Feedback screenshot",
+    });
+  }
+  return { text, blocks };
 }
 
 export function formatFeedbackSlack(input: {

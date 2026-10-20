@@ -86,7 +86,7 @@ function FeedbackCard({ row }: { row: StoredFeedback }) {
       : "";
   const via =
     row.deliveredVia === "slack"
-      ? "Sent to Slack"
+      ? "DM to Ashley"
       : row.deliveredVia === "email"
         ? "Emailed"
         : "Office only";

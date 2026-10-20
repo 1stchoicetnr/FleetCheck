@@ -179,8 +179,12 @@ function FeedbackDialog({
     void fetch("/api/feedback")
       .then((res) => res.json())
       .then((data: { delivery?: FeedbackDelivery }) => {
-        if (data.delivery === "office") {
-          setHint("Slack isn't connected yet. This note will be saved for Office.");
+        if (data.delivery === "slack") {
+          setHint("This goes to Ashley as a Slack DM. Office keeps a copy.");
+        } else if (data.delivery === "office") {
+          setHint(
+            "Slack isn't connected yet. This note will be saved for Office until a DM webhook for @ashley is set."
+          );
         } else if (data.delivery === "email") {
           setHint("Slack isn't connected. This note will be emailed, and Office keeps a copy.");
         }
@@ -330,8 +334,8 @@ function FeedbackDialog({
               App feedback
             </h2>
             <p className="text-xs text-gray-500">
-              Bugs, glitches, or ideas — not vehicle damage. Slack gets a copy
-              when it is connected. Office always keeps one.
+              Bugs, glitches, or ideas — not vehicle damage. Ashley gets this
+              as a Slack DM. Office always keeps a copy.
             </p>
           </div>
           <button
