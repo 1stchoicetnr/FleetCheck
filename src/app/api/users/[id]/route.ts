@@ -1,6 +1,7 @@
 import { errorResponse } from "@/lib/server/api-error";
 import { updateAppUser } from "@/lib/server/checkout-repo";
 import { assertOfficePin } from "@/lib/server/office-pin";
+import { orgFromSession } from "@/lib/server/org-scope";
 import { NextResponse } from "next/server";
 import type { UserRole } from "@/lib/types";
 
@@ -20,7 +21,7 @@ export async function PATCH(
       role?: UserRole;
       active?: boolean;
     };
-    const user = await updateAppUser(id, body);
+    const user = await updateAppUser(orgFromSession(), id, body);
     return NextResponse.json({ user });
   } catch (err) {
     return errorResponse(err, "Failed to update user");

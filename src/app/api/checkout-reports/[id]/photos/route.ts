@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { addReportPhoto, addReportPhotos } from "@/lib/server/checkout-repo";
 import { getReport } from "@/lib/server/checkout-repo";
 import { isOfficeRequest } from "@/lib/server/office-pin";
+import { orgFromSession } from "@/lib/server/org-scope";
 import { RequestError } from "@/lib/server/api-error";
 import { assertPhotoDataUrl } from "@/lib/server/photo-store";
 import { PHOTO_ANGLES, PhotoAngle } from "@/lib/types";
@@ -18,6 +19,7 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
+    const orgId = orgFromSession();
     const body = (await req.json()) as {
       angle?: PhotoAngle;
       dataUrl?: string;
@@ -50,13 +52,14 @@ export async function POST(
         }
       }
       if (!(await isOfficeRequest(req))) {
-        const existing = await getReport(id);
+        const existing = await getReport(orgId, id);
         const created = existing ? Date.parse(existing.createdAt) : NaN;
         if (!existing || !Number.isFinite(created) || Date.now() - created > DRIVER_UPLOAD_WINDOW_MS) {
           throw new RequestError("This checkout is closed for new photos. Ask the office.", 403);
         }
       }
       const report = await addReportPhotos(
+        orgId,
         id,
         batch.map((photo) => ({
           angle: photo.angle as PhotoAngle,
@@ -81,7 +84,7 @@ export async function POST(
     }
     if (!(await isOfficeRequest(req))) {
       // Driver upload (no PIN): only to a report created in the last few hours.
-      const existing = await getReport(id);
+      const existing = await getReport(orgId, id);
       const created = existing ? Date.parse(existing.createdAt) : NaN;
       if (!body.dataUrl.startsWith("data:") && !body.dataUrl.startsWith("/photo-examples/")) {
         throw new RequestError("Photo must be an image upload", 400);
@@ -91,6 +94,7 @@ export async function POST(
       }
     }
     const report = await addReportPhoto(
+      orgId,
       id,
       body.angle,
       body.dataUrl,

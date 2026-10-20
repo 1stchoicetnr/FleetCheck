@@ -22,7 +22,9 @@ import {
   localListFeedback,
   localSetFeedbackDelivery,
 } from "./local-store";
-import { applyOrgStamp, FIRST_CHOICE_ORG_ID } from "./org-stamp";
+import * as orgData from "./org-data";
+import { applyOrgStamp } from "./org-stamp";
+import { feedbackObjectPath } from "./org-scope";
 
 const DATA_DIR = path.join(process.cwd(), ".data", "blobs");
 
@@ -30,6 +32,14 @@ function sqlClient() {
   const url = getDatabaseUrl();
   if (!url) throw new Error("DATABASE_URL is not set");
   return neon(url);
+}
+
+function orgDb() {
+  const sql = sqlClient();
+  return {
+    query: async (text: string, params?: unknown[]) =>
+      (await sql.query(text, params ?? [])) as Array<Record<string, unknown>>,
+  };
 }
 
 let tableReady = false;
@@ -57,14 +67,12 @@ async function ensureFeedbackTable(): Promise<void> {
       delivered_via TEXT NOT NULL
     )
   `;
-  await applyOrgStamp({
-    query: async (text, params) =>
-      (await sql.query(text, params ?? [])) as Array<Record<string, unknown>>,
-  });
+  await applyOrgStamp(orgDb());
   tableReady = true;
 }
 
 export async function storeFeedbackScreenshot(
+  orgId: string,
   id: string,
   dataUrl: string | undefined
 ): Promise<string | undefined> {
@@ -72,7 +80,7 @@ export async function storeFeedbackScreenshot(
   const parsed = parseImageDataUrl(dataUrl);
   if (!parsed) return undefined;
   const buffer = Buffer.from(parsed.base64, "base64");
-  const filename = `feedback/${id}/${parsed.filename}`;
+  const filename = feedbackObjectPath(orgId, id, parsed.filename);
   if (hasBlobToken()) {
     try {
       const blob = await put(filename, buffer, {
@@ -121,6 +129,7 @@ function rowToFeedback(row: Record<string, unknown>): StoredFeedback {
 }
 
 export async function saveFeedback(
+  orgId: string,
   payload: FeedbackPayload,
   screenshotUrl: string | undefined,
   deliveredVia: StoredFeedback["deliveredVia"],
@@ -153,50 +162,38 @@ export async function saveFeedback(
   };
   if (mode === "local-dev") return localInsertFeedback(entry);
   await ensureFeedbackTable();
-  const sql = sqlClient();
-  await sql`
-    INSERT INTO app_feedback (
-      id, org_id, type, note, unit_id, unit_number, plate, page_phase, photo_step,
-      page_url, user_agent, user_name, user_role, driver_name, screenshot_url,
-      created_at, delivered_via
-    ) VALUES (
-      ${entry.id},
-      ${FIRST_CHOICE_ORG_ID},
-      ${entry.type},
-      ${entry.note ?? null},
-      ${entry.unitId ?? null},
-      ${entry.unitNumber ?? null},
-      ${entry.plate ?? null},
-      ${entry.pagePhase ?? null},
-      CAST(${entry.photoStep ? JSON.stringify(entry.photoStep) : null} AS jsonb),
-      ${entry.pageUrl ?? null},
-      ${entry.userAgent ?? null},
-      ${entry.userName ?? null},
-      ${entry.userRole ?? null},
-      ${entry.driverName ?? null},
-      ${entry.screenshotUrl ?? null},
-      ${entry.createdAt},
-      ${entry.deliveredVia}
-    )
-  `;
+  await orgData.insertFeedback(orgDb(), orgId, {
+    id: entry.id,
+    type: entry.type,
+    note: entry.note ?? null,
+    unitId: entry.unitId ?? null,
+    unitNumber: entry.unitNumber ?? null,
+    plate: entry.plate ?? null,
+    pagePhase: entry.pagePhase ?? null,
+    photoStepJson: entry.photoStep ? JSON.stringify(entry.photoStep) : null,
+    pageUrl: entry.pageUrl ?? null,
+    userAgent: entry.userAgent ?? null,
+    userName: entry.userName ?? null,
+    userRole: entry.userRole ?? null,
+    driverName: entry.driverName ?? null,
+    screenshotUrl: entry.screenshotUrl ?? null,
+    createdAt: entry.createdAt,
+    deliveredVia: entry.deliveredVia,
+  });
   return entry;
 }
 
-export async function listFeedback(): Promise<StoredFeedback[]> {
+export async function listFeedback(orgId: string): Promise<StoredFeedback[]> {
   const mode = sharedBackendMode();
   if (mode === "unconfigured") return [];
   if (mode === "local-dev") return localListFeedback();
   await ensureFeedbackTable();
-  const sql = sqlClient();
-  const rows = await sql`
-    SELECT * FROM app_feedback
-    ORDER BY created_at DESC
-    LIMIT 100
-  `;
+  const rows = await orgData.listFeedback(orgDb(), orgId);
   return rows.map((row) => rowToFeedback(row));
 }
 
 export async function markFeedbackDelivered(
+  orgId: string,
   id: string,
   deliveredVia: StoredFeedback["deliveredVia"]
 ): Promise<void> {
@@ -207,8 +204,5 @@ export async function markFeedbackDelivered(
   }
   if (mode !== "postgres") return;
   await ensureFeedbackTable();
-  const sql = sqlClient();
-  await sql`
-    UPDATE app_feedback SET delivered_via = ${deliveredVia} WHERE id = ${id}
-  `;
+  await orgData.markFeedbackDelivered(orgDb(), orgId, id, deliveredVia);
 }

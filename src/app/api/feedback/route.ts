@@ -26,6 +26,7 @@ import {
 } from "@/lib/server/feedback-store";
 import { errorResponse } from "@/lib/server/api-error";
 import { isOfficeRequest } from "@/lib/server/office-pin";
+import { orgFromSession } from "@/lib/server/org-scope";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -61,7 +62,7 @@ export async function GET(req: Request) {
   try {
     const delivery = deliveryChannel();
     if (await isOfficeRequest(req)) {
-      const feedback = await listFeedback();
+      const feedback = await listFeedback(orgFromSession());
       return NextResponse.json(
         { delivery, feedback },
         { headers: { "Cache-Control": "no-store" } }
@@ -122,13 +123,14 @@ export async function POST(req: Request) {
 
     const planned = deliveryChannel();
     const id = generateId();
-    const screenshotUrl = await storeFeedbackScreenshot(id, screenshotDataUrl);
-    const saved = await saveFeedback(payload, screenshotUrl, "office", id);
+    const orgId = orgFromSession();
+    const screenshotUrl = await storeFeedbackScreenshot(orgId, id, screenshotDataUrl);
+    const saved = await saveFeedback(orgId, payload, screenshotUrl, "office", id);
 
     if (planned === "slack") {
       try {
         await postFeedbackToSlack({ payload, screenshotUrl });
-        await markFeedbackDelivered(saved.id, "slack").catch((markErr) => {
+        await markFeedbackDelivered(orgId, saved.id, "slack").catch((markErr) => {
           console.error("[api] feedback delivery mark failed:", markErr);
         });
         return NextResponse.json({
@@ -151,7 +153,7 @@ export async function POST(req: Request) {
     if (planned === "email" && feedbackMailerConfigured()) {
       try {
         await sendFeedbackEmail({ ...payload, screenshotDataUrl });
-        await markFeedbackDelivered(saved.id, "email").catch((markErr) => {
+        await markFeedbackDelivered(orgId, saved.id, "email").catch((markErr) => {
           console.error("[api] feedback delivery mark failed:", markErr);
         });
         return NextResponse.json({

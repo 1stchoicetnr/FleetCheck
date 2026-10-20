@@ -6,6 +6,7 @@ import {
   setVehicleService,
 } from "@/lib/server/checkout-repo";
 import { assertOfficePin } from "@/lib/server/office-pin";
+import { orgFromSession } from "@/lib/server/org-scope";
 import type { Powertrain } from "@/lib/inspection-form";
 import type { VehicleKnownIssue } from "@/lib/types";
 
@@ -19,6 +20,7 @@ export async function PATCH(
   try {
     await assertOfficePin(req);
     const { id } = await params;
+    const orgId = orgFromSession();
     const body = (await req.json()) as {
       archived?: boolean;
       powertrain?: Powertrain;
@@ -26,18 +28,18 @@ export async function PATCH(
       lastOilChangeMileage?: number | null;
     };
     if (typeof body.archived === "boolean") {
-      const vehicle = await setVehicleArchived(id, body.archived);
+      const vehicle = await setVehicleArchived(orgId, id, body.archived);
       return NextResponse.json({ vehicle });
     }
     if (body.powertrain === "ev" || body.powertrain === "gas") {
-      const vehicle = await setVehiclePowertrain(id, body.powertrain);
+      const vehicle = await setVehiclePowertrain(orgId, id, body.powertrain);
       return NextResponse.json({ vehicle });
     }
     if (
       Object.prototype.hasOwnProperty.call(body, "knownIssue") ||
       Object.prototype.hasOwnProperty.call(body, "lastOilChangeMileage")
     ) {
-      const vehicle = await setVehicleService(id, {
+      const vehicle = await setVehicleService(orgId, id, {
         knownIssue: Object.prototype.hasOwnProperty.call(body, "knownIssue")
           ? body.knownIssue
           : undefined,

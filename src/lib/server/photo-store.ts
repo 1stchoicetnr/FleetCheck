@@ -1,6 +1,7 @@
 import { del, put } from "@vercel/blob";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
+import { checkoutObjectPath } from "./org-scope";
 import { hasBlobToken, isLocalSharedStoreEnabled } from "./shared-config";
 
 const DATA_DIR = path.join(process.cwd(), ".data", "blobs");
@@ -49,6 +50,7 @@ export function isRemotePhotoUrl(value: string): boolean {
 }
 
 export async function persistCheckoutPhoto(
+  orgId: string,
   reportId: string,
   angle: string,
   dataUrlOrPath: string
@@ -60,7 +62,7 @@ export async function persistCheckoutPhoto(
   assertPhotoDataUrl(dataUrlOrPath);
   const { buffer, contentType } = dataUrlToBuffer(dataUrlOrPath);
   const ext = contentType.includes("png") ? "png" : contentType.includes("webp") ? "webp" : "jpg";
-  const filename = `checkout/${reportId}/${angle}.${ext}`;
+  const filename = checkoutObjectPath(orgId, reportId, angle, ext);
 
   if (hasBlobToken()) {
     const blob = await put(filename, buffer, {

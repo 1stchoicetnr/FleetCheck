@@ -29,13 +29,23 @@ import {
 import type { FleetSettings } from "@/lib/fleet-settings";
 import { DEFAULT_FLEET_SETTINGS } from "@/lib/fleet-settings";
 import { SEEDED_APP_USERS } from "./seed-users";
-import { applyOrgStamp, FIRST_CHOICE_ORG_ID } from "./org-stamp";
+import * as orgData from "./org-data";
+import { applyOrgStamp } from "./org-stamp";
+import { orgFromSession } from "./org-scope";
 import type { UserRole } from "@/lib/types";
 
 function sqlClient() {
   const url = getDatabaseUrl();
   if (!url) throw new Error("DATABASE_URL is not set");
   return neon(url);
+}
+
+function orgDb() {
+  const sql = sqlClient();
+  return {
+    query: async (text: string, params?: unknown[]) =>
+      (await sql.query(text, params ?? [])) as Array<Record<string, unknown>>,
+  };
 }
 
 type ReportRow = {
@@ -205,34 +215,17 @@ export async function pgMigrateAndSeed(): Promise<void> {
       created_at TIMESTAMPTZ NOT NULL
     )
   `;
-  await applyOrgStamp({
-    query: async (text, params) =>
-      (await sql.query(text, params ?? [])) as Array<Record<string, unknown>>,
-  });
-  await sql`
-    INSERT INTO fleet_settings (id, allow_driver_add_vehicles, org_id)
-    VALUES ('app', FALSE, ${FIRST_CHOICE_ORG_ID})
-    ON CONFLICT (id) DO NOTHING
-  `;
+  const db = orgDb();
+  await applyOrgStamp(db);
+  const orgId = orgFromSession();
+  await orgData.seedFleetSettings(db, orgId);
   for (const user of SEEDED_APP_USERS) {
-    await sql`
-      INSERT INTO app_users (id, name, email, role, active, created_at, org_id)
-      VALUES (${user.id}, ${user.name}, ${user.email}, ${user.role}, ${user.active}, ${user.createdAt}, ${FIRST_CHOICE_ORG_ID})
-      ON CONFLICT (id) DO NOTHING
-    `;
+    await orgData.seedUser(db, orgId, user);
   }
-
   for (const company of SEEDED_COMPANIES) {
-    await sql`
-      INSERT INTO companies (id, name, slug, checklist_id, created_at, org_id)
-      VALUES (${company.id}, ${company.name}, ${company.slug}, ${company.checklistId}, ${company.createdAt}, ${FIRST_CHOICE_ORG_ID})
-      ON CONFLICT (id) DO NOTHING
-    `;
+    await orgData.seedCompany(db, orgId, company);
   }
-  const parkedWithOther = await sql`
-    SELECT id, company_id, unit_number, plate FROM vehicles
-    WHERE company_id <> ${TURO_COMPANY_ID}
-  `;
+  const parkedWithOther = await orgData.vehiclesOutsideFleet(db, orgId, TURO_COMPANY_ID);
   for (const row of parkedWithOther) {
     const unit = {
       companyId: String(row.company_id),
@@ -240,59 +233,47 @@ export async function pgMigrateAndSeed(): Promise<void> {
       plate: String(row.plate),
     };
     if (!shouldMoveUnitToTuro(unit)) continue;
-    await sql`
-      UPDATE vehicles SET company_id = ${TURO_COMPANY_ID} WHERE id = ${String(row.id)}
-    `;
-    await sql`
-      UPDATE checkout_reports SET company_id = ${TURO_COMPANY_ID}
-      WHERE vehicle_id = ${String(row.id)}
-    `;
+    await orgData.moveVehicleToFleet(db, orgId, String(row.id), TURO_COMPANY_ID);
   }
-  await sql`
-    UPDATE checkout_reports
-    SET company_id = ${TURO_COMPANY_ID}
-    WHERE company_id <> ${TURO_COMPANY_ID}
-      AND vehicle_id IN (
-        SELECT id FROM vehicles WHERE company_id = ${TURO_COMPANY_ID}
-      )
-  `;
+  await orgData.alignReportsWithFleet(db, orgId, TURO_COMPANY_ID);
   for (const vehicle of sharedSeedVehicles()) {
-    await sql`
-      INSERT INTO vehicles (id, company_id, unit_number, plate, make, model, year, last_mileage, created_at, powertrain, org_id)
-      VALUES (
-        ${vehicle.id}, ${vehicle.companyId}, ${vehicle.unitNumber}, ${vehicle.plate},
-        ${vehicle.make}, ${vehicle.model}, ${vehicle.year}, ${vehicle.lastMileage ?? null},
-        ${vehicle.createdAt}, ${vehicle.powertrain ?? "gas"}, ${FIRST_CHOICE_ORG_ID}
-      )
-      ON CONFLICT (id) DO NOTHING
-    `;
+    await orgData.seedVehicle(db, orgId, {
+      id: vehicle.id,
+      companyId: vehicle.companyId,
+      unitNumber: vehicle.unitNumber,
+      plate: vehicle.plate,
+      make: vehicle.make,
+      model: vehicle.model,
+      year: vehicle.year,
+      lastMileage: vehicle.lastMileage ?? null,
+      createdAt: vehicle.createdAt,
+      powertrain: vehicle.powertrain ?? "gas",
+    });
   }
 
-  const reports = await sql`SELECT id FROM checkout_reports LIMIT 1`;
-  if (reports.length === 0) {
+  if (!(await orgData.hasAnyReport(db, orgId))) {
     for (const report of sharedSeedReports()) {
-      await upsertReportRow(report);
+      await upsertReportRow(orgId, report);
     }
   }
 
   for (const report of sharedRecoveredReports()) {
-    const existing = await sql`
-      SELECT id FROM checkout_reports WHERE id = ${report.id} LIMIT 1
-    `;
-    if (existing.length === 0) {
-      await upsertReportRow(report);
+    if (!(await orgData.reportExists(db, orgId, report.id))) {
+      await upsertReportRow(orgId, report);
     }
   }
 
   migrated = true;
 }
 
-export async function pgListCompanies(): Promise<Company[]> {
+export async function pgAssertFleetInOrg(orgId: string, fleetId: string): Promise<void> {
   await pgMigrateAndSeed();
-  const sql = sqlClient();
-  const rows = await sql`
-    SELECT id, name, slug, checklist_id, created_at FROM companies ORDER BY name
-  `;
+  await orgData.assertFleetInOrg(orgDb(), orgId, fleetId);
+}
+
+export async function pgListCompanies(orgId: string): Promise<Company[]> {
+  await pgMigrateAndSeed();
+  const rows = await orgData.listCompanies(orgDb(), orgId);
   return rows.map((row) => ({
     id: String(row.id),
     name: String(row.name),
@@ -303,27 +284,17 @@ export async function pgListCompanies(): Promise<Company[]> {
 }
 
 export async function pgListVehicles(
+  orgId: string,
   companyId?: string,
   options?: ListVehiclesOptions
 ): Promise<SharedVehicle[]> {
   await pgMigrateAndSeed();
-  const sql = sqlClient();
-  const includeArchived = Boolean(options?.includeArchived);
-  const rows = companyId
-    ? includeArchived
-      ? await sql`
-          SELECT * FROM vehicles WHERE company_id = ${companyId} ORDER BY unit_number
-        `
-      : await sql`
-          SELECT * FROM vehicles
-          WHERE company_id = ${companyId} AND archived_at IS NULL
-          ORDER BY unit_number
-        `
-    : includeArchived
-      ? await sql`SELECT * FROM vehicles ORDER BY unit_number`
-      : await sql`
-          SELECT * FROM vehicles WHERE archived_at IS NULL ORDER BY unit_number
-        `;
+  const rows = await orgData.listVehicles(
+    orgDb(),
+    orgId,
+    companyId,
+    Boolean(options?.includeArchived)
+  );
   return rows.map((row) => mapVehicleRow(row));
 }
 
@@ -372,25 +343,21 @@ function mapKnownIssue(value: unknown): VehicleKnownIssue | undefined {
   };
 }
 
-export async function pgGetVehicle(id: string): Promise<SharedVehicle | undefined> {
+export async function pgGetVehicle(orgId: string, id: string): Promise<SharedVehicle | undefined> {
   await pgMigrateAndSeed();
-  const sql = sqlClient();
-  const rows = await sql`SELECT * FROM vehicles WHERE id = ${id} LIMIT 1`;
-  const row = rows[0];
+  const row = await orgData.getVehicle(orgDb(), orgId, id);
   if (!row) return undefined;
   return mapVehicleRow(row);
 }
 
 export async function pgFindVehicleByPlate(
+  orgId: string,
   companyId: string,
   plate: string
 ): Promise<SharedVehicle | undefined> {
   await pgMigrateAndSeed();
-  const sql = sqlClient();
   const wanted = normalizePlate(plate);
-  const rows = await sql`
-    SELECT * FROM vehicles WHERE company_id = ${companyId}
-  `;
+  const rows = await orgData.vehiclesForFleet(orgDb(), orgId, companyId);
   const row = rows.find(
     (item) =>
       normalizePlate(String(item.plate)) === wanted ||
@@ -400,12 +367,13 @@ export async function pgFindVehicleByPlate(
 }
 
 export async function pgUpsertVehicle(
+  orgId: string,
   input: UpsertVehicleInput
 ): Promise<SharedVehicle> {
   await pgMigrateAndSeed();
   const plateKey = normalizePlate(input.plate);
   const plate = displayPlate(input.plate);
-  const existing = await pgFindVehicleByPlate(input.companyId, plateKey);
+  const existing = await pgFindVehicleByPlate(orgId, input.companyId, plateKey);
   const now = new Date().toISOString();
   const vehicle: SharedVehicle = {
     id: existing?.id ?? `vehicle-${input.companyId}-${plateKey.toLowerCase()}`,
@@ -426,35 +394,31 @@ export async function pgUpsertVehicle(
     ),
     createdAt: existing?.createdAt ?? now,
   };
-  const sql = sqlClient();
-  await sql`
-    INSERT INTO vehicles (id, company_id, unit_number, plate, make, model, year, last_mileage, created_at, powertrain, org_id)
-    VALUES (
-      ${vehicle.id}, ${vehicle.companyId}, ${vehicle.unitNumber}, ${vehicle.plate},
-      ${vehicle.make}, ${vehicle.model}, ${vehicle.year}, ${vehicle.lastMileage ?? null},
-      ${vehicle.createdAt}, ${vehicle.powertrain ?? "gas"}, ${FIRST_CHOICE_ORG_ID}
-    )
-    ON CONFLICT (id) DO UPDATE SET
-      unit_number = EXCLUDED.unit_number,
-      plate = EXCLUDED.plate,
-      make = EXCLUDED.make,
-      model = EXCLUDED.model,
-      year = EXCLUDED.year,
-      powertrain = EXCLUDED.powertrain
-  `;
+  await orgData.upsertVehicle(orgDb(), orgId, {
+    id: vehicle.id,
+    companyId: vehicle.companyId,
+    unitNumber: vehicle.unitNumber,
+    plate: vehicle.plate,
+    make: vehicle.make,
+    model: vehicle.model,
+    year: vehicle.year,
+    lastMileage: vehicle.lastMileage ?? null,
+    createdAt: vehicle.createdAt,
+    powertrain: vehicle.powertrain ?? "gas",
+  });
   return vehicle;
 }
 
 export async function pgSetVehicleArchived(
+  orgId: string,
   id: string,
   archived: boolean
 ): Promise<SharedVehicle | undefined> {
   await pgMigrateAndSeed();
-  const existing = await pgGetVehicle(id);
+  const existing = await pgGetVehicle(orgId, id);
   if (!existing) return undefined;
-  const sql = sqlClient();
   const archivedAt = archived ? new Date().toISOString() : null;
-  await sql`UPDATE vehicles SET archived_at = ${archivedAt} WHERE id = ${id}`;
+  await orgData.setVehicleArchivedAt(orgDb(), orgId, id, archivedAt);
   return {
     ...existing,
     archivedAt: archivedAt ?? undefined,
@@ -462,14 +426,14 @@ export async function pgSetVehicleArchived(
 }
 
 export async function pgSetVehiclePowertrain(
+  orgId: string,
   id: string,
   powertrain: "gas" | "ev"
 ): Promise<SharedVehicle | undefined> {
   await pgMigrateAndSeed();
-  const existing = await pgGetVehicle(id);
+  const existing = await pgGetVehicle(orgId, id);
   if (!existing) return undefined;
-  const sql = sqlClient();
-  await sql`UPDATE vehicles SET powertrain = ${powertrain} WHERE id = ${id}`;
+  await orgData.setVehiclePowertrainRow(orgDb(), orgId, id, powertrain);
   return {
     ...existing,
     powertrain,
@@ -477,6 +441,7 @@ export async function pgSetVehiclePowertrain(
 }
 
 export async function pgSetVehicleService(
+  orgId: string,
   id: string,
   patch: {
     knownIssue?: VehicleKnownIssue | null;
@@ -484,118 +449,43 @@ export async function pgSetVehicleService(
   }
 ): Promise<SharedVehicle | undefined> {
   await pgMigrateAndSeed();
-  const existing = await pgGetVehicle(id);
+  const existing = await pgGetVehicle(orgId, id);
   if (!existing) return undefined;
-  const sql = sqlClient();
   const touchIssue = patch.knownIssue !== undefined;
   const touchOil = patch.lastOilChangeMileage !== undefined;
   const issueJson =
     patch.knownIssue == null ? null : JSON.stringify(patch.knownIssue);
-  await sql`
-    UPDATE vehicles SET
-      known_issue = CASE
-        WHEN ${touchIssue} THEN CAST(${issueJson} AS jsonb)
-        ELSE known_issue
-      END,
-      last_oil_change_mileage = CASE
-        WHEN ${touchOil} THEN ${patch.lastOilChangeMileage ?? null}
-        ELSE last_oil_change_mileage
-      END
-    WHERE id = ${id}
-  `;
-  return pgGetVehicle(id);
+  await orgData.setVehicleServiceRow(orgDb(), orgId, id, {
+    touchIssue,
+    issueJson,
+    touchOil,
+    oilMileage: patch.lastOilChangeMileage ?? null,
+  });
+  return pgGetVehicle(orgId, id);
 }
 
-export async function pgListReportPage(query: {
-  includeArchived?: boolean;
-  companyId?: string | null;
-  vehicleId?: string | null;
-  status?: string | null;
-  limit: number;
-  offset: number;
-}): Promise<{ reports: CheckoutReport[]; total: number; flagged: number }> {
+export async function pgListReportPage(
+  orgId: string,
+  query: {
+    includeArchived?: boolean;
+    companyId?: string | null;
+    vehicleId?: string | null;
+    status?: string | null;
+    limit: number;
+    offset: number;
+  }
+): Promise<{ reports: CheckoutReport[]; total: number; flagged: number }> {
   await pgMigrateAndSeed();
-  const sql = sqlClient();
-  const includeArchived = Boolean(query.includeArchived);
-  const companyId = query.companyId || null;
-  const vehicleId = query.vehicleId || null;
-  const status = query.status && query.status !== "all" ? query.status : null;
-  const countRows = await sql`
-    SELECT
-      (COUNT(*) FILTER (
-        WHERE (
-          CAST(${status} AS text) IS NULL
-          OR (
-            CAST(${status} AS text) = 'flagged'
-            AND (
-              flagged
-              OR review_status IN ('conditional', 'fail')
-              OR btrim(COALESCE(new_damage_notes, '')) <> ''
-            )
-          )
-          OR (
-            CAST(${status} AS text) IS NOT NULL
-            AND CAST(${status} AS text) <> 'flagged'
-            AND review_status = CAST(${status} AS text)
-          )
-        )
-      ))::int AS total,
-      (COUNT(*) FILTER (
-        WHERE
-          flagged
-          OR review_status IN ('conditional', 'fail')
-          OR btrim(COALESCE(new_damage_notes, '')) <> ''
-      ))::int AS flagged
-    FROM checkout_reports
-    WHERE (CAST(${includeArchived} AS boolean) OR archived_at IS NULL)
-      AND (CAST(${companyId} AS text) IS NULL OR company_id = CAST(${companyId} AS text))
-      AND (CAST(${vehicleId} AS text) IS NULL OR vehicle_id = CAST(${vehicleId} AS text))
-  `;
-  const rows = (await sql`
-    SELECT
-      id, company_id, vehicle_id, unit_number, plate, year, make, model, odometer,
-      driver_name, dispatcher_name, type, status, completed_at, review_status,
-      review_notes, new_damage_notes, retake_angles, reviewed_at, reviewed_by,
-      flagged, created_at, signed_at, inspection_form, archived_at,
-      COALESCE(
-        (
-          SELECT jsonb_agg(
-            jsonb_build_object(
-              'angle', elem.value->>'angle',
-              'capturedAt', elem.value->>'capturedAt',
-              'flaggedDamage', CASE WHEN elem.value->>'flaggedDamage' = 'true' THEN true ELSE NULL END,
-              'damageNote', NULLIF(btrim(COALESCE(elem.value->>'damageNote', '')), '')
-            )
-          )
-          FROM jsonb_array_elements(COALESCE(photos, '[]'::jsonb)) AS elem
-        ),
-        '[]'::jsonb
-      ) AS photos
-    FROM checkout_reports
-    WHERE (CAST(${includeArchived} AS boolean) OR archived_at IS NULL)
-      AND (CAST(${companyId} AS text) IS NULL OR company_id = CAST(${companyId} AS text))
-      AND (CAST(${vehicleId} AS text) IS NULL OR vehicle_id = CAST(${vehicleId} AS text))
-      AND (
-        CAST(${status} AS text) IS NULL
-        OR (
-          CAST(${status} AS text) = 'flagged'
-          AND (
-            flagged
-            OR review_status IN ('conditional', 'fail')
-            OR btrim(COALESCE(new_damage_notes, '')) <> ''
-          )
-        )
-        OR (
-          CAST(${status} AS text) IS NOT NULL
-          AND CAST(${status} AS text) <> 'flagged'
-          AND review_status = CAST(${status} AS text)
-        )
-      )
-    ORDER BY completed_at DESC
-    LIMIT ${query.limit}
-    OFFSET ${query.offset}
-  `) as ReportRow[];
-  const count = countRows[0] ?? { total: 0, flagged: 0 };
+  const page = await orgData.listReportPage(orgDb(), orgId, {
+    includeArchived: Boolean(query.includeArchived),
+    companyId: query.companyId || null,
+    vehicleId: query.vehicleId || null,
+    status: query.status && query.status !== "all" ? query.status : null,
+    limit: query.limit,
+    offset: query.offset,
+  });
+  const rows = page.rows as ReportRow[];
+  const count = page.counts;
   return {
     reports: rows.map(rowToReport),
     total: Number(count.total ?? 0),
@@ -604,122 +494,89 @@ export async function pgListReportPage(query: {
 }
 
 export async function pgListVehicleReports(
+  orgId: string,
   vehicleId: string
 ): Promise<CheckoutReport[]> {
   await pgMigrateAndSeed();
-  const sql = sqlClient();
-  const rows = (await sql`
-    SELECT
-      id, company_id, vehicle_id, unit_number, plate, year, make, model, odometer,
-      driver_name, dispatcher_name, type, status, completed_at, review_status,
-      review_notes, new_damage_notes, retake_angles, reviewed_at, reviewed_by,
-      flagged, photos, created_at, signed_at, inspection_form, archived_at
-    FROM checkout_reports
-    WHERE vehicle_id = ${vehicleId} AND archived_at IS NULL
-    ORDER BY completed_at DESC
-  `) as ReportRow[];
+  const rows = (await orgData.listVehicleReports(orgDb(), orgId, vehicleId)) as ReportRow[];
   return rows.map(rowToReport);
 }
 
-export async function pgListReports(): Promise<CheckoutReport[]> {
+export async function pgListReports(orgId: string): Promise<CheckoutReport[]> {
   await pgMigrateAndSeed();
-  const sql = sqlClient();
-  const rows = (await sql`
-    SELECT * FROM checkout_reports ORDER BY completed_at DESC
-  `) as ReportRow[];
+  const rows = (await orgData.listReports(orgDb(), orgId)) as ReportRow[];
   return rows.map(rowToReport);
 }
 
-export async function pgGetReport(id: string): Promise<CheckoutReport | undefined> {
+export async function pgGetReport(orgId: string, id: string): Promise<CheckoutReport | undefined> {
   await pgMigrateAndSeed();
-  const sql = sqlClient();
-  const rows = (await sql`
-    SELECT * FROM checkout_reports WHERE id = ${id} LIMIT 1
-  `) as ReportRow[];
-  return rows[0] ? rowToReport(rows[0]) : undefined;
+  const row = await orgData.getReport(orgDb(), orgId, id);
+  return row ? rowToReport(row as ReportRow) : undefined;
 }
 
-async function upsertReportRow(report: CheckoutReport): Promise<void> {
-  const sql = sqlClient();
-  await sql`
-    INSERT INTO checkout_reports (
-      id, org_id, company_id, vehicle_id, unit_number, plate, year, make, model, odometer,
-      driver_name, dispatcher_name, type, status, completed_at, review_status,
-      review_notes, new_damage_notes, retake_angles, reviewed_at, reviewed_by,
-      flagged, photos, created_at, signature_data_url, signed_at, inspection_form
-    ) VALUES (
-      ${report.id}, ${FIRST_CHOICE_ORG_ID}, ${report.companyId}, ${report.vehicleId}, ${report.unitNumber},
-      ${report.plate ?? null},
-      ${report.year}, ${report.make}, ${report.model}, ${report.odometer},
-      ${report.driverName}, ${report.dispatcherName}, ${report.type}, ${report.status},
-      ${report.completedAt}, ${report.reviewStatus}, ${report.reviewNotes ?? null},
-      ${report.newDamageNotes ?? null},       CAST(${JSON.stringify(report.retakeAngles ?? [])} AS jsonb),
-      ${report.reviewedAt ?? null}, ${report.reviewedBy ?? null}, ${report.flagged},
-      CAST(${JSON.stringify(report.photos)} AS jsonb), ${report.createdAt},
-      ${report.signatureDataUrl ?? null}, ${report.signedAt ?? null},
-      CAST(${JSON.stringify(report.inspectionForm ?? null)} AS jsonb)
-    )
-    ON CONFLICT (id) DO UPDATE SET
-      review_status = EXCLUDED.review_status,
-      review_notes = EXCLUDED.review_notes,
-      new_damage_notes = EXCLUDED.new_damage_notes,
-      retake_angles = EXCLUDED.retake_angles,
-      reviewed_at = EXCLUDED.reviewed_at,
-      reviewed_by = EXCLUDED.reviewed_by,
-      flagged = EXCLUDED.flagged,
-      photos = EXCLUDED.photos,
-      odometer = EXCLUDED.odometer,
-      plate = EXCLUDED.plate,
-      signature_data_url = EXCLUDED.signature_data_url,
-      signed_at = EXCLUDED.signed_at,
-      inspection_form = EXCLUDED.inspection_form
-  `;
-  await sql`
-    UPDATE vehicles SET last_mileage = ${report.odometer} WHERE id = ${report.vehicleId}
-  `;
+async function upsertReportRow(orgId: string, report: CheckoutReport): Promise<void> {
+  const db = orgDb();
+  await orgData.upsertReport(db, orgId, {
+    id: report.id,
+    companyId: report.companyId,
+    vehicleId: report.vehicleId,
+    unitNumber: report.unitNumber,
+    plate: report.plate ?? null,
+    year: report.year,
+    make: report.make,
+    model: report.model,
+    odometer: report.odometer,
+    driverName: report.driverName,
+    dispatcherName: report.dispatcherName,
+    type: report.type,
+    status: report.status,
+    completedAt: report.completedAt,
+    reviewStatus: report.reviewStatus,
+    reviewNotes: report.reviewNotes ?? null,
+    newDamageNotes: report.newDamageNotes ?? null,
+    retakeAnglesJson: JSON.stringify(report.retakeAngles ?? []),
+    reviewedAt: report.reviewedAt ?? null,
+    reviewedBy: report.reviewedBy ?? null,
+    flagged: report.flagged,
+    photosJson: JSON.stringify(report.photos),
+    createdAt: report.createdAt,
+    signatureDataUrl: report.signatureDataUrl ?? null,
+    signedAt: report.signedAt ?? null,
+    inspectionFormJson: JSON.stringify(report.inspectionForm ?? null),
+  });
+  await orgData.setVehicleMileage(db, orgId, report.vehicleId, report.odometer);
 }
 
-export async function pgPutReport(report: CheckoutReport): Promise<CheckoutReport> {
+export async function pgPutReport(orgId: string, report: CheckoutReport): Promise<CheckoutReport> {
   await pgMigrateAndSeed();
-  await upsertReportRow(report);
+  await upsertReportRow(orgId, report);
   return { ...report, synced: true };
 }
 
-export async function pgGetFleetSettings(): Promise<FleetSettings> {
+export async function pgGetFleetSettings(orgId: string): Promise<FleetSettings> {
   await pgMigrateAndSeed();
-  const sql = sqlClient();
-  const rows = await sql`
-    SELECT allow_driver_add_vehicles FROM fleet_settings WHERE id = 'app' LIMIT 1
-  `;
-  const row = rows[0];
+  const row = await orgData.getFleetSettings(orgDb(), orgId);
   return {
     allowDriverAddVehicles: Boolean(row?.allow_driver_add_vehicles),
   };
 }
 
 export async function pgSetReportArchived(
+  orgId: string,
   id: string,
   archived: boolean
 ): Promise<CheckoutReport | undefined> {
   await pgMigrateAndSeed();
-  const sql = sqlClient();
   const archivedAt = archived ? new Date().toISOString() : null;
-  await sql`
-    UPDATE checkout_reports
-    SET archived_at = ${archivedAt}
-    WHERE id = ${id}
-  `;
-  return pgGetReport(id);
+  await orgData.setReportArchivedAt(orgDb(), orgId, id, archivedAt);
+  return pgGetReport(orgId, id);
 }
 
-export async function pgDeleteReport(id: string): Promise<boolean> {
+export async function pgDeleteReport(orgId: string, id: string): Promise<boolean> {
   await pgMigrateAndSeed();
-  const sql = sqlClient();
-  const existing = await pgGetReport(id);
+  const existing = await pgGetReport(orgId, id);
   if (!existing) return false;
-  await sql`DELETE FROM fleet_alerts WHERE report_id = ${id}`;
-  await sql`DELETE FROM checkout_reports WHERE id = ${id}`;
-  return true;
+  return orgData.deleteReport(orgDb(), orgId, id);
 }
 
 type AlertRow = {
@@ -750,51 +607,44 @@ function rowToAlert(row: AlertRow): SharedOfficeAlert {
   };
 }
 
-export async function pgListAlerts(includeArchived = false): Promise<SharedOfficeAlert[]> {
+export async function pgListAlerts(orgId: string, includeArchived = false): Promise<SharedOfficeAlert[]> {
   await pgMigrateAndSeed();
-  const sql = sqlClient();
-  const rows = (await sql`
-    SELECT * FROM fleet_alerts ORDER BY created_at DESC
-  `) as AlertRow[];
+  const rows = (await orgData.listAlerts(orgDb(), orgId)) as AlertRow[];
   const alerts = rows.map(rowToAlert);
   if (includeArchived) return alerts;
   return alerts.filter((alert) => !alert.archivedAt);
 }
 
-export async function pgInsertAlert(alert: SharedOfficeAlert): Promise<void> {
+export async function pgInsertAlert(orgId: string, alert: SharedOfficeAlert): Promise<void> {
   await pgMigrateAndSeed();
-  const sql = sqlClient();
-  await sql`
-    INSERT INTO fleet_alerts (
-      id, org_id, type, message, vehicle_id, vehicle_plate, actor_name, report_id, created_at, read, archived_at
-    ) VALUES (
-      ${alert.id}, ${FIRST_CHOICE_ORG_ID}, ${alert.type}, ${alert.message}, ${alert.vehicleId}, ${alert.vehiclePlate},
-      ${alert.actorName}, ${alert.reportId ?? null}, ${alert.createdAt}, ${alert.read},
-      ${alert.archivedAt ?? null}
-    )
-    ON CONFLICT (id) DO NOTHING
-  `;
+  await orgData.insertAlert(orgDb(), orgId, {
+    id: alert.id,
+    type: alert.type,
+    message: alert.message,
+    vehicleId: alert.vehicleId,
+    vehiclePlate: alert.vehiclePlate,
+    actorName: alert.actorName,
+    reportId: alert.reportId ?? null,
+    createdAt: alert.createdAt,
+    read: alert.read,
+    archivedAt: alert.archivedAt ?? null,
+  });
 }
 
 export async function pgSetAlertArchived(
+  orgId: string,
   id: string,
   archived: boolean
 ): Promise<SharedOfficeAlert | undefined> {
   await pgMigrateAndSeed();
-  const sql = sqlClient();
   const archivedAt = archived ? new Date().toISOString() : null;
-  await sql`UPDATE fleet_alerts SET archived_at = ${archivedAt} WHERE id = ${id}`;
-  const rows = (await sql`SELECT * FROM fleet_alerts WHERE id = ${id} LIMIT 1`) as AlertRow[];
-  return rows[0] ? rowToAlert(rows[0]) : undefined;
+  const row = await orgData.setAlertArchivedAt(orgDb(), orgId, id, archivedAt);
+  return row ? rowToAlert(row as AlertRow) : undefined;
 }
 
-export async function pgDeleteAlert(id: string): Promise<boolean> {
+export async function pgDeleteAlert(orgId: string, id: string): Promise<boolean> {
   await pgMigrateAndSeed();
-  const sql = sqlClient();
-  const rows = (await sql`SELECT id FROM fleet_alerts WHERE id = ${id} LIMIT 1`) as { id: string }[];
-  if (!rows[0]) return false;
-  await sql`DELETE FROM fleet_alerts WHERE id = ${id}`;
-  return true;
+  return orgData.deleteAlert(orgDb(), orgId, id);
 }
 
 type UserRow = {
@@ -817,32 +667,27 @@ function rowToUser(row: UserRow): SharedAppUser {
   };
 }
 
-export async function pgListUsers(): Promise<SharedAppUser[]> {
+export async function pgListUsers(orgId: string): Promise<SharedAppUser[]> {
   await pgMigrateAndSeed();
-  const sql = sqlClient();
-  const rows = (await sql`SELECT * FROM app_users ORDER BY name`) as UserRow[];
+  const rows = (await orgData.listUsers(orgDb(), orgId)) as UserRow[];
   return rows.map(rowToUser);
 }
 
-export async function pgInsertUser(user: SharedAppUser): Promise<SharedAppUser> {
+export async function pgInsertUser(orgId: string, user: SharedAppUser): Promise<SharedAppUser> {
   await pgMigrateAndSeed();
-  const sql = sqlClient();
-  await sql`
-    INSERT INTO app_users (id, name, email, role, active, created_at, org_id)
-    VALUES (${user.id}, ${user.name}, ${user.email}, ${user.role}, ${user.active}, ${user.createdAt}, ${FIRST_CHOICE_ORG_ID})
-  `;
+  await orgData.insertUser(orgDb(), orgId, user);
   return user;
 }
 
 export async function pgUpdateUser(
+  orgId: string,
   id: string,
   patch: Partial<Pick<SharedAppUser, "name" | "email" | "role" | "active">>
 ): Promise<SharedAppUser | undefined> {
   await pgMigrateAndSeed();
-  const sql = sqlClient();
-  const rows = (await sql`SELECT * FROM app_users WHERE id = ${id} LIMIT 1`) as UserRow[];
-  if (!rows[0]) return undefined;
-  const current = rowToUser(rows[0]);
+  const row = await orgData.getUser(orgDb(), orgId, id);
+  if (!row) return undefined;
+  const current = rowToUser(row as UserRow);
   const next: SharedAppUser = {
     ...current,
     name: patch.name?.trim() || current.name,
@@ -850,30 +695,21 @@ export async function pgUpdateUser(
     role: patch.role || current.role,
     active: typeof patch.active === "boolean" ? patch.active : current.active,
   };
-  await sql`
-    UPDATE app_users
-    SET name = ${next.name}, email = ${next.email}, role = ${next.role}, active = ${next.active}
-    WHERE id = ${id}
-  `;
+  await orgData.updateUser(orgDb(), orgId, id, next);
   return next;
 }
 
 export async function pgSetFleetSettings(
+  orgId: string,
   patch: Partial<FleetSettings>
 ): Promise<FleetSettings> {
   await pgMigrateAndSeed();
-  const current = await pgGetFleetSettings();
+  const current = await pgGetFleetSettings(orgId);
   const next: FleetSettings = {
     ...DEFAULT_FLEET_SETTINGS,
     ...current,
     ...patch,
   };
-  const sql = sqlClient();
-  await sql`
-    INSERT INTO fleet_settings (id, allow_driver_add_vehicles, org_id)
-    VALUES ('app', ${next.allowDriverAddVehicles}, ${FIRST_CHOICE_ORG_ID})
-    ON CONFLICT (id) DO UPDATE SET
-      allow_driver_add_vehicles = EXCLUDED.allow_driver_add_vehicles
-  `;
+  await orgData.setFleetSettings(orgDb(), orgId, next.allowDriverAddVehicles);
   return next;
 }

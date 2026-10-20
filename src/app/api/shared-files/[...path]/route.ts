@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { readFile } from "fs/promises";
 import path from "path";
+import { canReadStoredPath, orgFromSession } from "@/lib/server/org-scope";
 import { isLocalSharedStoreEnabled } from "@/lib/server/shared-config";
 
 export const runtime = "nodejs";
@@ -17,7 +18,10 @@ export async function GET(
     );
   }
   const { path: parts } = await params;
-  const safe = parts.join("/").replace(/\.\./g, "");
+  const safe = parts.join("/");
+  if (!canReadStoredPath(orgFromSession(), safe)) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
   const filePath = path.join(process.cwd(), ".data", "blobs", safe);
   try {
     const data = await readFile(filePath);

@@ -7,6 +7,7 @@ import {
 } from "@/lib/server/checkout-repo";
 import { isOfficeRequest, assertOfficePin } from "@/lib/server/office-pin";
 import { getFleetSettings } from "@/lib/server/checkout-repo";
+import { orgFromSession } from "@/lib/server/org-scope";
 import { parseIncludeArchived } from "@/lib/vehicle-archive";
 import type { Powertrain } from "@/lib/inspection-form";
 
@@ -15,10 +16,11 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
+    const orgId = orgFromSession();
     const companyId = req.nextUrl.searchParams.get("companyId") || undefined;
     const plate = req.nextUrl.searchParams.get("plate") || undefined;
     if (companyId && plate) {
-      const vehicle = await findVehicleByPlate(companyId, plate);
+      const vehicle = await findVehicleByPlate(orgId, companyId, plate);
       return NextResponse.json(
         { vehicle: vehicle ?? null, vehicles: vehicle ? [vehicle] : [] },
         { headers: { "Cache-Control": "no-store" } }
@@ -29,7 +31,7 @@ export async function GET(req: NextRequest) {
     const includeArchived = parseIncludeArchived(
       req.nextUrl.searchParams.get("includeArchived")
     );
-    const vehicles = await listVehicles(companyId, { includeArchived });
+    const vehicles = await listVehicles(orgId, companyId, { includeArchived });
     return NextResponse.json(
       { vehicles },
       { headers: { "Cache-Control": "no-store" } }
@@ -59,9 +61,10 @@ export async function POST(req: Request) {
     if (!(await isOfficeRequest(req))) {
       // Driver (no PIN): may add a new unit only when the office toggle is on,
       // or update just the powertrain of a unit that already exists.
-      const existing = await findVehicleByPlate(body.companyId, body.plate);
+      const orgId = orgFromSession();
+      const existing = await findVehicleByPlate(orgId, body.companyId, body.plate);
       if (existing) {
-        const vehicle = await upsertVehicle({
+        const vehicle = await upsertVehicle(orgId, {
           companyId: existing.companyId,
           unitNumber: existing.unitNumber,
           plate: existing.plate,
@@ -72,7 +75,7 @@ export async function POST(req: Request) {
         });
         return NextResponse.json({ vehicle }, { status: 200 });
       }
-      const settings = await getFleetSettings();
+      const settings = await getFleetSettings(orgId);
       if (!settings.allowDriverAddVehicles) {
         return NextResponse.json(
           { error: "Only the office can add units right now." },
@@ -80,7 +83,7 @@ export async function POST(req: Request) {
         );
       }
     }
-    const vehicle = await upsertVehicle({
+    const vehicle = await upsertVehicle(orgFromSession(), {
       companyId: body.companyId,
       unitNumber: body.unitNumber,
       plate: body.plate,

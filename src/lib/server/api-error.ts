@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { OrgAccessError } from "./org-scope";
 import { OfficeAuthError } from "./office-pin";
 import { SharedBackendError } from "./checkout-repo";
 import { PhotoValidationError } from "./photo-store";
@@ -16,7 +17,8 @@ export function errorResponse(err: unknown, fallback: string): NextResponse {
   if (
     err instanceof OfficeAuthError ||
     err instanceof RequestError ||
-    err instanceof PhotoValidationError
+    err instanceof PhotoValidationError ||
+    err instanceof OrgAccessError
   ) {
     return NextResponse.json({ error: err.message }, { status: err.status });
   }

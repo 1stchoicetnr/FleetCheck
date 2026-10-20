@@ -92,13 +92,16 @@ async function postRepairSlack(
 }
 
 /** Create in-app alerts for damage / needs repair and post them when a webhook is set. */
-export async function recordCheckoutAlerts(report: CheckoutReport): Promise<void> {
+export async function recordCheckoutAlerts(
+  orgId: string,
+  report: CheckoutReport
+): Promise<void> {
   const kinds = checkoutAlertKinds(factsFor(report));
   if (!kinds.length) return;
   const mode = sharedBackendMode();
   if (mode === "unconfigured") return;
   const existing =
-    mode === "postgres" ? await pgListAlerts(true) : await localListAlerts(true);
+    mode === "postgres" ? await pgListAlerts(orgId, true) : await localListAlerts(true);
   const have = new Set(existing.map((alert) => alert.id));
   const created: SharedOfficeAlert[] = [];
   for (const kind of kinds) {
@@ -115,7 +118,7 @@ export async function recordCheckoutAlerts(report: CheckoutReport): Promise<void
       createdAt: new Date().toISOString(),
       read: false,
     };
-    if (mode === "postgres") await pgInsertAlert(alert);
+    if (mode === "postgres") await pgInsertAlert(orgId, alert);
     else await localInsertAlert(alert);
     created.push(alert);
   }

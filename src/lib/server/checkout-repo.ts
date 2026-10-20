@@ -53,6 +53,7 @@ import { deleteStoredPhoto, persistCheckoutPhoto } from "./photo-store";
 import { recordCheckoutAlerts } from "./report-alerts";
 import { notifyCheckoutReport } from "./slack-notify";
 import {
+  pgAssertFleetInOrg,
   pgFindVehicleByPlate,
   pgGetReport,
   pgGetVehicle,
@@ -77,6 +78,7 @@ import {
   pgGetFleetSettings,
   pgSetFleetSettings,
 } from "./postgres-store";
+import { OrgAccessError } from "./org-scope";
 import { sharedBackendMode } from "./shared-config";
 import {
   CheckoutReportInput,
@@ -108,10 +110,26 @@ function assertConfigured() {
   return mode;
 }
 
-export async function listCompanies(): Promise<Company[]> {
+async function assertFleet(
+  mode: "postgres" | "local-dev",
+  orgId: string,
+  fleetId?: string | null
+) {
+  if (!fleetId) return;
+  if (mode === "postgres") {
+    await pgAssertFleetInOrg(orgId, fleetId);
+    return;
+  }
+  const companies = await localListCompanies();
+  if (!companies.some((company) => company.id === fleetId)) {
+    throw new OrgAccessError();
+  }
+}
+
+export async function listCompanies(orgId: string): Promise<Company[]> {
   const mode = assertConfigured();
   const companies =
-    mode === "postgres" ? await pgListCompanies() : await localListCompanies();
+    mode === "postgres" ? await pgListCompanies(orgId) : await localListCompanies();
   return companies.sort((a, b) => {
     if (a.slug === "rad-cab") return -1;
     if (b.slug === "rad-cab") return 1;
@@ -120,38 +138,44 @@ export async function listCompanies(): Promise<Company[]> {
 }
 
 export async function listVehicles(
+  orgId: string,
   companyId?: string,
   options?: ListVehiclesOptions
 ): Promise<SharedVehicle[]> {
   const mode = assertConfigured();
+  await assertFleet(mode, orgId, companyId);
   const vehicles =
     mode === "postgres"
-      ? await pgListVehicles(companyId, options)
+      ? await pgListVehicles(orgId, companyId, options)
       : await localListVehicles(companyId, options);
   return [...vehicles].sort((a, b) =>
     a.unitNumber.localeCompare(b.unitNumber, undefined, { numeric: true })
   );
 }
 
-export async function getVehicle(id: string): Promise<SharedVehicle | undefined> {
+export async function getVehicle(orgId: string, id: string): Promise<SharedVehicle | undefined> {
   const mode = assertConfigured();
-  return mode === "postgres" ? pgGetVehicle(id) : localGetVehicle(id);
+  return mode === "postgres" ? pgGetVehicle(orgId, id) : localGetVehicle(id);
 }
 
 export async function findVehicleByPlate(
+  orgId: string,
   companyId: string,
   plate: string
 ): Promise<SharedVehicle | undefined> {
   const mode = assertConfigured();
+  await assertFleet(mode, orgId, companyId);
   return mode === "postgres"
-    ? pgFindVehicleByPlate(companyId, plate)
+    ? pgFindVehicleByPlate(orgId, companyId, plate)
     : localFindVehicleByPlate(companyId, plate);
 }
 
 export async function upsertVehicle(
+  orgId: string,
   input: UpsertVehicleInput
 ): Promise<SharedVehicle> {
   const mode = assertConfigured();
+  await assertFleet(mode, orgId, input.companyId);
   if (!input.companyId || !input.plate.trim() || !input.make.trim() || !input.model.trim()) {
     throw new SharedBackendError("Plate, make, and model are required", 400);
   }
@@ -161,21 +185,22 @@ export async function upsertVehicle(
   if (input.powertrain && input.powertrain !== "ev" && input.powertrain !== "gas") {
     throw new SharedBackendError("Powertrain must be gas or ev", 400);
   }
-  const existing = await findVehicleByPlate(input.companyId, input.plate);
+  const existing = await findVehicleByPlate(orgId, input.companyId, input.plate);
   if (existing && isVehicleArchived(existing)) {
     throw new SharedBackendError(VEHICLE_ARCHIVED_MESSAGE, 409);
   }
-  return mode === "postgres" ? pgUpsertVehicle(input) : localUpsertVehicle(input);
+  return mode === "postgres" ? pgUpsertVehicle(orgId, input) : localUpsertVehicle(input);
 }
 
 export async function setVehicleArchived(
+  orgId: string,
   id: string,
   archived: boolean
 ): Promise<SharedVehicle> {
   const mode = assertConfigured();
   const vehicle =
     mode === "postgres"
-      ? await pgSetVehicleArchived(id, archived)
+      ? await pgSetVehicleArchived(orgId, id, archived)
       : await localSetVehicleArchived(id, archived);
   if (!vehicle) {
     throw new SharedBackendError("Unit not found", 404);
@@ -184,6 +209,7 @@ export async function setVehicleArchived(
 }
 
 export async function setVehiclePowertrain(
+  orgId: string,
   id: string,
   powertrain: Powertrain
 ): Promise<SharedVehicle> {
@@ -193,7 +219,7 @@ export async function setVehiclePowertrain(
   }
   const vehicle =
     mode === "postgres"
-      ? await pgSetVehiclePowertrain(id, powertrain)
+      ? await pgSetVehiclePowertrain(orgId, id, powertrain)
       : await localSetVehiclePowertrain(id, powertrain);
   if (!vehicle) {
     throw new SharedBackendError("Unit not found", 404);
@@ -205,6 +231,7 @@ const KNOWN_ISSUE_MAX = 1000;
 const OIL_MILEAGE_MAX = 2_000_000;
 
 export async function setVehicleService(
+  orgId: string,
   id: string,
   patch: {
     knownIssue?: VehicleKnownIssue | null;
@@ -254,27 +281,31 @@ export async function setVehicleService(
   }
   const vehicle =
     mode === "postgres"
-      ? await pgSetVehicleService(id, next)
+      ? await pgSetVehicleService(orgId, id, next)
       : await localSetVehicleService(id, next);
   if (!vehicle) throw new SharedBackendError("Unit not found", 404);
   return vehicle;
 }
 
-export async function listReports(options?: {
-  includeArchived?: boolean;
-}): Promise<CheckoutReport[]> {
+export async function listReports(
+  orgId: string,
+  options?: {
+    includeArchived?: boolean;
+  }
+): Promise<CheckoutReport[]> {
   const mode = assertConfigured();
-  const reports = mode === "postgres" ? await pgListReports() : await localListReports();
+  const reports = mode === "postgres" ? await pgListReports(orgId) : await localListReports();
   if (options?.includeArchived) return reports;
   return reports.filter((report) => !report.archivedAt);
 }
 
-export async function listReportPage(query: OfficeListQuery) {
+export async function listReportPage(orgId: string, query: OfficeListQuery) {
   const mode = assertConfigured();
+  await assertFleet(mode, orgId, query.companyId);
   const { limit, offset } = officeReportPage(query);
   if (mode === "postgres") {
     const status = query.status && query.status !== "all" ? query.status : null;
-    const page = await pgListReportPage({
+    const page = await pgListReportPage(orgId, {
       includeArchived: query.includeArchived,
       companyId: query.companyId,
       vehicleId: query.vehicleId,
@@ -292,12 +323,13 @@ export async function listReportPage(query: OfficeListQuery) {
   return pageOfficeReports(await localListReports(), { ...query, limit, offset });
 }
 
-export async function getReport(id: string): Promise<CheckoutReport | undefined> {
+export async function getReport(orgId: string, id: string): Promise<CheckoutReport | undefined> {
   const mode = assertConfigured();
-  return mode === "postgres" ? pgGetReport(id) : localGetReport(id);
+  return mode === "postgres" ? pgGetReport(orgId, id) : localGetReport(id);
 }
 
 export async function getPriorReports(
+  orgId: string,
   vehicleId: string,
   currentId?: string,
   limit = 2
@@ -305,13 +337,13 @@ export async function getPriorReports(
   const mode = assertConfigured();
   const reports =
     mode === "postgres"
-      ? await pgListVehicleReports(vehicleId)
+      ? await pgListVehicleReports(orgId, vehicleId)
       : (await localListReports()).filter(
           (report) => report.vehicleId === vehicleId && !report.archivedAt
         );
   if (!currentId) return reports.slice(0, limit);
   const current =
-    reports.find((report) => report.id === currentId) ?? (await getReport(currentId));
+    reports.find((report) => report.id === currentId) ?? (await getReport(orgId, currentId));
   if (!current) return reports.slice(0, limit);
   return earlierReports(
     reports.filter((report) => report.vehicleId === current.vehicleId),
@@ -321,14 +353,16 @@ export async function getPriorReports(
 }
 
 export async function createReport(
+  orgId: string,
   input: CheckoutReportInput
 ): Promise<CheckoutReport> {
   const mode = assertConfigured();
+  await assertFleet(mode, orgId, input.companyId);
   const now = new Date().toISOString();
   let vehicle =
-    (await getVehicle(input.vehicleId)) ||
+    (await getVehicle(orgId, input.vehicleId)) ||
     (input.plate
-      ? await findVehicleByPlate(input.companyId, input.plate)
+      ? await findVehicleByPlate(orgId, input.companyId, input.plate)
       : undefined);
   if (!input.signatureDataUrl?.trim()) {
     throw new SharedBackendError("Driver signature is required", 400);
@@ -348,7 +382,7 @@ export async function createReport(
     throw new SharedBackendError(VEHICLE_ARCHIVED_MESSAGE, 409);
   }
   if (!vehicle) {
-    vehicle = await upsertVehicle({
+    vehicle = await upsertVehicle(orgId, {
       companyId: input.companyId,
       unitNumber: input.unitNumber,
       plate: input.plate || input.unitNumber,
@@ -379,15 +413,16 @@ export async function createReport(
     signedAt: input.signedAt,
   };
   const saved =
-    mode === "postgres" ? await pgPutReport(report) : await localPutReport(report);
+    mode === "postgres" ? await pgPutReport(orgId, report) : await localPutReport(report);
   void notifyCheckoutReport(saved);
-  void recordCheckoutAlerts(saved).catch((err) => {
+  void recordCheckoutAlerts(orgId, saved).catch((err) => {
     console.error("[alerts] checkout report alerts failed:", err);
   });
   return saved;
 }
 
 export async function addReportPhoto(
+  orgId: string,
   reportId: string,
   angle: PhotoAngle,
   dataUrl: string,
@@ -396,11 +431,11 @@ export async function addReportPhoto(
 ): Promise<CheckoutReport> {
   const mode = assertConfigured();
   const existing =
-    mode === "postgres" ? await pgGetReport(reportId) : await localGetReport(reportId);
+    mode === "postgres" ? await pgGetReport(orgId, reportId) : await localGetReport(reportId);
   if (!existing) {
     throw new SharedBackendError("Checkout report not found", 404);
   }
-  const url = await persistCheckoutPhoto(reportId, angle, dataUrl);
+  const url = await persistCheckoutPhoto(orgId, reportId, angle, dataUrl);
   const photo: VehiclePhoto = {
     angle,
     dataUrl: url,
@@ -418,9 +453,9 @@ export async function addReportPhoto(
       reportHasPhotoDamage({ photos }) ||
       inspectionFormFlagsReport(existing.inspectionForm),
   };
-  const saved = mode === "postgres" ? await pgPutReport(updated) : await localPutReport(updated);
+  const saved = mode === "postgres" ? await pgPutReport(orgId, updated) : await localPutReport(updated);
   if (flags?.flaggedDamage) {
-    void recordCheckoutAlerts(saved).catch((err) => {
+    void recordCheckoutAlerts(orgId, saved).catch((err) => {
       console.error("[alerts] photo flag alerts failed:", err);
     });
   }
@@ -428,6 +463,7 @@ export async function addReportPhoto(
 }
 
 export async function addReportPhotos(
+  orgId: string,
   reportId: string,
   incoming: Array<{
     angle: PhotoAngle;
@@ -439,11 +475,11 @@ export async function addReportPhotos(
 ): Promise<CheckoutReport> {
   const mode = assertConfigured();
   const existing =
-    mode === "postgres" ? await pgGetReport(reportId) : await localGetReport(reportId);
+    mode === "postgres" ? await pgGetReport(orgId, reportId) : await localGetReport(reportId);
   if (!existing) throw new SharedBackendError("Checkout report not found", 404);
   const stored = await Promise.all(
     incoming.map(async (item) => {
-      const url = await persistCheckoutPhoto(reportId, item.angle, item.dataUrl);
+      const url = await persistCheckoutPhoto(orgId, reportId, item.angle, item.dataUrl);
       const photo: VehiclePhoto = {
         angle: item.angle,
         dataUrl: url,
@@ -468,9 +504,9 @@ export async function addReportPhotos(
       reportHasPhotoDamage({ photos }) ||
       inspectionFormFlagsReport(existing.inspectionForm),
   };
-  const saved = mode === "postgres" ? await pgPutReport(updated) : await localPutReport(updated);
+  const saved = mode === "postgres" ? await pgPutReport(orgId, updated) : await localPutReport(updated);
   if (stored.some((photo) => photo.flaggedDamage)) {
-    void recordCheckoutAlerts(saved).catch((err) => {
+    void recordCheckoutAlerts(orgId, saved).catch((err) => {
       console.error("[alerts] photo flag alerts failed:", err);
     });
   }
@@ -478,13 +514,14 @@ export async function addReportPhotos(
 }
 
 export async function patchReportPhotoFlags(
+  orgId: string,
   reportId: string,
   angle: PhotoAngle,
   flags: { flaggedDamage: boolean; damageNote?: string }
 ): Promise<CheckoutReport> {
   const mode = assertConfigured();
   const existing =
-    mode === "postgres" ? await pgGetReport(reportId) : await localGetReport(reportId);
+    mode === "postgres" ? await pgGetReport(orgId, reportId) : await localGetReport(reportId);
   if (!existing) {
     throw new SharedBackendError("Checkout report not found", 404);
   }
@@ -516,9 +553,9 @@ export async function patchReportPhotoFlags(
       reportHasPhotoDamage({ photos }) ||
       inspectionFormFlagsReport(existing.inspectionForm),
   };
-  const saved = mode === "postgres" ? await pgPutReport(updated) : await localPutReport(updated);
+  const saved = mode === "postgres" ? await pgPutReport(orgId, updated) : await localPutReport(updated);
   if (flags.flaggedDamage && !wasFlagged) {
-    void recordCheckoutAlerts(saved).catch((err) => {
+    void recordCheckoutAlerts(orgId, saved).catch((err) => {
       console.error("[alerts] photo flag alerts failed:", err);
     });
   }
@@ -526,35 +563,36 @@ export async function patchReportPhotoFlags(
 }
 
 export async function setReportArchived(
+  orgId: string,
   id: string,
   archived: boolean
 ): Promise<CheckoutReport> {
   const mode = assertConfigured();
   const report =
     mode === "postgres"
-      ? await pgSetReportArchived(id, archived)
+      ? await pgSetReportArchived(orgId, id, archived)
       : await localSetReportArchived(id, archived);
   if (!report) throw new SharedBackendError("Checkout report not found", 404);
   return report;
 }
 
-export async function deleteReport(id: string): Promise<void> {
+export async function deleteReport(orgId: string, id: string): Promise<void> {
   const mode = assertConfigured();
-  const existing = mode === "postgres" ? await pgGetReport(id) : await localGetReport(id);
+  const existing = mode === "postgres" ? await pgGetReport(orgId, id) : await localGetReport(id);
   if (!existing) throw new SharedBackendError("Checkout report not found", 404);
   await Promise.all(existing.photos.map((photo) => deleteStoredPhoto(photo.dataUrl)));
-  const removed = mode === "postgres" ? await pgDeleteReport(id) : await localDeleteReport(id);
+  const removed = mode === "postgres" ? await pgDeleteReport(orgId, id) : await localDeleteReport(id);
   if (!removed) throw new SharedBackendError("Checkout report not found", 404);
 }
 
 const USER_ROLES = ["super_admin", "management", "tech", "driver"] as const;
 
-export async function listAppUsers(): Promise<SharedAppUser[]> {
+export async function listAppUsers(orgId: string): Promise<SharedAppUser[]> {
   const mode = assertConfigured();
-  return mode === "postgres" ? pgListUsers() : localListUsers();
+  return mode === "postgres" ? pgListUsers(orgId) : localListUsers();
 }
 
-export async function createAppUser(input: {
+export async function createAppUser(orgId: string, input: {
   name: string;
   email: string;
   role: SharedAppUser["role"];
@@ -564,7 +602,7 @@ export async function createAppUser(input: {
   const email = input.email.trim().toLowerCase();
   if (!name || !email) throw new SharedBackendError("Name and email are required", 400);
   if (!USER_ROLES.includes(input.role)) throw new SharedBackendError("Choose a role", 400);
-  const existing = await listAppUsers();
+  const existing = await listAppUsers(orgId);
   if (existing.some((user) => user.email.toLowerCase() === email)) {
     throw new SharedBackendError("A user with that email already exists", 409);
   }
@@ -576,10 +614,11 @@ export async function createAppUser(input: {
     active: true,
     createdAt: new Date().toISOString(),
   };
-  return mode === "postgres" ? pgInsertUser(user) : localInsertUser(user);
+  return mode === "postgres" ? pgInsertUser(orgId, user) : localInsertUser(user);
 }
 
 export async function updateAppUser(
+  orgId: string,
   id: string,
   patch: Partial<Pick<SharedAppUser, "name" | "email" | "role" | "active">>
 ): Promise<SharedAppUser> {
@@ -587,44 +626,49 @@ export async function updateAppUser(
   if (patch.role && !USER_ROLES.includes(patch.role)) {
     throw new SharedBackendError("Choose a role", 400);
   }
-  const user = mode === "postgres" ? await pgUpdateUser(id, patch) : await localUpdateUser(id, patch);
+  const user = mode === "postgres" ? await pgUpdateUser(orgId, id, patch) : await localUpdateUser(id, patch);
   if (!user) throw new SharedBackendError("User not found", 404);
   return user;
 }
 
-export async function listOfficeAlerts(includeArchived = false): Promise<SharedOfficeAlert[]> {
+export async function listOfficeAlerts(
+  orgId: string,
+  includeArchived = false
+): Promise<SharedOfficeAlert[]> {
   const mode = assertConfigured();
   return mode === "postgres"
-    ? pgListAlerts(includeArchived)
+    ? pgListAlerts(orgId, includeArchived)
     : localListAlerts(includeArchived);
 }
 
 export async function setOfficeAlertArchived(
+  orgId: string,
   id: string,
   archived: boolean
 ): Promise<SharedOfficeAlert> {
   const mode = assertConfigured();
   const alert =
     mode === "postgres"
-      ? await pgSetAlertArchived(id, archived)
+      ? await pgSetAlertArchived(orgId, id, archived)
       : await localSetAlertArchived(id, archived);
   if (!alert) throw new SharedBackendError("Alert not found", 404);
   return alert;
 }
 
-export async function deleteOfficeAlert(id: string): Promise<void> {
+export async function deleteOfficeAlert(orgId: string, id: string): Promise<void> {
   const mode = assertConfigured();
-  const removed = mode === "postgres" ? await pgDeleteAlert(id) : await localDeleteAlert(id);
+  const removed = mode === "postgres" ? await pgDeleteAlert(orgId, id) : await localDeleteAlert(id);
   if (!removed) throw new SharedBackendError("Alert not found", 404);
 }
 
 export async function reviewReport(
+  orgId: string,
   reportId: string,
   input: CheckoutReviewInput
 ): Promise<CheckoutReport> {
   const mode = assertConfigured();
   const existing =
-    mode === "postgres" ? await pgGetReport(reportId) : await localGetReport(reportId);
+    mode === "postgres" ? await pgGetReport(orgId, reportId) : await localGetReport(reportId);
   if (!existing) {
     throw new SharedBackendError("Checkout report not found", 404);
   }
@@ -644,7 +688,7 @@ export async function reviewReport(
       reportHasPhotoDamage(existing) ||
       inspectionFormFlagsReport(existing.inspectionForm),
   };
-  if (mode === "postgres") return pgPutReport(updated);
+  if (mode === "postgres") return pgPutReport(orgId, updated);
   const saved = await localPatchReport(reportId, updated);
   if (!saved) throw new SharedBackendError("Checkout report not found", 404);
   return saved;
@@ -657,18 +701,19 @@ export function backendStatus() {
   };
 }
 
-export async function getFleetSettings(): Promise<FleetSettings> {
+export async function getFleetSettings(orgId: string): Promise<FleetSettings> {
   const mode = assertConfigured();
-  return mode === "postgres" ? pgGetFleetSettings() : localGetFleetSettings();
+  return mode === "postgres" ? pgGetFleetSettings(orgId) : localGetFleetSettings();
 }
 
 export async function updateFleetSettings(
+  orgId: string,
   patch: Partial<FleetSettings>
 ): Promise<FleetSettings> {
   const mode = assertConfigured();
   const next =
     mode === "postgres"
-      ? await pgSetFleetSettings(patch)
+      ? await pgSetFleetSettings(orgId, patch)
       : await localSetFleetSettings(patch);
   return next;
 }

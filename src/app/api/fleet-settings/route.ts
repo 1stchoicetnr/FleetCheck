@@ -5,13 +5,14 @@ import {
   getFleetSettings,
   updateFleetSettings,
 } from "@/lib/server/checkout-repo";
+import { orgFromSession } from "@/lib/server/org-scope";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const settings = await getFleetSettings();
+    const settings = await getFleetSettings(orgFromSession());
     return NextResponse.json(
       { settings },
       { headers: { "Cache-Control": "no-store" } }
@@ -33,7 +34,7 @@ export async function PATCH(req: Request) {
         { status: 400 }
       );
     }
-    const settings = await updateFleetSettings({
+    const settings = await updateFleetSettings(orgFromSession(), {
       allowDriverAddVehicles: body.allowDriverAddVehicles,
     });
     return NextResponse.json({ settings });

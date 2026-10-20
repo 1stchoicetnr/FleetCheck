@@ -6,6 +6,7 @@ import {
   listReportPage,
 } from "@/lib/server/checkout-repo";
 import { OfficeListStatus } from "@/lib/office-list";
+import { orgFromSession } from "@/lib/server/org-scope";
 import type { CheckoutInspectionForm } from "@/lib/inspection-form";
 import { CheckoutType } from "@/lib/types";
 
@@ -30,7 +31,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unknown status filter" }, { status: 400 });
     }
     const started = performance.now();
-    const page = await listReportPage({
+    const page = await listReportPage(orgFromSession(), {
       includeArchived: params.get("includeArchived") === "1",
       companyId: params.get("companyId") || undefined,
       vehicleId: params.get("vehicleId") || undefined,
@@ -91,7 +92,7 @@ export async function POST(req: Request) {
     ) {
       return NextResponse.json({ error: "Signature image is invalid or too large" }, { status: 400 });
     }
-    const report = await createReport({
+    const report = await createReport(orgFromSession(), {
       companyId: body.companyId,
       vehicleId: body.vehicleId,
       unitNumber: body.unitNumber,

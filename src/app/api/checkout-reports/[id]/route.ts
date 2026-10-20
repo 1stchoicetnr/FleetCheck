@@ -7,6 +7,7 @@ import {
   setReportArchived,
 } from "@/lib/server/checkout-repo";
 import { assertOfficePin } from "@/lib/server/office-pin";
+import { orgFromSession } from "@/lib/server/org-scope";
 import { CheckoutReviewStatus, PhotoAngle } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -19,9 +20,12 @@ export async function GET(
   try {
     await assertOfficePin(req);
     const { id } = await params;
-    const report = await getReport(id);
+    const report = await getReport(orgFromSession(), id);
+    if (!report) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
     return NextResponse.json(
-      { report: report ?? null },
+      { report },
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch (err) {
@@ -36,6 +40,7 @@ export async function PATCH(
   try {
     await assertOfficePin(req);
     const { id } = await params;
+    const orgId = orgFromSession();
     const body = (await req.json()) as {
       archived?: boolean;
       reviewStatus?: CheckoutReviewStatus;
@@ -45,7 +50,7 @@ export async function PATCH(
       reviewedBy?: string;
     };
     if (typeof body.archived === "boolean") {
-      const report = await setReportArchived(id, body.archived);
+      const report = await setReportArchived(orgId, id, body.archived);
       return NextResponse.json({ report });
     }
     if (!body.reviewStatus || !body.reviewedBy) {
@@ -54,7 +59,7 @@ export async function PATCH(
         { status: 400 }
       );
     }
-    const report = await reviewReport(id, {
+    const report = await reviewReport(orgId, id, {
       reviewStatus: body.reviewStatus,
       reviewNotes: body.reviewNotes,
       newDamageNotes: body.newDamageNotes,
@@ -74,7 +79,7 @@ export async function DELETE(
   try {
     await assertOfficePin(req);
     const { id } = await params;
-    await deleteReport(id);
+    await deleteReport(orgFromSession(), id);
     return NextResponse.json({ ok: true });
   } catch (err) {
     return errorResponse(err, "Failed to delete report");
