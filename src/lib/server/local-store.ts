@@ -3,7 +3,7 @@ import path from "path";
 import { SEEDED_COMPANIES } from "@/lib/companies";
 import { CheckoutReport } from "@/lib/types";
 import { inferPowertrain } from "@/lib/inspection-form";
-import { normalizePlate } from "@/lib/utils";
+import { displayPlate, normalizePlate } from "@/lib/utils";
 import {
   sharedRecoveredReports,
   sharedSeedReports,
@@ -11,11 +11,13 @@ import {
 } from "./seed-shared";
 import {
   ListVehiclesOptions,
+  SharedAppUser,
   SharedOfficeAlert,
   SharedStore,
   SharedVehicle,
   UpsertVehicleInput,
 } from "./shared-types";
+import { SEEDED_APP_USERS } from "./seed-users";
 import {
   FleetSettings,
   DEFAULT_FLEET_SETTINGS,
@@ -79,8 +81,53 @@ async function loadAndSeedUnlocked(): Promise<SharedStore> {
       changed = true;
     }
   }
+  if (!store.users?.length) {
+    store.users = SEEDED_APP_USERS;
+    changed = true;
+  }
   if (changed) await writeStore(store);
   return store;
+}
+
+export async function localListUsers(): Promise<SharedAppUser[]> {
+  const store = await localEnsureSeed();
+  return [...(store.users ?? [])].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function localInsertUser(user: SharedAppUser): Promise<SharedAppUser> {
+  return enqueueWrite(async () => {
+    const store = await loadAndSeedUnlocked();
+    store.users = store.users ?? [];
+    if (store.users.some((item) => item.email.toLowerCase() === user.email.toLowerCase())) {
+      throw new Error("A user with that email already exists");
+    }
+    store.users.push(user);
+    await writeStore(store);
+    return user;
+  });
+}
+
+export async function localUpdateUser(
+  id: string,
+  patch: Partial<Pick<SharedAppUser, "name" | "email" | "role" | "active">>
+): Promise<SharedAppUser | undefined> {
+  return enqueueWrite(async () => {
+    const store = await loadAndSeedUnlocked();
+    const users = store.users ?? [];
+    const idx = users.findIndex((user) => user.id === id);
+    if (idx < 0) return undefined;
+    const next: SharedAppUser = {
+      ...users[idx],
+      name: patch.name?.trim() || users[idx].name,
+      email: patch.email?.trim().toLowerCase() || users[idx].email,
+      role: patch.role || users[idx].role,
+      active: typeof patch.active === "boolean" ? patch.active : users[idx].active,
+    };
+    users[idx] = next;
+    store.users = users;
+    await writeStore(store);
+    return next;
+  });
 }
 
 export async function localEnsureSeed(): Promise<SharedStore> {
@@ -127,16 +174,17 @@ export async function localUpsertVehicle(
 ): Promise<SharedVehicle> {
   return enqueueWrite(async () => {
     const store = await loadAndSeedUnlocked();
-    const plate = normalizePlate(input.plate);
+    const plateKey = normalizePlate(input.plate);
+    const plate = displayPlate(input.plate);
     const existing = store.vehicles.find(
       (v) =>
         v.companyId === input.companyId &&
-        (normalizePlate(v.plate) === plate ||
-          normalizePlate(v.unitNumber) === plate)
+        (normalizePlate(v.plate) === plateKey ||
+          normalizePlate(v.unitNumber) === plateKey)
     );
     const now = new Date().toISOString();
     const vehicle: SharedVehicle = {
-      id: existing?.id ?? `vehicle-${input.companyId}-${plate.toLowerCase()}`,
+      id: existing?.id ?? `vehicle-${input.companyId}-${plateKey.toLowerCase()}`,
       companyId: input.companyId,
       unitNumber: (input.unitNumber || existing?.unitNumber || plate).trim(),
       plate,

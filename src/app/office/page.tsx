@@ -58,6 +58,7 @@ function OfficeReportsPage() {
   const [showArchivedReports, setShowArchivedReports] = useState(false);
   const [status, setStatus] = useState<(typeof STATUS_FILTERS)[number]>("all");
   const [officeReady, setOfficeReady] = useState(false);
+  const [listReady, setListReady] = useState(false);
   const markOfficeUnlocked = useCallback(() => setOfficeReady(true), []);
 
   useEffect(() => {
@@ -79,7 +80,8 @@ function OfficeReportsPage() {
       })
       .catch((err: Error) => {
         setLoadError(err.message || "Could not load shared checkout reports.");
-      });
+      })
+      .finally(() => setListReady(true));
   }, [showArchivedReports]);
 
   useEffect(() => {
@@ -183,8 +185,9 @@ function OfficeReportsPage() {
                 Checkout reports
               </h2>
               <p className="text-sm text-gray-500">
-                {filtered.length} shown · {flagCount} flagged · live Neon list
-                (refresh if a new CR just landed)
+                {listReady
+                  ? `${filtered.length} shown · ${flagCount} flagged · live Neon list (refresh if a new CR just landed)`
+                  : "Loading reports…"}
               </p>
               <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1">
                 <button
@@ -282,7 +285,9 @@ function OfficeReportsPage() {
             Show archived reports
           </label>
 
-          {filtered.length === 0 ? (
+          {!listReady ? (
+            <p className="text-center text-brand-600 font-semibold py-12">Loading reports…</p>
+          ) : filtered.length === 0 ? (
             <div className="text-center py-12">
               <FileSearch className="h-12 w-12 mx-auto text-gray-300 mb-3" />
               <p className="text-gray-500">No checkout reports match.</p>

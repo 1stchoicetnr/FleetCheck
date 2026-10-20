@@ -279,7 +279,13 @@ export default function AlertsPage() {
                       size="sm"
                       variant="outline"
                       className="flex-1"
-                      onClick={() => setPending({ alert, action: "archive" })}
+                      onClick={() => {
+                        if (!alert.remote && !isOfficeUnlocked()) {
+                          router.push("/office?next=/alerts");
+                          return;
+                        }
+                        setPending({ alert, action: "archive" });
+                      }}
                     >
                       {alert.archivedAt ? "Unarchive" : "Archive"}
                     </Button>
@@ -287,7 +293,13 @@ export default function AlertsPage() {
                       size="sm"
                       variant="danger"
                       className="flex-1"
-                      onClick={() => setPending({ alert, action: "delete" })}
+                      onClick={() => {
+                        if (!alert.remote && !isOfficeUnlocked()) {
+                          router.push("/office?next=/alerts");
+                          return;
+                        }
+                        setPending({ alert, action: "delete" });
+                      }}
                     >
                       Delete
                     </Button>
@@ -301,11 +313,9 @@ export default function AlertsPage() {
       <ConfirmDialog
         open={pending !== null}
         title={
-          pending?.action === "delete"
-            ? "Delete this alert?"
-            : pending?.alert.archivedAt
-              ? "Unarchive this alert?"
-              : "Archive this alert?"
+          pending
+            ? `${pending.action === "delete" ? "Delete" : pending.alert.archivedAt ? "Unarchive" : "Archive"} ${pending.alert.vehiclePlate} ${ALERT_TYPE_LABELS[pending.alert.type]} from ${formatDate(pending.alert.createdAt)}?`
+            : "Update this alert?"
         }
         body={
           pending?.action === "delete"

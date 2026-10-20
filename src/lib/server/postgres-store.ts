@@ -11,7 +11,7 @@ import {
   PhotoAngle,
   VehiclePhoto,
 } from "@/lib/types";
-import { normalizePlate } from "@/lib/utils";
+import { displayPlate, normalizePlate } from "@/lib/utils";
 import { getDatabaseUrl } from "./shared-config";
 import {
   sharedRecoveredReports,
@@ -20,12 +20,15 @@ import {
 } from "./seed-shared";
 import {
   ListVehiclesOptions,
+  SharedAppUser,
   SharedOfficeAlert,
   SharedVehicle,
   UpsertVehicleInput,
 } from "./shared-types";
 import type { FleetSettings } from "@/lib/fleet-settings";
 import { DEFAULT_FLEET_SETTINGS } from "@/lib/fleet-settings";
+import { SEEDED_APP_USERS } from "./seed-users";
+import type { UserRole } from "@/lib/types";
 
 function sqlClient() {
   const url = getDatabaseUrl();
@@ -188,6 +191,23 @@ export async function pgMigrateAndSeed(): Promise<void> {
     VALUES ('app', FALSE)
     ON CONFLICT (id) DO NOTHING
   `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS app_users (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      email TEXT UNIQUE NOT NULL,
+      role TEXT NOT NULL,
+      active BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMPTZ NOT NULL
+    )
+  `;
+  for (const user of SEEDED_APP_USERS) {
+    await sql`
+      INSERT INTO app_users (id, name, email, role, active, created_at)
+      VALUES (${user.id}, ${user.name}, ${user.email}, ${user.role}, ${user.active}, ${user.createdAt})
+      ON CONFLICT (id) DO NOTHING
+    `;
+  }
 
   for (const company of SEEDED_COMPANIES) {
     await sql`
@@ -320,11 +340,12 @@ export async function pgUpsertVehicle(
   input: UpsertVehicleInput
 ): Promise<SharedVehicle> {
   await pgMigrateAndSeed();
-  const plate = normalizePlate(input.plate);
-  const existing = await pgFindVehicleByPlate(input.companyId, plate);
+  const plateKey = normalizePlate(input.plate);
+  const plate = displayPlate(input.plate);
+  const existing = await pgFindVehicleByPlate(input.companyId, plateKey);
   const now = new Date().toISOString();
   const vehicle: SharedVehicle = {
-    id: existing?.id ?? `vehicle-${input.companyId}-${plate.toLowerCase()}`,
+    id: existing?.id ?? `vehicle-${input.companyId}-${plateKey.toLowerCase()}`,
     companyId: input.companyId,
     unitNumber: (input.unitNumber || existing?.unitNumber || plate).trim(),
     plate,
@@ -564,6 +585,67 @@ export async function pgDeleteAlert(id: string): Promise<boolean> {
   if (!rows[0]) return false;
   await sql`DELETE FROM fleet_alerts WHERE id = ${id}`;
   return true;
+}
+
+type UserRow = {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  active: boolean;
+  created_at: string;
+};
+
+function rowToUser(row: UserRow): SharedAppUser {
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    role: row.role,
+    active: Boolean(row.active),
+    createdAt: new Date(row.created_at).toISOString(),
+  };
+}
+
+export async function pgListUsers(): Promise<SharedAppUser[]> {
+  await pgMigrateAndSeed();
+  const sql = sqlClient();
+  const rows = (await sql`SELECT * FROM app_users ORDER BY name`) as UserRow[];
+  return rows.map(rowToUser);
+}
+
+export async function pgInsertUser(user: SharedAppUser): Promise<SharedAppUser> {
+  await pgMigrateAndSeed();
+  const sql = sqlClient();
+  await sql`
+    INSERT INTO app_users (id, name, email, role, active, created_at)
+    VALUES (${user.id}, ${user.name}, ${user.email}, ${user.role}, ${user.active}, ${user.createdAt})
+  `;
+  return user;
+}
+
+export async function pgUpdateUser(
+  id: string,
+  patch: Partial<Pick<SharedAppUser, "name" | "email" | "role" | "active">>
+): Promise<SharedAppUser | undefined> {
+  await pgMigrateAndSeed();
+  const sql = sqlClient();
+  const rows = (await sql`SELECT * FROM app_users WHERE id = ${id} LIMIT 1`) as UserRow[];
+  if (!rows[0]) return undefined;
+  const current = rowToUser(rows[0]);
+  const next: SharedAppUser = {
+    ...current,
+    name: patch.name?.trim() || current.name,
+    email: patch.email?.trim().toLowerCase() || current.email,
+    role: patch.role || current.role,
+    active: typeof patch.active === "boolean" ? patch.active : current.active,
+  };
+  await sql`
+    UPDATE app_users
+    SET name = ${next.name}, email = ${next.email}, role = ${next.role}, active = ${next.active}
+    WHERE id = ${id}
+  `;
+  return next;
 }
 
 export async function pgSetFleetSettings(

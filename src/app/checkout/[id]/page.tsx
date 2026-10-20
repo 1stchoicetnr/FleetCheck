@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { AppHeader } from "@/components/app-header";
 import { Button } from "@/components/ui/button";
 import { GuidedPhotoCapture } from "@/components/guided-photo-capture";
@@ -20,7 +20,7 @@ import {
   fetchCompanies,
   fetchVehicles,
   SharedVehicle,
-  uploadCheckoutPhoto,
+  uploadCheckoutPhotos,
 } from "@/lib/checkout-api";
 import {
   CheckoutDraft,
@@ -45,18 +45,21 @@ import {
   UNIT_NUMBER_LABEL,
   validateInspectionForm,
 } from "@/lib/inspection-form";
-import { formatDate, formatDateOnly, formatUnitLabel } from "@/lib/utils";
+import { compressUploadPhoto, formatDate, formatDateOnly, formatUnitLabel } from "@/lib/utils";
+import { uploadProgress as describeUpload } from "@/lib/upload-progress";
 import { PHOTO_EXAMPLE_PATHS } from "@/lib/photo-examples";
 import { InspectionFormFields } from "@/components/inspection-form-fields";
+import { InspectionFormSummary } from "@/components/inspection-form-summary";
 import { Check } from "lucide-react";
 import { restoreNaturalOrientation } from "@/lib/orientation";
 import { useCheckoutFeedbackMeta } from "@/components/checkout-feedback";
 
-export default function CheckoutCapturePage() {
+function CheckoutCapturePage() {
   const params = useParams();
   const router = useRouter();
   const { user, loading } = useAuth();
   const draftId = params.id as string;
+  const searchParams = useSearchParams();
 
   const [draft, setDraft] = useState<CheckoutDraft | null>(null);
   const [vehicle, setVehicle] = useState<SharedVehicle | null>(null);
@@ -69,6 +72,8 @@ export default function CheckoutCapturePage() {
   const [signedAt, setSignedAt] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState("");
+  const [uploadPercent, setUploadPercent] = useState(0);
+  const [uploadEstimate, setUploadEstimate] = useState("");
   const [submitError, setSubmitError] = useState("");
   const [completed, setCompleted] = useState<CheckoutReport | null>(null);
   const [photosReady, setPhotosReady] = useState(false);
@@ -76,7 +81,7 @@ export default function CheckoutCapturePage() {
   const [inspectionForm, setInspectionForm] = useState(() =>
     createEmptyInspectionForm("gas")
   );
-  const [phase, setPhase] = useState<"inspect" | "photos">("inspect");
+  const [phase, setPhase] = useState<"inspect" | "photos" | "review">("inspect");
   const [showPrecheckErrors, setShowPrecheckErrors] = useState(false);
 
   useCheckoutFeedbackMeta({
@@ -118,7 +123,8 @@ export default function CheckoutCapturePage() {
       );
       setInspectionForm(form);
       const formOk = validateInspectionForm(form, powertrain).ok;
-      setPhase(formOk && !isPrecheckRed(form) ? "photos" : "inspect");
+      const resumeReview = searchParams.get("phase") === "review" && formOk;
+      setPhase(resumeReview ? "review" : formOk && !isPrecheckRed(form) ? "photos" : "inspect");
       try {
         const [vehicles, companies] = await Promise.all([
           fetchVehicles(d.companyId, { includeArchived: true }),
@@ -141,7 +147,7 @@ export default function CheckoutCapturePage() {
       }
     }
     load();
-  }, [draftId, router]);
+  }, [draftId, router, searchParams]);
 
   useEffect(() => {
     if (!draft || !vehicle) return;
@@ -253,13 +259,42 @@ export default function CheckoutCapturePage() {
         PhotoAngle,
         string,
       ][];
-      for (let i = 0; i < entries.length; i += 1) {
-        const [angle, dataUrl] = entries[i];
-        setUploadProgress(`Uploading photos ${i + 1}/${entries.length}…`);
-        report = await uploadCheckoutPhoto(report.id, angle, dataUrl, capturedAt, {
-          flaggedDamage: photoFlags[angle]?.flaggedDamage,
-          damageNote: photoFlags[angle]?.damageNote,
-        });
+      const started = Date.now();
+      setUploadPercent(0);
+      setUploadEstimate("Preparing photos");
+      const prepared = await Promise.all(
+        entries.map(async ([angle, dataUrl], index) => {
+          const compressed = dataUrl.startsWith("data:")
+            ? await compressUploadPhoto(dataUrl)
+            : dataUrl;
+          setUploadProgress(`Preparing photos ${index + 1}/${entries.length}`);
+          return [angle, compressed] as const;
+        })
+      );
+      const batchSize = 4;
+      let uploaded = 0;
+      for (let i = 0; i < prepared.length; i += batchSize) {
+        const slice = prepared.slice(i, i + batchSize);
+        const before = describeUpload(uploaded, prepared.length, started);
+        setUploadPercent(before.percent);
+        setUploadEstimate(before.estimate);
+        setUploadProgress(
+          `Uploading photos ${uploaded + 1}–${Math.min(uploaded + slice.length, prepared.length)} of ${prepared.length}`
+        );
+        report = await uploadCheckoutPhotos(
+          report.id,
+          slice.map(([angle, dataUrl]) => ({
+            angle,
+            dataUrl,
+            capturedAt,
+            flaggedDamage: photoFlags[angle]?.flaggedDamage,
+            damageNote: photoFlags[angle]?.damageNote,
+          }))
+        );
+        uploaded += slice.length;
+        const after = describeUpload(uploaded, prepared.length, started);
+        setUploadPercent(after.percent);
+        setUploadEstimate(after.estimate);
       }
 
       await deleteCheckoutDraft(draft.id);
@@ -311,13 +346,16 @@ export default function CheckoutCapturePage() {
   if (completed) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <AppHeader title="Checkout complete" backHref="/dashboard" />
+        <AppHeader
+          title={completed.type === "check_in" ? "Check-in complete" : "Checkout complete"}
+          backHref="/dashboard"
+        />
         <div className="max-w-lg mx-auto px-4 py-12 text-center space-y-5">
           <div className="bg-green-100 rounded-full p-6 inline-flex">
             <Check className="h-12 w-12 text-green-600" />
           </div>
           <h2 className="text-2xl font-bold text-gray-900">
-            Checkout report complete
+            {completed.type === "check_in" ? "Check-in complete" : "Checkout report complete"}
           </h2>
           <p className="text-gray-600">
             {formatUnitLabel(completed.unitNumber, completed.plate)} — {completed.year}{" "}
@@ -332,7 +370,10 @@ export default function CheckoutCapturePage() {
               size="xl"
               className="w-full"
               onClick={async () => {
-                const blob = await generateCheckoutReportPDF(completed);
+                const blob = await generateCheckoutReportPDF(completed, {
+                  companyName: company?.name,
+                  plate: completed.plate ?? vehicle.plate,
+                });
                 downloadPDF(blob, checkoutReportPdfFilename(completed));
               }}
             >
@@ -410,18 +451,140 @@ export default function CheckoutCapturePage() {
             size="sm"
             variant={phase === "photos" ? "primary" : "secondary"}
             onClick={tryContinueToPhotos}
+            disabled={redPark}
           >
-            2. Photo walkaround
+            2. Photos
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={phase === "review" ? "primary" : "secondary"}
+            onClick={() => {
+              if (redPark) {
+                if (canSubmit) setPhase("review");
+                else setPhase("inspect");
+                return;
+              }
+              if (!photosComplete || !signatureDataUrl) {
+                tryContinueToPhotos();
+                return;
+              }
+              setPhase("review");
+            }}
+          >
+            3. Review
           </Button>
         </div>
 
-        {phase === "inspect" ? (
+        {phase === "review" ? (
+          <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-4">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <h3 className="text-base font-bold text-gray-900">Review before submit</h3>
+                <p className="text-sm text-gray-600">
+                  Check the header, precheck, photos, and signature. Nothing is sent until you submit.
+                </p>
+              </div>
+            </div>
+            <section className="space-y-1 text-sm">
+              <div className="flex items-center justify-between">
+                <h4 className="font-semibold">Header</h4>
+                <button
+                  type="button"
+                  className="text-sm font-semibold text-brand-700 underline"
+                  onClick={() => router.push(`/checkout?draft=${draft.id}`)}
+                >
+                  Edit
+                </button>
+              </div>
+              <p>{company?.name ?? "Company"} · {formatUnitLabel(vehicle.unitNumber, vehicle.plate)}</p>
+              <p>{draft.year} {draft.make} {draft.model} · {Number(draft.odometer).toLocaleString()} mi</p>
+              <p>
+                {draft.type === "check_in" ? "Check in" : "Check out"} · {draft.driverName} · Dispatcher {draft.dispatcherName}
+              </p>
+              <p>
+                {formatDateOnly(inspectionForm.inspectedAt || new Date().toISOString())}
+                {cloverSerialOf(inspectionForm) ? ` · ${CLOVER_SERIAL_LABEL} ${cloverSerialOf(inspectionForm)}` : ""}
+              </p>
+            </section>
+            <section className="space-y-2">
+              <div className="flex items-center justify-between">
+                <h4 className="font-semibold text-sm">Precheck, tread, damage, flags</h4>
+                <button type="button" className="text-sm font-semibold text-brand-700 underline" onClick={() => setPhase("inspect")}>
+                  Edit
+                </button>
+              </div>
+              <InspectionFormSummary form={inspectionForm} />
+            </section>
+            {photosNeeded && (
+              <section className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-semibold text-sm">Photos</h4>
+                  <button type="button" className="text-sm font-semibold text-brand-700 underline" onClick={() => setPhase("photos")}>
+                    Edit
+                  </button>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {steps.map((step) => (
+                    <div key={step.angle} className="space-y-1">
+                      {photos[step.angle] ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={photos[step.angle]} alt={step.label} className="h-20 w-full object-cover rounded-lg border border-gray-200" />
+                      ) : (
+                        <div className="h-20 rounded-lg border border-dashed border-gray-300 bg-gray-50" />
+                      )}
+                      <p className="text-[11px] text-gray-600 leading-tight">
+                        {step.label}
+                        {photoFlags[step.angle]?.flaggedDamage ? " · DAMAGE" : ""}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+            <section className="space-y-2">
+              <div className="flex items-center justify-between">
+                <h4 className="font-semibold text-sm">Signature</h4>
+                <button
+                  type="button"
+                  className="text-sm font-semibold text-brand-700 underline"
+                  onClick={() => setPhase(redPark ? "inspect" : "photos")}
+                >
+                  Edit
+                </button>
+              </div>
+              {signatureDataUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={signatureDataUrl} alt={`Signature of ${draft.driverName}`} className="h-24 w-full object-contain bg-gray-50 rounded-lg border border-gray-200" />
+              ) : (
+                <p className="text-sm text-red-600">Signature is missing.</p>
+              )}
+            </section>
+            {submitting && (
+              <div>
+                <div className="flex justify-between text-sm text-gray-700 mb-1">
+                  <span>{uploadProgress || "Uploading"}</span>
+                  <span>{uploadPercent}%</span>
+                </div>
+                <div className="h-3 w-full rounded-full bg-gray-200 overflow-hidden">
+                  <div className="h-full bg-brand-600 transition-all" style={{ width: `${uploadPercent}%` }} />
+                </div>
+                <p className="text-xs text-gray-500 mt-1">{uploadEstimate}</p>
+              </div>
+            )}
+            {submitError && <p className="text-sm text-red-600 font-medium">{submitError}</p>}
+            <Button size="xl" className="w-full" onClick={handleSubmit} disabled={submitting || !canSubmit}>
+              {submitting ? uploadProgress || "Submitting…" : draft.type === "check_in" ? "Submit check-in" : "Submit checkout"}
+            </Button>
+          </div>
+        ) : phase === "inspect" ? (
           <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-4">
             <div>
               <h3 className="text-base font-bold text-gray-900">Precheck</h3>
               <p className="text-sm text-gray-600">
-                Paper form, about a minute. Green or Yellow continues to photos
-                (no tire-tread slots). Red parks the van for Office.
+                About a minute. If the van is OK to drive, continue to the photo
+                walkaround. Tire tread is answered on this form, not as its own
+                photo. A red precheck parks the van and skips photos.
               </p>
             </div>
             <InspectionFormFields
@@ -458,14 +621,12 @@ export default function CheckoutCapturePage() {
                 <Button
                   size="xl"
                   className="w-full"
-                  onClick={handleSubmit}
-                  disabled={submitting || !canSubmit}
+                  onClick={() => setPhase("review")}
+                  disabled={!canSubmit}
                 >
-                  {submitting
-                    ? uploadProgress || "Saving…"
-                    : !signatureDataUrl
-                      ? "Sign above to send park-it to Office"
-                      : "Submit park-it report to Office"}
+                  {!signatureDataUrl
+                    ? "Sign above to review the park-it report"
+                    : "Review park-it report"}
                 </Button>
               </div>
             ) : (
@@ -564,25 +725,37 @@ export default function CheckoutCapturePage() {
           <Button
             size="xl"
             className="w-full photo-step-submit-btn"
-            onClick={handleSubmit}
+            onClick={() => setPhase("review")}
             disabled={submitting || !canSubmit}
           >
-            {submitting
-              ? uploadProgress || "Saving…"
-              : !inspectionValid.ok
+            {!inspectionValid.ok
                 ? "Finish Precheck"
                 : redPark
                   ? "Park it — go back to Precheck to sign"
                 : !photosComplete
-                ? `Submit when ${required.filter((s) => photos[s.angle]).length}/${required.length} photos are filled`
+                ? `Review when ${required.filter((s) => photos[s.angle]).length}/${required.length} photos are filled`
                 : !signatureDataUrl
-                  ? "Sign above to submit"
-                  : "Submit complete report"}
+                  ? "Sign above to review"
+                  : "Review report"}
           </Button>
         </div>
           </>
         )}
       </div>
     </div>
+  );
+}
+
+export default function CheckoutCapturePageWithSearch() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="animate-pulse text-brand-600">Loading...</div>
+        </div>
+      }
+    >
+      <CheckoutCapturePage />
+    </Suspense>
   );
 }

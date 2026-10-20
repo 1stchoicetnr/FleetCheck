@@ -3,7 +3,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
-import { UserRole, ROLE_LABELS } from "@/lib/types";
+import { UserRole } from "@/lib/types";
 import { Truck, Shield, Wrench, Car, ChevronRight } from "lucide-react";
 
 const LOGIN_OPTIONS: {
@@ -149,9 +149,6 @@ export default function LoginPage() {
                   </p>
                   <p className="text-sm text-gray-600 mt-0.5">
                     {isLoading ? "Signing in..." : option.description}
-                  </p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {ROLE_LABELS[option.role]}
                   </p>
                 </div>
                 <ChevronRight

@@ -42,7 +42,7 @@ export default function DashboardPage() {
     href: "/checkout",
     icon: <ClipboardCheck className="h-7 w-7" />,
     label: "Checkout Report",
-    desc: "Precheck, then photos if Green or Yellow",
+    desc: "Precheck, then photos if the van is OK to drive",
     color: "bg-emerald-100 text-emerald-700",
   };
 

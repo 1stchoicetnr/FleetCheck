@@ -1,6 +1,9 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { displayPlate, normalizePlate } from "./plate";
 import { Vehicle } from "./types";
+
+export { displayPlate, normalizePlate };
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -31,10 +34,6 @@ export function formatDateOnly(iso: string): string {
 
 export function formatMileage(miles: number): string {
   return miles.toLocaleString("en-US") + " mi";
-}
-
-export function normalizePlate(plate: string): string {
-  return plate.replace(/[\s-]/g, "").toUpperCase();
 }
 
 export function formatUnitLabel(unitNumber?: string, plate?: string): string {

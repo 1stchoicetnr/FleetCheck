@@ -70,7 +70,7 @@ export default function OfficeReportDetailPage() {
   const [vehicle, setVehicle] = useState<SharedVehicle | null>(null);
   const [saveError, setSaveError] = useState("");
   const [company, setCompany] = useState<Company | null>(null);
-  const [decision, setDecision] = useState<CheckoutReviewStatus>("pass");
+  const [decision, setDecision] = useState<CheckoutReviewStatus | "">("");
   const [reviewNotes, setReviewNotes] = useState("");
   const [newDamageNotes, setNewDamageNotes] = useState("");
   const [retakeAngles, setRetakeAngles] = useState<PhotoAngle[]>([]);
@@ -205,7 +205,7 @@ export default function OfficeReportDetailPage() {
   };
 
   const handleSave = async () => {
-    if (!report || !user) return;
+    if (!report || !user || !decision) return;
     if (decision === "conditional" && retakeAngles.length === 0) return;
     setSaving(true);
     const updated: CheckoutReport = {
@@ -625,10 +625,11 @@ export default function OfficeReportDetailPage() {
                 onClick={handleSave}
                 disabled={
                   saving ||
+                  !decision ||
                   (decision === "conditional" && retakeAngles.length === 0)
                 }
               >
-                {saving ? "Saving…" : "Save review"}
+                {saving ? "Saving…" : decision ? "Save review" : "Choose PASS, Conditional, or FAIL"}
               </Button>
             </CardContent>
           </Card>
@@ -637,13 +638,17 @@ export default function OfficeReportDetailPage() {
       </OfficePinGate>
       <ConfirmDialog
         open={recordAction !== null}
-        title={recordAction === "delete" ? "Delete this report?" : report?.archivedAt ? "Unarchive this report?" : "Archive this report?"}
+        title={
+          report
+            ? `${recordAction === "delete" ? "Delete" : report.archivedAt ? "Unarchive" : "Archive"} ${formatUnitLabel(report.unitNumber, report.plate)} ${report.type === "check_in" ? "check-in" : "check-out"} from ${formatDate(report.completedAt)}?`
+            : "Update this report?"
+        }
         body={
           recordAction === "delete"
-            ? "This permanently removes the office record and its photos. This cannot be undone."
+            ? "This permanently removes that office record and its photos. This cannot be undone."
             : report?.archivedAt
-              ? "The report will show in the default office list again."
-              : "The report stays on file and disappears from the default office list. Turn on Show archived reports to see it."
+              ? "That report will show in the default office list again."
+              : "That report stays on file and disappears from the default office list. Turn on Show archived reports to see it."
         }
         confirmLabel={recordAction === "delete" ? "Delete report" : report?.archivedAt ? "Unarchive" : "Archive"}
         danger={recordAction === "delete"}

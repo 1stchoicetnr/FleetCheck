@@ -24,7 +24,7 @@ import {
 } from "@/lib/fleet-config";
 import { isOfficeUnlocked } from "@/lib/office-auth";
 import { Vehicle, Fleet, CheckRecord, MaintenanceLogEntry, FUEL_LEVEL_LABELS } from "@/lib/types";
-import { formatDate, formatMileage } from "@/lib/utils";
+import { formatDate, formatMileage, formatUnitLabel } from "@/lib/utils";
 import { OilChangeStatusBadge } from "@/components/oil-change-status";
 import { OilChangeEditor } from "@/components/oil-change-editor";
 import { MaintenanceLogSection } from "@/components/maintenance-log-section";
@@ -121,7 +121,13 @@ export default function VehicleDetailPage() {
                 variant="danger"
                 size="sm"
                 className="w-full"
-                onClick={() => setConfirmDelete(true)}
+                onClick={() => {
+                  if (!isOfficeUnlocked()) {
+                    router.push(`/office?next=/vehicles/${vehicle.id}`);
+                    return;
+                  }
+                  setConfirmDelete(true);
+                }}
               >
                 Delete this vehicle
               </Button>
@@ -205,8 +211,8 @@ export default function VehicleDetailPage() {
       </div>
       <ConfirmDialog
         open={confirmDelete}
-        title="Delete this vehicle?"
-        body={`This removes ${vehicle.unitNumber || vehicle.plate} from this browser's fleet list. Checkout units stored for Office are separate.`}
+        title={`Delete ${formatUnitLabel(vehicle.unitNumber, vehicle.plate)}?`}
+        body={`This removes ${formatUnitLabel(vehicle.unitNumber, vehicle.plate)} (${vehicle.year} ${vehicle.make} ${vehicle.model}) from this browser's fleet list. Checkout units stored for Office are separate.`}
         confirmLabel="Delete vehicle"
         danger
         onConfirm={() => {

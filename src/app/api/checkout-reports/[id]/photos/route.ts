@@ -1,6 +1,6 @@
 import { errorResponse } from "@/lib/server/api-error";
 import { NextResponse } from "next/server";
-import { addReportPhoto } from "@/lib/server/checkout-repo";
+import { addReportPhoto, addReportPhotos } from "@/lib/server/checkout-repo";
 import { getReport } from "@/lib/server/checkout-repo";
 import { isOfficeRequest } from "@/lib/server/office-pin";
 import { RequestError } from "@/lib/server/api-error";
@@ -24,7 +24,50 @@ export async function POST(
       capturedAt?: string;
       flaggedDamage?: boolean;
       damageNote?: string;
+      photos?: Array<{
+        angle?: PhotoAngle;
+        dataUrl?: string;
+        capturedAt?: string;
+        flaggedDamage?: boolean;
+        damageNote?: string;
+      }>;
     };
+    const batch = Array.isArray(body.photos) ? body.photos : null;
+    if (batch) {
+      if (batch.length === 0 || batch.length > 8) {
+        throw new RequestError("Send 1 to 8 photos at a time", 400);
+      }
+      for (const photo of batch) {
+        if (!photo.angle || !photo.dataUrl) {
+          throw new RequestError("Each photo needs an angle and image", 400);
+        }
+        if (!PHOTO_ANGLES.some((step) => step.angle === photo.angle)) {
+          throw new RequestError("Unknown photo angle", 400);
+        }
+        assertPhotoDataUrl(photo.dataUrl);
+        if (typeof photo.damageNote === "string" && photo.damageNote.length > 2000) {
+          throw new RequestError("Damage note is too long", 400);
+        }
+      }
+      if (!(await isOfficeRequest(req))) {
+        const existing = await getReport(id);
+        const created = existing ? Date.parse(existing.createdAt) : NaN;
+        if (!existing || !Number.isFinite(created) || Date.now() - created > DRIVER_UPLOAD_WINDOW_MS) {
+          throw new RequestError("This checkout is closed for new photos. Ask the office.", 403);
+        }
+      }
+      const report = await addReportPhotos(
+        id,
+        batch.map((photo) => ({
+          angle: photo.angle as PhotoAngle,
+          dataUrl: photo.dataUrl as string,
+          capturedAt: photo.capturedAt,
+          flaggedDamage: photo.flaggedDamage,
+          damageNote: photo.damageNote,
+        }))
+      );
+      return NextResponse.json({ report });
+    }
     if (!body.angle || !body.dataUrl) {
       return NextResponse.json(
         { error: "angle and dataUrl are required" },

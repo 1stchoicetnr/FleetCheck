@@ -8,6 +8,7 @@ import {
   VehiclePhoto,
 } from "@/lib/types";
 import type { FleetSettings } from "@/lib/fleet-settings";
+import type { UserRole } from "@/lib/types";
 
 export interface SharedVehicle {
   id: string;
@@ -77,11 +78,21 @@ export interface SharedOfficeAlert {
   archivedAt?: string;
 }
 
+export interface SharedAppUser {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  active: boolean;
+  createdAt: string;
+}
+
 export interface SharedStore {
   companies: Company[];
   vehicles: SharedVehicle[];
   reports: CheckoutReport[];
   alerts?: SharedOfficeAlert[];
+  users?: SharedAppUser[];
   settings?: FleetSettings;
 }
 

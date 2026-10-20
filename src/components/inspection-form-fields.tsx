@@ -304,7 +304,7 @@ export function InspectionFormFields({
       <div className="space-y-3">
         <h3 className="text-base font-bold text-gray-900">Tread level</h3>
         <p className="text-sm text-gray-600">
-          Rate each tire (LF / RF / LR / RR). Replaces the four tire-tread photos.
+          Rate each tire (LF / RF / LR / RR). Tread is recorded here, not as its own photo.
         </p>
         <div className="space-y-3">
           {TREAD_TIRE_ITEMS.map((tire) => {
@@ -383,8 +383,8 @@ export function InspectionFormFields({
       <div className="space-y-3">
         <h3 className="text-base font-bold text-gray-900">Damage notes</h3>
         <p className="text-sm text-gray-600">
-          Mark a side and add a short note. Photo walkaround still has per-photo
-          DAMAGE flags after Green or Yellow.
+          Mark a side and add a short note. The photo walkaround still has a
+          DAMAGE flag on each photo.
         </p>
         <VehicleSilhouette
           marked={synced.damage.marks ?? []}

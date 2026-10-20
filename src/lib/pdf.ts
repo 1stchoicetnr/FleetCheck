@@ -25,7 +25,6 @@ import {
   flaggedDamageAngles,
   isPhotoDamageFlagged,
   photoAngleLabel,
-  sortAnglesDamageFirst,
 } from "./photo-flags";
 import {
   formatCloverSerial,
@@ -364,8 +363,7 @@ export async function generateCheckoutReportPDF(
       photo,
     });
   }
-  const ordered = sortAnglesDamageFirst(listed, report.photos);
-  const present = ordered.filter((item) => item.photo?.dataUrl);
+  const present = listed.filter((item) => item.photo?.dataUrl);
 
   let y = 20;
   doc.setFontSize(20);
@@ -491,7 +489,7 @@ export async function generateCheckoutReportPDF(
   }
 
   section("Photo index");
-  ordered.forEach((item, i) => {
+  listed.forEach((item, i) => {
     const damage = isPhotoDamageFlagged(item.photo) ? " · DAMAGE" : "";
     addWrapped(
       `${i + 1}. ${item.label}${damage} — ${item.photo?.dataUrl ? "included" : "missing"}`
@@ -500,37 +498,38 @@ export async function generateCheckoutReportPDF(
   y += 4;
   addWrapped("This PDF is a copy. Office /office is the record.");
 
-  let photoNumber = 0;
-  for (const item of present) {
-    const src = item.photo?.dataUrl;
-    if (!src) continue;
-    photoNumber += 1;
+  const perPage = present.length > 4 ? 3 : 2;
+  for (let start = 0; start < present.length; start += perPage) {
+    const slice = present.slice(start, start + perPage);
     doc.addPage();
-    y = 16;
-    doc.setFontSize(13);
-    doc.setFont("helvetica", "bold");
-    doc.text(
-      `${item.label}${isPhotoDamageFlagged(item.photo) ? " · DAMAGE" : ""}`,
-      14,
-      y
-    );
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-    doc.text(`Photo ${photoNumber} of ${present.length}`, pageWidth - 14, y, {
-      align: "right",
-    });
-    try {
-      const dataUrl = await resolvePdfPhoto(
-        src,
-        checkoutPhotoProxyUrl(report.id, item.angle)
+    const slotHeight = (pageHeight - 28) / perPage;
+    for (let index = 0; index < slice.length; index += 1) {
+      const item = slice[index];
+      const photoNumber = start + index + 1;
+      const top = 14 + index * slotHeight;
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.text(
+        `${photoNumber}. ${item.label}${isPhotoDamageFlagged(item.photo) ? " · DAMAGE" : ""}`,
+        14,
+        top
       );
-      const { width: imgW, height: imgH } = await getImageDimensions(dataUrl);
-      const { width, height } = fitInBox(imgW, imgH, pageWidth - 28, pageHeight - 40);
-      const x = 14 + (pageWidth - 28 - width) / 2;
-      doc.addImage(dataUrl, pdfImageFormat(dataUrl), x, 22, width, height);
-    } catch {
-      doc.setFont("helvetica", "normal");
-      doc.text("[Photo could not be embedded]", 14, 40);
+      const src = item.photo?.dataUrl;
+      if (!src) continue;
+      try {
+        const dataUrl = await resolvePdfPhoto(
+          src,
+          checkoutPhotoProxyUrl(report.id, item.angle)
+        );
+        const { width: imgW, height: imgH } = await getImageDimensions(dataUrl);
+        const { width, height } = fitInBox(imgW, imgH, pageWidth - 28, slotHeight - 16);
+        const x = 14 + (pageWidth - 28 - width) / 2;
+        doc.addImage(dataUrl, pdfImageFormat(dataUrl), x, top + 4, width, height);
+      } catch {
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(10);
+        doc.text("[Photo could not be embedded]", 14, top + 12);
+      }
     }
   }
 

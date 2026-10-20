@@ -2,53 +2,68 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { getVehicles } from "@/lib/storage";
-import { STATUS_LABELS, VehicleStatus } from "@/lib/types";
-const STATUSES: VehicleStatus[] = [
-  "ready",
-  "checked_out",
-  "needs_work",
-  "out_of_service",
-];
-
-const COLORS: Record<VehicleStatus, string> = {
-  ready: "bg-green-100 text-green-800 border-green-200",
-  checked_out: "bg-blue-100 text-blue-800 border-blue-200",
-  needs_work: "bg-amber-100 text-amber-900 border-amber-200",
-  out_of_service: "bg-red-100 text-red-800 border-red-200",
-};
+import { fetchCompanies, fetchVehicles } from "@/lib/checkout-api";
+import { Company } from "@/lib/types";
+import { summarizeUnits, unitCountLine, UnitCounts } from "@/lib/unit-counts";
 
 export function FleetStatusStats() {
-  const [counts, setCounts] = useState<Record<VehicleStatus, number>>({
-    ready: 0,
-    checked_out: 0,
-    needs_work: 0,
-    out_of_service: 0,
-  });
+  const [summary, setSummary] = useState<UnitCounts | null>(null);
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    getVehicles().then((vehicles) => {
-      const next = { ready: 0, checked_out: 0, needs_work: 0, out_of_service: 0 };
-      for (const v of vehicles) {
-        next[v.status]++;
-      }
-      setCounts(next);
-    });
+    Promise.all([
+      fetchVehicles(undefined, { includeArchived: true }),
+      fetchCompanies(),
+    ])
+      .then(([vehicles, companyList]) => {
+        setSummary(summarizeUnits(vehicles));
+        setCompanies(companyList);
+        setError("");
+      })
+      .catch((err: Error) => {
+        setError(err.message || "Could not load the shared unit list.");
+      });
   }, []);
 
-  return (
-    <div className="grid grid-cols-2 gap-3">
-      {STATUSES.map((s) => (
-        <Link
-          key={s}
-          href={`/vehicles?status=${s}`}
-          className={`rounded-xl border p-4 text-center transition-shadow hover:shadow-md active:scale-[0.98] ${COLORS[s]}`}
-        >
-          <p className="text-2xl font-bold">{counts[s]}</p>
-          <p className="text-xs font-semibold uppercase tracking-wide mt-1">
-            {STATUS_LABELS[s]}
-          </p>
+  if (error) {
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+        <p>Unlock Office to load the shared unit count.</p>
+        <Link href="/office?next=/dashboard" className="font-semibold underline">
+          Enter office PIN
         </Link>
-      ))}    </div>
+      </div>
+    );
+  }
+
+  if (!summary) {
+    return <p className="text-sm text-gray-500">Loading units…</p>;
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-sm font-medium text-gray-700">{unitCountLine(summary)}</p>
+      <div className="grid grid-cols-2 gap-3">
+        {companies.map((company) => {
+          const bucket = summary.byCompany[company.id] ?? { active: 0, archived: 0 };
+          return (
+            <Link
+              key={company.id}
+              href="/office/units"
+              className="rounded-xl border border-slate-200 bg-white p-4 text-center transition-shadow hover:shadow-md active:scale-[0.98]"
+            >
+              <p className="text-2xl font-bold text-gray-900">{bucket.active}</p>
+              <p className="text-xs font-semibold uppercase tracking-wide mt-1 text-gray-600">
+                {company.name}
+              </p>
+              <p className="text-[11px] text-gray-400 mt-1">
+                {bucket.archived} archived
+              </p>
+            </Link>
+          );
+        })}
+      </div>
+    </div>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { FormEvent, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AppHeader } from "@/components/app-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,13 +34,19 @@ import {
   saveLastVehicleId,
 } from "@/lib/checkout-prefs";
 import { odometerPrefill } from "@/lib/odometer-prefill";
+import { unitsForCompany } from "@/lib/unit-counts";
 import { formatDateOnly, formatUnitLabel, normalizePlate } from "@/lib/utils";
 import { ClipboardCheck } from "lucide-react";
 import { useCheckoutFeedbackMeta } from "@/components/checkout-feedback";
 
-export default function CheckoutStartPage() {
+function CheckoutStartPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const draftOdometer = useRef<string | null>(null);
+  const draftVehicleId = useRef("");
+  const [editingDraftId, setEditingDraftId] = useState("");
+  const [unitsLoading, setUnitsLoading] = useState(false);
 
   const [companies, setCompanies] = useState<Company[]>([]);
   const [vehicles, setVehicles] = useState<SharedVehicle[]>([]);
@@ -96,10 +102,35 @@ export default function CheckoutStartPage() {
   }, []);
 
   useEffect(() => {
+    const draftId = searchParams.get("draft");
+    if (!draftId) return;
+    void getCheckoutDraft(draftId).then((draft) => {
+      if (!draft) return;
+      setEditingDraftId(draft.id);
+      setCompanyId(draft.companyId);
+      setVehicleId(draft.vehicleId);
+      setType(draft.type);
+      setYear(draft.year);
+      setMake(draft.make);
+      setModel(draft.model);
+      setDriverName(draft.driverName);
+      setDispatcherName(draft.dispatcherName);
+      setCloverSerial(draft.inspectionForm?.cloverSerial ?? "");
+      draftVehicleId.current = draft.vehicleId;
+      draftOdometer.current = draft.odometer;
+      setOdometer(draft.odometer);
+    });
+  }, [searchParams]);
+
+  useEffect(() => {
     if (!companyId) return;
+    let cancelled = false;
+    setUnitsLoading(true);
+    setUnitQuery("");
     fetchVehicles(companyId)
       .then((list) => {
-        const sorted = [...list].sort((a, b) =>
+        if (cancelled) return;
+        const sorted = unitsForCompany(list, companyId).sort((a, b) =>
           a.unitNumber.localeCompare(b.unitNumber, undefined, { numeric: true })
         );
         setVehicles(sorted);
@@ -109,10 +140,17 @@ export default function CheckoutStartPage() {
           if (last && sorted.some((v) => v.id === last)) return last;
           return sorted[0]?.id ?? "";
         });
+        setLoadError("");
       })
       .catch((err: Error) => {
-        setLoadError(err.message || "Could not load units from the shared server.");
+        if (!cancelled) setLoadError(err.message || "Could not load units from the shared server.");
+      })
+      .finally(() => {
+        if (!cancelled) setUnitsLoading(false);
       });
+    return () => {
+      cancelled = true;
+    };
   }, [companyId]);
 
   const filteredVehicles = useMemo(() => {
@@ -162,8 +200,14 @@ export default function CheckoutStartPage() {
     setMake(selected.make);
     setModel(selected.model);
     setPowertrainOverride(selected.powertrain || "");
+    if (draftOdometer.current != null) {
+      if (selected.id !== draftVehicleId.current) return;
+      setOdometer(draftOdometer.current);
+      draftOdometer.current = null;
+      return;
+    }
     setOdometer(odometerPrefill(selected.lastMileage));
-  }, [addingUnit, selected]);
+  }, [addingUnit, selected, editingDraftId]);
 
   const handleStart = async (e: FormEvent) => {
     e.preventDefault();
@@ -232,7 +276,7 @@ export default function CheckoutStartPage() {
         );
       }
 
-      const id = checkoutDraftId(companyId, vehicle.id, type, user.id);
+      const id = editingDraftId || checkoutDraftId(companyId, vehicle.id, type, user.id);
       const existing = await getCheckoutDraft(id);
       const powertrain = inferPowertrain(
         make.trim(),
@@ -272,7 +316,7 @@ export default function CheckoutStartPage() {
       });
       saveLastDispatcherName(dispatcherName.trim());
       saveLastVehicleId(companyId, vehicle.id);
-      router.push(`/checkout/${id}`);
+      router.push(editingDraftId ? `/checkout/${id}?phase=review` : `/checkout/${id}`);
     } catch (err) {
       setError(
         err instanceof Error
@@ -297,8 +341,8 @@ export default function CheckoutStartPage() {
             Start a vehicle checkout
           </h2>
           <p className="text-sm text-gray-600">
-            Precheck first (about a minute), then photos if Green or Yellow.
-            Red parks the van for Office.
+            Precheck first (about a minute). If the van is OK to drive, continue
+            to the photo walkaround. A red precheck parks the van for Office.
           </p>
         </div>
 
@@ -352,11 +396,12 @@ export default function CheckoutStartPage() {
                           : "border-gray-300"
                       }`}
                     >
-                      {filteredVehicles.length === 0 && (
+                      {unitsLoading && <option value="">Loading units…</option>}
+                      {!unitsLoading && filteredVehicles.length === 0 && (
                         <option value="">
                           {allowDriverAdd
-                            ? "No units match — add the plate below"
-                            : "No units match. Ask Super Admin to add this van."}
+                            ? "No units in this company — add the plate below"
+                            : "No units in this company. Ask Super Admin to add this van."}
                         </option>
                       )}
                       {filteredVehicles.map((v) => (
@@ -372,8 +417,9 @@ export default function CheckoutStartPage() {
                       </p>
                     )}
                     <p className="text-xs text-gray-500 mt-1.5">
-                      Only active units. Archived / out-of-service vans are
-                      hidden until Office unarchives them.
+                      {unitsLoading
+                        ? "Loading this company's units…"
+                        : `${filteredVehicles.length} active unit${filteredVehicles.length === 1 ? "" : "s"} in ${companies.find((c) => c.id === companyId)?.name ?? "this company"}. Archived vans stay hidden.`}
                     </p>
                   </div>
                 </>
@@ -602,5 +648,19 @@ export default function CheckoutStartPage() {
         </Card>
       </div>
     </div>
+  );
+}
+
+export default function CheckoutStartPageWithSearch() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="animate-pulse text-brand-600">Loading...</div>
+        </div>
+      }
+    >
+      <CheckoutStartPage />
+    </Suspense>
   );
 }

@@ -19,7 +19,7 @@ import {
   setCheckArchived,
 } from "@/lib/storage";
 import { CheckRecord, Vehicle, Fleet, FUEL_LEVEL_LABELS } from "@/lib/types";
-import { formatDate, formatMileage } from "@/lib/utils";
+import { formatDate, formatMileage, formatUnitLabel } from "@/lib/utils";
 import { generateCheckPDF, downloadPDF } from "@/lib/pdf";
 import { Download, FileText } from "lucide-react";
 import { checksToCsv, downloadCsv } from "@/lib/export-checks";
@@ -210,7 +210,10 @@ export default function ReportsPage() {
                         variant="outline"
                         size="sm"
                         className="flex-1"
-                        onClick={() => setPending({ check, action: "archive" })}
+                        onClick={() => {
+                          if (!requireOffice()) return;
+                          setPending({ check, action: "archive" });
+                        }}
                       >
                         {check.archivedAt ? "Unarchive" : "Archive"}
                       </Button>
@@ -218,7 +221,10 @@ export default function ReportsPage() {
                         variant="danger"
                         size="sm"
                         className="flex-1"
-                        onClick={() => setPending({ check, action: "delete" })}
+                        onClick={() => {
+                          if (!requireOffice()) return;
+                          setPending({ check, action: "delete" });
+                        }}
                       >
                         Delete
                       </Button>
@@ -233,11 +239,9 @@ export default function ReportsPage() {
       <ConfirmDialog
         open={pending !== null}
         title={
-          pending?.action === "delete"
-            ? "Delete this record?"
-            : pending?.check.archivedAt
-              ? "Unarchive this record?"
-              : "Archive this record?"
+          pending
+            ? `${pending.action === "delete" ? "Delete" : pending.check.archivedAt ? "Unarchive" : "Archive"} ${legacyRecordLabel(pending.check, vehicles)}?`
+            : "Update this record?"
         }
         body={
           pending?.action === "delete"
@@ -251,4 +255,16 @@ export default function ReportsPage() {
       />
     </div>
   );
+}
+
+function legacyRecordLabel(
+  check: CheckRecord,
+  vehicles: Record<string, Vehicle>
+): string {
+  const vehicle = vehicles[check.vehicleId];
+  const unit = vehicle
+    ? formatUnitLabel(vehicle.unitNumber, vehicle.plate)
+    : "this unit";
+  const kind = check.type === "check_in" ? "check-in" : "check-out";
+  return `${unit} ${kind} from ${formatDate(check.createdAt)}`;
 }

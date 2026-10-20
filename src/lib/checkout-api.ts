@@ -214,6 +214,26 @@ export async function createCheckoutReport(input: {
   return data.report;
 }
 
+export async function uploadCheckoutPhotos(
+  reportId: string,
+  photos: Array<{
+    angle: PhotoAngle;
+    dataUrl: string;
+    capturedAt?: string;
+    flaggedDamage?: boolean;
+    damageNote?: string;
+  }>
+): Promise<CheckoutReport> {
+  const data = await api<{ report: CheckoutReport }>(
+    `/api/checkout-reports/${reportId}/photos`,
+    {
+      method: "POST",
+      body: JSON.stringify({ photos }),
+    }
+  );
+  return data.report;
+}
+
 export async function uploadCheckoutPhoto(
   reportId: string,
   angle: PhotoAngle,
@@ -292,6 +312,43 @@ export async function verifyOfficePinRemote(
       error: err instanceof Error ? err.message : "Incorrect PIN. Try again.",
     };
   }
+}
+
+export interface AppUserRecord {
+  id: string;
+  name: string;
+  email: string;
+  role: "super_admin" | "management" | "tech" | "driver";
+  active: boolean;
+  createdAt: string;
+}
+
+export async function fetchAppUsers(): Promise<AppUserRecord[]> {
+  const data = await api<{ users: AppUserRecord[] }>("/api/users");
+  return data.users;
+}
+
+export async function createAppUser(input: {
+  name: string;
+  email: string;
+  role: AppUserRecord["role"];
+}): Promise<AppUserRecord> {
+  const data = await api<{ user: AppUserRecord }>("/api/users", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return data.user;
+}
+
+export async function updateAppUser(
+  id: string,
+  patch: Partial<Pick<AppUserRecord, "name" | "email" | "role" | "active">>
+): Promise<AppUserRecord> {
+  const data = await api<{ user: AppUserRecord }>(`/api/users/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+  return data.user;
 }
 
 export async function fetchFleetSettings(): Promise<FleetSettings> {

@@ -9,18 +9,20 @@ import { useAuth } from "@/hooks/use-auth";
 import { canManageFleet, canManageKnownIssues } from "@/lib/fleet-config";
 import {
   getFleets,
-  getUsers,
   getVehicles,
   getChecks,
   getCompanies,
 } from "@/lib/storage";
 import {
+  fetchAppUsers,
+  fetchCompanies,
   fetchFleetSettings,
   fetchVehicles,
   SharedVehicle,
   updateFleetSettings,
 } from "@/lib/checkout-api";
-import { Company, Fleet, User, Vehicle, fleetTypeLabel } from "@/lib/types";
+import { Company, Fleet, Vehicle, fleetTypeLabel } from "@/lib/types";
+import { summarizeUnits, unitCountLine, UnitCounts } from "@/lib/unit-counts";
 import { formatUnitLabel } from "@/lib/utils";
 import Link from "next/link";
 import { buildLastCheckMap, formatLastCheckLine } from "@/lib/vehicle-check-status";
@@ -34,11 +36,12 @@ export default function AdminPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const [fleets, setFleets] = useState<Fleet[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [checks, setChecks] = useState<Awaited<ReturnType<typeof getChecks>>>([]);
   const [checkoutUnits, setCheckoutUnits] = useState<SharedVehicle[]>([]);
+  const [unitSummary, setUnitSummary] = useState<UnitCounts | null>(null);
+  const [serverUserCount, setServerUserCount] = useState<number | null>(null);
   const [unitsError, setUnitsError] = useState("");
   const [allowDriverAdd, setAllowDriverAdd] = useState(false);
   const [settingsSaving, setSettingsSaving] = useState(false);
@@ -52,20 +55,25 @@ export default function AdminPage() {
   useEffect(() => {
     Promise.all([
       getFleets(),
-      getUsers(),
       getVehicles(),
       getChecks(),
       getCompanies(),
-    ]).then(([f, u, v, c, companiesList]) => {
+    ]).then(([f, v, c, companiesList]) => {
       setFleets(f);
-      setUsers(u);
       setVehicles(v);
       setChecks(c);
-      setCompanies(companiesList);
+      setCompanies((current) => (current.length > 0 ? current : companiesList));
     });
-    fetchVehicles(undefined, { includeArchived: false })
-      .then((list) => {
-        setCheckoutUnits(list);
+    Promise.all([
+      fetchVehicles(undefined, { includeArchived: true }),
+      fetchCompanies(),
+      fetchAppUsers(),
+    ])
+      .then(([list, serverCompanies, serverUsers]) => {
+        setCheckoutUnits(list.filter((unit) => !unit.archivedAt));
+        setUnitSummary(summarizeUnits(list));
+        setCompanies(serverCompanies);
+        setServerUserCount(serverUsers.length);
         setUnitsError("");
       })
       .catch((err: Error) => {
@@ -93,19 +101,44 @@ export default function AdminPage() {
         {/* Stats */}
         <div className="grid grid-cols-3 gap-3">
           {[
-            { label: "Companies", value: companies.length, icon: Truck },
-            { label: "Vehicles", value: vehicles.length, icon: Truck },
-            { label: "Users", value: users.length, icon: Users },
+            { label: "Companies", value: companies.length, icon: Truck, href: "/office/units" },
+            {
+              label: "Active units",
+              value: unitSummary ? unitSummary.active : "…",
+              icon: Truck,
+              href: "/office/units",
+            },
+            {
+              label: "Users",
+              value: serverUserCount ?? "…",
+              icon: Users,
+              href: "/admin/users",
+            },
           ].map((stat) => (
-            <Card key={stat.label}>
-              <CardContent className="py-4 text-center">
-                <stat.icon className="h-5 w-5 mx-auto text-brand-600 mb-1" />
-                <p className="text-2xl font-bold">{stat.value}</p>
-                <p className="text-xs text-gray-500">{stat.label}</p>
-              </CardContent>
-            </Card>
+            <Link key={stat.label} href={stat.href}>
+              <Card>
+                <CardContent className="py-4 text-center">
+                  <stat.icon className="h-5 w-5 mx-auto text-brand-600 mb-1" />
+                  <p className="text-2xl font-bold">{stat.value}</p>
+                  <p className="text-xs text-gray-500">{stat.label}</p>
+                </CardContent>
+              </Card>
+            </Link>
           ))}
         </div>
+        <p className="text-sm text-gray-600 -mt-3">
+          {unitSummary
+            ? unitCountLine(unitSummary)
+            : unitsError
+              ? "Unlock Office to load the shared unit count."
+              : "Loading units…"}
+        </p>
+        <Link href="/admin/users">
+          <Button size="lg" variant="secondary" className="w-full">
+            <Users className="h-5 w-5 mr-2" />
+            Add or edit users
+          </Button>
+        </Link>
 
         {/* Add Vehicle */}
         <Link href="/admin/vehicles/new">
@@ -221,7 +254,9 @@ export default function AdminPage() {
                   </p>
                 </div>
                 <span className="text-sm text-gray-400">
-                  {vehicles.filter((v) => v.companyId === c.id).length} units
+                  {unitSummary
+                    ? `${unitSummary.byCompany[c.id]?.active ?? 0} active`
+                    : "…"}
                 </span>
               </div>
             ))}
@@ -243,8 +278,8 @@ export default function AdminPage() {
                     {fleetTypeLabel(f.type)}
                   </p>
                 </div>
-                <span className="text-sm text-gray-400">
-                  {vehicles.filter((v) => v.fleetId === f.id).length} vehicles
+                <span className="text-sm text-gray-400 text-right">
+                  {fleetCountLabel(f, fleets, unitSummary)}
                 </span>
               </div>
             ))}
@@ -325,4 +360,19 @@ export default function AdminPage() {
       </div>
     </div>
   );
+}
+
+function fleetCountLabel(
+  fleet: Fleet,
+  fleets: Fleet[],
+  summary: UnitCounts | null
+): string {
+  if (!summary) return "…";
+  const companyId = fleet.companyId;
+  if (!companyId) return "0 active";
+  const active = summary.byCompany[companyId]?.active ?? 0;
+  const sharesCompany =
+    fleets.filter((item) => item.companyId === companyId).length > 1;
+  if (sharesCompany) return `Same ${active} active units`;
+  return `${active} active`;
 }

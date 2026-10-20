@@ -1,4 +1,4 @@
-import { generateId, normalizePlate } from "@/lib/utils";
+import { displayPlate, generateId } from "@/lib/utils";
 import {
   CheckoutReport,
   Company,
@@ -23,7 +23,10 @@ import {
   localGetVehicle,
   localListCompanies,
   localDeleteReport,
+  localInsertUser,
   localListAlerts,
+  localListUsers,
+  localUpdateUser,
   localDeleteAlert,
   localListReports,
   localListVehicles,
@@ -47,7 +50,10 @@ import {
   pgListCompanies,
   pgDeleteAlert,
   pgDeleteReport,
+  pgInsertUser,
   pgListAlerts,
+  pgListUsers,
+  pgUpdateUser,
   pgListReports,
   pgListVehicles,
   pgPutReport,
@@ -64,6 +70,7 @@ import {
   CheckoutReportInput,
   CheckoutReviewInput,
   ListVehiclesOptions,
+  SharedAppUser,
   SharedOfficeAlert,
   SharedVehicle,
   UpsertVehicleInput,
@@ -248,7 +255,7 @@ export async function createReport(
       year: input.year,
     });
   }
-  const plate = normalizePlate(input.plate || vehicle.plate || input.unitNumber);
+  const plate = displayPlate(input.plate || vehicle.plate || input.unitNumber);
   const report: CheckoutReport = {
     id: generateId(),
     ...input,
@@ -311,6 +318,56 @@ export async function addReportPhoto(
   };
   const saved = mode === "postgres" ? await pgPutReport(updated) : await localPutReport(updated);
   if (flags?.flaggedDamage) {
+    void recordCheckoutAlerts(saved).catch((err) => {
+      console.error("[alerts] photo flag alerts failed:", err);
+    });
+  }
+  return saved;
+}
+
+export async function addReportPhotos(
+  reportId: string,
+  incoming: Array<{
+    angle: PhotoAngle;
+    dataUrl: string;
+    capturedAt?: string;
+    flaggedDamage?: boolean;
+    damageNote?: string;
+  }>
+): Promise<CheckoutReport> {
+  const mode = assertConfigured();
+  const existing =
+    mode === "postgres" ? await pgGetReport(reportId) : await localGetReport(reportId);
+  if (!existing) throw new SharedBackendError("Checkout report not found", 404);
+  const stored = await Promise.all(
+    incoming.map(async (item) => {
+      const url = await persistCheckoutPhoto(reportId, item.angle, item.dataUrl);
+      const photo: VehiclePhoto = {
+        angle: item.angle,
+        dataUrl: url,
+        capturedAt: item.capturedAt || new Date().toISOString(),
+        flaggedDamage: item.flaggedDamage || undefined,
+        damageNote: item.damageNote?.trim() || undefined,
+      };
+      return photo;
+    })
+  );
+  const photos = [...existing.photos];
+  for (const photo of stored) {
+    const idx = photos.findIndex((item) => item.angle === photo.angle);
+    if (idx >= 0) photos[idx] = photo;
+    else photos.push(photo);
+  }
+  const updated: CheckoutReport = {
+    ...existing,
+    photos,
+    flagged:
+      existing.flagged ||
+      reportHasPhotoDamage({ photos }) ||
+      inspectionFormFlagsReport(existing.inspectionForm),
+  };
+  const saved = mode === "postgres" ? await pgPutReport(updated) : await localPutReport(updated);
+  if (stored.some((photo) => photo.flaggedDamage)) {
     void recordCheckoutAlerts(saved).catch((err) => {
       console.error("[alerts] photo flag alerts failed:", err);
     });
@@ -383,6 +440,51 @@ export async function deleteReport(id: string): Promise<void> {
   await Promise.all(existing.photos.map((photo) => deleteStoredPhoto(photo.dataUrl)));
   const removed = mode === "postgres" ? await pgDeleteReport(id) : await localDeleteReport(id);
   if (!removed) throw new SharedBackendError("Checkout report not found", 404);
+}
+
+const USER_ROLES = ["super_admin", "management", "tech", "driver"] as const;
+
+export async function listAppUsers(): Promise<SharedAppUser[]> {
+  const mode = assertConfigured();
+  return mode === "postgres" ? pgListUsers() : localListUsers();
+}
+
+export async function createAppUser(input: {
+  name: string;
+  email: string;
+  role: SharedAppUser["role"];
+}): Promise<SharedAppUser> {
+  const mode = assertConfigured();
+  const name = input.name.trim();
+  const email = input.email.trim().toLowerCase();
+  if (!name || !email) throw new SharedBackendError("Name and email are required", 400);
+  if (!USER_ROLES.includes(input.role)) throw new SharedBackendError("Choose a role", 400);
+  const existing = await listAppUsers();
+  if (existing.some((user) => user.email.toLowerCase() === email)) {
+    throw new SharedBackendError("A user with that email already exists", 409);
+  }
+  const user: SharedAppUser = {
+    id: generateId(),
+    name,
+    email,
+    role: input.role,
+    active: true,
+    createdAt: new Date().toISOString(),
+  };
+  return mode === "postgres" ? pgInsertUser(user) : localInsertUser(user);
+}
+
+export async function updateAppUser(
+  id: string,
+  patch: Partial<Pick<SharedAppUser, "name" | "email" | "role" | "active">>
+): Promise<SharedAppUser> {
+  const mode = assertConfigured();
+  if (patch.role && !USER_ROLES.includes(patch.role)) {
+    throw new SharedBackendError("Choose a role", 400);
+  }
+  const user = mode === "postgres" ? await pgUpdateUser(id, patch) : await localUpdateUser(id, patch);
+  if (!user) throw new SharedBackendError("User not found", 404);
+  return user;
 }
 
 export async function listOfficeAlerts(includeArchived = false): Promise<SharedOfficeAlert[]> {

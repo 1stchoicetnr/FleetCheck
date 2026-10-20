@@ -19,6 +19,7 @@ import {
 } from "@/lib/checkout-api";
 import { getStoredOfficePin } from "@/lib/office-auth";
 import { Company } from "@/lib/types";
+import { summarizeUnits, unitCountLine } from "@/lib/unit-counts";
 import { formatDate, formatMileage, formatUnitLabel } from "@/lib/utils";
 import { isVehicleArchived } from "@/lib/vehicle-archive";
 import { Archive, ArchiveRestore, Truck } from "lucide-react";
@@ -37,6 +38,7 @@ export default function OfficeUnitsPage() {
   const [actionError, setActionError] = useState("");
   const [pendingArchive, setPendingArchive] = useState<SharedVehicle | null>(null);
   const [officeReady, setOfficeReady] = useState(false);
+  const [unitsReady, setUnitsReady] = useState(false);
   const markOfficeUnlocked = useCallback(() => setOfficeReady(true), []);
 
   useEffect(() => {
@@ -53,7 +55,8 @@ export default function OfficeUnitsPage() {
       })
       .catch((err: Error) => {
         setLoadError(err.message || "Could not load units from the shared server.");
-      });
+      })
+      .finally(() => setUnitsReady(true));
   }, []);
 
   useEffect(() => {
@@ -75,8 +78,6 @@ export default function OfficeUnitsPage() {
         a.unitNumber.localeCompare(b.unitNumber, undefined, { numeric: true })
       );
   }, [vehicles, companyId, filter]);
-
-  const archivedCount = vehicles.filter(isVehicleArchived).length;
 
   const handlePowertrain = async (
     vehicle: SharedVehicle,
@@ -147,7 +148,9 @@ export default function OfficeUnitsPage() {
               checkout reports stay visible.
             </p>
             <p className="text-xs text-gray-400 mt-1">
-              {vehicles.length} units · {archivedCount} archived · PIN-gated
+              {unitsReady
+                ? `${unitCountLine(summarizeUnits(vehicles))} · PIN-gated`
+                : "Loading units…"}
             </p>
           </div>
 
@@ -188,7 +191,11 @@ export default function OfficeUnitsPage() {
             </div>
           </div>
 
-          {filtered.length === 0 ? (
+          {!unitsReady ? (
+            <div className="text-center py-12">
+              <p className="text-gray-500">Loading units…</p>
+            </div>
+          ) : filtered.length === 0 ? (
             <div className="text-center py-12">
               <Truck className="h-12 w-12 mx-auto text-gray-300 mb-3" />
               <p className="text-gray-500">No units match.</p>
@@ -293,14 +300,16 @@ export default function OfficeUnitsPage() {
       <ConfirmDialog
         open={pendingArchive !== null}
         title={
-          pendingArchive && isVehicleArchived(pendingArchive)
-            ? "Unarchive this unit?"
-            : "Archive this unit?"
+          pendingArchive
+            ? `${isVehicleArchived(pendingArchive) ? "Unarchive" : "Archive"} ${formatUnitLabel(pendingArchive.unitNumber, pendingArchive.plate)}?`
+            : "Update this unit?"
         }
         body={
           pendingArchive && isVehicleArchived(pendingArchive)
-            ? `${pendingArchive ? formatUnitLabel(pendingArchive.unitNumber, pendingArchive.plate) : "This unit"} will show up in Checkout again. This uses your office unlock.`
-            : `${pendingArchive ? formatUnitLabel(pendingArchive.unitNumber, pendingArchive.plate) : "This unit"} will be hidden from Checkout. Past reports stay in Office. This uses your office unlock.`
+            ? `${formatUnitLabel(pendingArchive.unitNumber, pendingArchive.plate)} will show up in Checkout again. This uses your office unlock.`
+            : pendingArchive
+              ? `${formatUnitLabel(pendingArchive.unitNumber, pendingArchive.plate)} will be hidden from Checkout. Past reports stay in Office. This uses your office unlock.`
+              : ""
         }
         confirmLabel={
           pendingArchive && isVehicleArchived(pendingArchive) ? "Unarchive" : "Archive"
