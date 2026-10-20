@@ -12,6 +12,7 @@ import { Button } from "./ui/button";
 import { ProgressBar } from "./ui/progress-bar";
 import { PhotoExampleCard } from "./photo-example-image";
 import { compressImageFile } from "@/lib/utils";
+import { LiveCameraFrame } from "./live-camera-frame";
 import { PHOTO_ANGLES, PhotoAngle, PhotoStep, walkaroundPhotoSteps } from "@/lib/types";
 import { DAMAGE_NOTE_MAX } from "@/lib/photo-flags";
 import { useCheckoutFeedback } from "@/components/checkout-feedback";
@@ -60,6 +61,7 @@ export function GuidedPhotoCapture({
   const [viewIndex, setViewIndex] = useState(0);
   const [busy, setBusy] = useState(false);
   const [pickError, setPickError] = useState("");
+  const [cameraOff, setCameraOff] = useState(false);
 
   const currentIndex = testingBrowseMode
     ? viewIndex
@@ -260,14 +262,25 @@ export function GuidedPhotoCapture({
               </div>
             ) : (
               <div className="photo-capture-body p-4 space-y-4">
-                <PhotoExampleCard
-                  angle={current.angle}
-                  label={current.label}
-                  category={current.category}
-                />
+                {cameraOff ? (
+                  <PhotoExampleCard
+                    angle={current.angle}
+                    label={current.label}
+                    category={current.category}
+                  />
+                ) : (
+                  <LiveCameraFrame
+                    angle={current.angle}
+                    busy={busy}
+                    onCapture={(file) => void handlePickedFile(file)}
+                    onUnavailable={() => setCameraOff(true)}
+                  />
+                )}
                 <div className="photo-capture-actions space-y-3">
                   <p className="photo-capture-hint text-center text-xs text-gray-500">
-                    Match the example, then take the photo with your phone camera
+                    {cameraOff
+                      ? "Match the example, then take the photo with your phone camera"
+                      : "Line the vehicle up with the outline, then capture."}
                   </p>
 
                   {pickError && (
@@ -287,18 +300,21 @@ export function GuidedPhotoCapture({
                     </Button>
                   )}
 
-                  <button
-                    type="button"
-                    onClick={openNativeCamera}
-                    disabled={busy}
-                    className="photo-take-btn w-full h-16 rounded-2xl bg-accent hover:bg-emerald-400 active:scale-[0.98] transition-all shadow-card flex items-center justify-center gap-3 text-[#052e16] font-bold text-lg disabled:opacity-60"
-                  >
-                    <Camera className="h-7 w-7" />
-                    {busy ? "Saving photo…" : "Take photo"}
-                  </button>
+                  {cameraOff && (
+                    <button
+                      type="button"
+                      onClick={openNativeCamera}
+                      disabled={busy}
+                      className="photo-take-btn w-full h-16 rounded-2xl bg-accent hover:bg-emerald-400 active:scale-[0.98] transition-all shadow-card flex items-center justify-center gap-3 text-[#052e16] font-bold text-lg disabled:opacity-60"
+                    >
+                      <Camera className="h-7 w-7" />
+                      {busy ? "Saving photo…" : "Take photo"}
+                    </button>
+                  )}
                   <p className="photo-capture-flash-hint text-center text-xs text-gray-400 leading-snug px-1">
-                    Dark shot? Use the phone Camera flash on Take photo, or
-                    Choose from library.
+                    {cameraOff
+                      ? "Dark shot? Use the phone Camera flash on Take photo, or Choose from library."
+                      : "Dark shot? Turn on a light, or choose a photo from the library."}
                   </p>
                   <button
                     type="button"
