@@ -9,7 +9,9 @@ import { SignaturePad } from "@/components/signature-pad";
 import { useAuth } from "@/hooks/use-auth";
 import { canStartCheckout } from "@/lib/fleet-config";
 import { canSkipPhotosForTesting } from "@/lib/dev-config";
-import { companyUsesClover, getChecklistForCompany } from "@/lib/companies";
+import { getChecklistForCompany } from "@/lib/companies";
+import { photoStepsForCompany, usesClover as cloverEnabled } from "@/lib/company-settings";
+import type { PublicCompanySettings } from "@/lib/company-settings";
 import {
   getCachedCompanies,
   getCachedVehicles,
@@ -20,6 +22,7 @@ import {
 } from "@/lib/storage";
 import {
   fetchCompanies,
+  fetchCompanySettings,
   fetchVehicles,
   SharedVehicle,
 } from "@/lib/checkout-api";
@@ -103,6 +106,7 @@ function CheckoutCapturePage() {
     createEmptyInspectionForm("gas")
   );
   const [phase, setPhase] = useState<"inspect" | "photos" | "review">("inspect");
+  const [companySettings, setCompanySettings] = useState<PublicCompanySettings | null>(null);
   const [showPrecheckErrors, setShowPrecheckErrors] = useState(false);
 
   useCheckoutFeedbackMeta({
@@ -144,7 +148,7 @@ function CheckoutCapturePage() {
       );
       setInspectionForm(form);
       const formOk = validateInspectionForm(form, powertrain, {
-        includeClover: companyUsesClover(d.companyId),
+        includeClover: cloverEnabled(null, d.companyId),
       }).ok;
       const resumeReview = searchParams.get("phase") === "review" && formOk;
       setPhase(resumeReview ? "review" : formOk && !isPrecheckRed(form) ? "photos" : "inspect");
@@ -208,7 +212,13 @@ function CheckoutCapturePage() {
     if (inspectionForm.trafficLight === "red") setPhase("inspect");
   }, [inspectionForm.trafficLight]);
 
-  const steps = getChecklistForCompany(company);
+  useEffect(() => {
+    void fetchCompanySettings().then(setCompanySettings).catch(() => {});
+  }, []);
+
+  const steps = companySettings
+    ? photoStepsForCompany(companySettings, draft?.companyId || company?.id)
+    : getChecklistForCompany(company);
   const required = steps.filter((s) => s.required);
   const allFilled = required.every((s) => photos[s.angle]);
   const powertrain = inferPowertrain(
@@ -216,7 +226,7 @@ function CheckoutCapturePage() {
     draft?.model,
     vehicle?.powertrain || inspectionForm.powertrain
   );
-  const usesClover = companyUsesClover(draft?.companyId);
+  const usesClover = cloverEnabled(companySettings, draft?.companyId);
   const inspectionOptions = { includeClover: usesClover };
   const inspectionValid = validateInspectionForm(
     inspectionForm,

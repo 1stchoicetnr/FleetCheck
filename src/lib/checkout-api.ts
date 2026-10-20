@@ -214,6 +214,23 @@ export async function deleteOfficeAlert(id: string): Promise<void> {
   await api(`/api/alerts/${id}`, { method: "DELETE" });
 }
 
+export async function fetchCompanySettings(): Promise<import("./company-settings").PublicCompanySettings> {
+  const data = await api<{ settings: import("./company-settings").PublicCompanySettings }>(
+    "/api/company-settings"
+  );
+  return data.settings;
+}
+
+export async function saveCompanySettings(
+  patch: import("./company-settings").CompanySettingsPatch
+): Promise<import("./company-settings").PublicCompanySettings> {
+  const data = await api<{ settings: import("./company-settings").PublicCompanySettings }>(
+    "/api/company-settings",
+    { method: "PATCH", body: JSON.stringify(patch) }
+  );
+  return data.settings;
+}
+
 export async function fetchMyChecks(): Promise<CheckoutReport[]> {
   const data = await api<{ reports: CheckoutReport[] }>("/api/my-checks");
   return data.reports;

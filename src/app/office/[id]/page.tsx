@@ -16,12 +16,15 @@ import {
 } from "@/components/photo-lightbox";
 import { useAuth } from "@/hooks/use-auth";
 import { canManageOfficeRecords, canReviewCheckout } from "@/lib/fleet-config";
-import { companyUsesClover, getChecklistForCompany } from "@/lib/companies";
+import { getChecklistForCompany } from "@/lib/companies";
+import { photoStepsForCompany, usesClover as cloverEnabled } from "@/lib/company-settings";
+import type { PublicCompanySettings } from "@/lib/company-settings";
 import { isCheckoutFlagged } from "@/lib/storage";
 import {
   deleteCheckoutReport,
   fetchCheckoutReport,
   fetchCompanies,
+  fetchCompanySettings,
   fetchPriorReports,
   fetchVehicles,
   flagCheckoutPhoto,
@@ -79,6 +82,7 @@ export default function OfficeReportDetailPage() {
   const [downloadError, setDownloadError] = useState("");
   const [flaggingAngle, setFlaggingAngle] = useState<PhotoAngle | null>(null);
   const [officeReady, setOfficeReady] = useState(false);
+  const [companySettings, setCompanySettings] = useState<PublicCompanySettings | null>(null);
   const [recordAction, setRecordAction] = useState<null | "archive" | "delete">(null);
   const [recordBusy, setRecordBusy] = useState(false);
   const markOfficeUnlocked = useCallback(() => setOfficeReady(true), []);
@@ -138,8 +142,14 @@ export default function OfficeReportDetailPage() {
     };
   }, [officeReady, tab, priorVehicleId, priorReportId]);
 
+  useEffect(() => {
+    void fetchCompanySettings().then(setCompanySettings).catch(() => {});
+  }, []);
+
   const steps = photoStepsForReport(
-    getChecklistForCompany(company),
+    companySettings
+      ? photoStepsForCompany(companySettings, report?.companyId)
+      : getChecklistForCompany(company),
     report?.photos ?? []
   );
   const photoMap = useMemo(
@@ -341,7 +351,7 @@ export default function OfficeReportDetailPage() {
                 <p>
                   {UNIT_NUMBER_LABEL}: {report.unitNumber}
                 </p>
-                {companyUsesClover(report.companyId) ? (
+                {cloverEnabled(companySettings, report.companyId) ? (
                 <p>
                   {CLOVER_SERIAL_LABEL}: {formatCloverSerial(report.inspectionForm)}
                 </p>
@@ -425,7 +435,7 @@ export default function OfficeReportDetailPage() {
               {report.inspectionForm ? (
                 <InspectionFormSummary
                   form={report.inspectionForm}
-                  showClover={companyUsesClover(report.companyId)}
+                  showClover={cloverEnabled(companySettings, report.companyId)}
                 />
               ) : (
                 <p className="text-sm text-gray-500">

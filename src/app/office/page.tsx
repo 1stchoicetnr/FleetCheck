@@ -237,6 +237,14 @@ function OfficeReportsPage() {
                 >
                   App feedback
                 </Link>
+                {(canManageFleet(user.role) || user.role === "management" || user.roleTitle === "Owner") && (
+                  <Link
+                    href="/office/settings"
+                    className="text-xs font-semibold text-brand-700 underline underline-offset-2"
+                  >
+                    Settings
+                  </Link>
+                )}
                 {canManageFleet(user.role) && (
                   <Link
                     href="/office/people"

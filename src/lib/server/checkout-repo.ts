@@ -1,4 +1,12 @@
-import { companyUsesClover } from "@/lib/companies";
+import {
+  mergeCompanySettings,
+  parseCompanySettings,
+  publicCompanySettings,
+  slackWebhookOverride,
+  usesClover,
+  type CompanySettingsPatch,
+  type PublicCompanySettings,
+} from "@/lib/company-settings";
 import { displayPlate, generateId } from "@/lib/utils";
 import {
   CheckoutReport,
@@ -48,7 +56,9 @@ import {
   localSetVehicleService,
   localUpsertVehicle,
   localGetFleetSettings,
+  localReadCompanySettings,
   localSetFleetSettings,
+  localWriteCompanySettings,
 } from "./local-store";
 import { deleteStoredPhoto, persistCheckoutPhoto } from "./photo-store";
 import { recordCheckoutAlerts } from "./report-alerts";
@@ -83,7 +93,9 @@ import {
   pgSetVehicleService,
   pgUpsertVehicle,
   pgGetFleetSettings,
+  pgReadCompanySettings,
   pgSetFleetSettings,
+  pgWriteCompanySettings,
 } from "./postgres-store";
 import { OrgAccessError } from "./org-scope";
 import { sharedBackendMode } from "./shared-config";
@@ -431,8 +443,10 @@ export async function createReport(
     input.model,
     vehicle?.powertrain
   );
+  const settingsDoc = await readStoredCompanySettings(orgId);
+  const published = publicCompanySettings(settingsDoc);
   const inspection = validateInspectionForm(input.inspectionForm, powertrain, {
-    includeClover: companyUsesClover(input.companyId),
+    includeClover: usesClover(published, input.companyId),
   });
   if (!inspection.ok) {
     throw new SharedBackendError(inspection.error, 400);
@@ -482,7 +496,10 @@ export async function createReport(
     throw err;
   }
   if (saved.id !== report.id) return saved;
-  void notifyCheckoutReport(saved);
+  void notifyCheckoutReport(saved, {
+    webhookUrl: slackWebhookOverride(settingsDoc),
+    usesClover: usesClover(published, saved.companyId),
+  });
   void recordCheckoutAlerts(orgId, saved).catch((err) => {
     console.error("[alerts] checkout report alerts failed:", err);
   });
@@ -767,6 +784,32 @@ export function backendStatus() {
     mode: sharedBackendMode(),
     production: process.env.NODE_ENV === "production" || process.env.VERCEL === "1",
   };
+}
+
+async function readStoredCompanySettings(orgId: string) {
+  const mode = assertConfigured();
+  const raw =
+    mode === "postgres"
+      ? await pgReadCompanySettings(orgId)
+      : await localReadCompanySettings();
+  return parseCompanySettings(raw);
+}
+
+export async function getPublicCompanySettings(orgId: string): Promise<PublicCompanySettings> {
+  return publicCompanySettings(await readStoredCompanySettings(orgId));
+}
+
+export async function saveCompanySettings(
+  orgId: string,
+  patch: CompanySettingsPatch
+): Promise<PublicCompanySettings> {
+  const mode = assertConfigured();
+  const current = await readStoredCompanySettings(orgId);
+  const next = mergeCompanySettings(current, patch);
+  const json = next ? JSON.stringify(next) : null;
+  if (mode === "postgres") await pgWriteCompanySettings(orgId, json);
+  else await localWriteCompanySettings(next);
+  return publicCompanySettings(next);
 }
 
 export async function getFleetSettings(orgId: string): Promise<FleetSettings> {

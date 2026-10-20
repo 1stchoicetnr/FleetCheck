@@ -506,6 +506,29 @@ export async function setFleetSettings(
   );
 }
 
+export async function readCompanySettings(db: OrgDb, orgId: string) {
+  const rows = await db.query(
+    "SELECT settings_json FROM fleet_settings WHERE org_id = $1 LIMIT 1",
+    [org(orgId)]
+  );
+  return rows[0]?.settings_json ?? null;
+}
+
+export async function writeCompanySettings(
+  db: OrgDb,
+  orgId: string,
+  settingsJson: string | null
+) {
+  await db.query(
+    `INSERT INTO fleet_settings (id, allow_driver_add_vehicles, org_id, settings_json)
+     VALUES ('app', FALSE, $1, CAST($2 AS jsonb))
+     ON CONFLICT (id) DO UPDATE SET
+       settings_json = EXCLUDED.settings_json
+     WHERE fleet_settings.org_id = EXCLUDED.org_id`,
+    [org(orgId), settingsJson]
+  );
+}
+
 export async function setReportArchivedAt(
   db: OrgDb,
   orgId: string,

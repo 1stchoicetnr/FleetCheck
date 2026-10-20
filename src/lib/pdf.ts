@@ -37,6 +37,8 @@ export type CheckoutPdfOptions = {
   companyName?: string;
   plate?: string;
   steps?: PhotoStep[];
+  logoDataUrl?: string;
+  usesClover?: boolean;
 };
 
 async function inspektLogoDataUrl(): Promise<string | null> {
@@ -70,7 +72,8 @@ function paintInspektHeader(
   doc.rect(0, 32, pageWidth, 1.4, "F");
   if (logo) {
     try {
-      doc.addImage(logo, "PNG", 10, 6, 20, 20);
+      const format = logo.startsWith("data:image/jpeg") ? "JPEG" : "PNG";
+      doc.addImage(logo, format, 10, 6, 20, 20);
     } catch {
       // Wordmark still prints if the icon cannot be embedded.
     }
@@ -162,11 +165,12 @@ function checkoutPhotoProxyUrl(reportId: string, angle: PhotoAngle): string {
 export async function generateCheckPDF(
   check: CheckRecord,
   vehicle: Vehicle,
-  fleet: Fleet
+  fleet: Fleet,
+  logoDataUrl?: string
 ): Promise<Blob> {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
-  const logo = await inspektLogoDataUrl();
+  const logo = logoDataUrl || (await inspektLogoDataUrl());
   let y = paintInspektHeader(
     doc,
     logo,
@@ -365,7 +369,7 @@ export async function generateCheckoutReportPDF(
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
-  const logo = await inspektLogoDataUrl();
+  const logo = options.logoDataUrl || (await inspektLogoDataUrl());
   const plate = options.plate ?? report.plate;
   const steps = walkaroundPhotoSteps(
     options.steps?.length ? options.steps : PHOTO_ANGLES
@@ -426,7 +430,7 @@ export async function generateCheckoutReportPDF(
   };
 
   section("Precheck");
-  const usesClover = companyUsesClover(report.companyId);
+  const usesClover = options.usesClover ?? companyUsesClover(report.companyId);
   const formLines = [
     `Date: ${formatDateOnly(report.inspectionForm?.inspectedAt || report.completedAt)}`,
     `Name: ${report.driverName}`,

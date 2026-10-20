@@ -100,6 +100,7 @@ export interface SharedStore {
   alerts?: SharedOfficeAlert[];
   users?: SharedAppUser[];
   settings?: FleetSettings;
+  companySettings?: unknown;
   feedback?: StoredFeedback[];
 }
 

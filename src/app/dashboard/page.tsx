@@ -116,8 +116,17 @@ export default function DashboardPage() {
     },
   ];
 
+  const settingsLink = {
+    href: "/office/settings",
+    icon: <Settings className="h-7 w-7" />,
+    label: "Settings",
+    desc: "Fleet types, photos, Slack, Clover, and the PDF logo",
+    color: "bg-slate-100 text-slate-700",
+  };
+
   const managementLinks = [
     officeLink,
+    settingsLink,
     myChecksLink,
     unitsLink,
     checkoutLink,

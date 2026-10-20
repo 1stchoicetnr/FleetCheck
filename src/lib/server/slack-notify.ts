@@ -11,14 +11,18 @@ function checkoutSlackWebhook(): string | undefined {
 }
 
 /** Slack is a notification, not the Office record. Never throw — Neon already saved. */
-export async function notifyCheckoutReport(report: CheckoutReport): Promise<void> {
-  const url = checkoutSlackWebhook();
+export async function notifyCheckoutReport(
+  report: CheckoutReport,
+  options?: { webhookUrl?: string | null; usesClover?: boolean }
+): Promise<void> {
+  const url = options?.webhookUrl === undefined ? checkoutSlackWebhook() : options.webhookUrl || undefined;
   if (!url) return;
+  const usesClover = options?.usesClover ?? companyUsesClover(report.companyId);
   const unit = formatUnitLabel(report.unitNumber, report.plate);
   const text = [
     "*Checkout Report saved to Office*",
     `*Unit:* ${unit}`,
-    companyUsesClover(report.companyId) && report.inspectionForm
+    usesClover && report.inspectionForm
       ? `*Clover serial:* ${formatCloverSerial(report.inspectionForm)}`
       : "",
     `*Vehicle:* ${report.year} ${report.make} ${report.model}`,

@@ -445,6 +445,19 @@ export async function localGetFleetSettings(): Promise<FleetSettings> {
   };
 }
 
+export async function localReadCompanySettings(): Promise<unknown> {
+  const store = await localEnsureSeed();
+  return store.companySettings ?? null;
+}
+
+export async function localWriteCompanySettings(value: unknown): Promise<void> {
+  await enqueueWrite(async () => {
+    const store = await loadAndSeedUnlocked();
+    store.companySettings = value;
+    await writeStore(store);
+  });
+}
+
 export async function localSetFleetSettings(
   patch: Partial<FleetSettings>
 ): Promise<FleetSettings> {

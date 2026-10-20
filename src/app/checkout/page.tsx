@@ -19,13 +19,16 @@ import {
 } from "@/lib/storage";
 import {
   fetchCompanies,
+  fetchCompanySettings,
   fetchFleetSettings,
   fetchVehicles,
   SharedVehicle,
   upsertSharedVehicle,
 } from "@/lib/checkout-api";
 import { Company, CheckoutType } from "@/lib/types";
-import { companyUsesClover, defaultCompanyId } from "@/lib/companies";
+import { defaultCompanyId } from "@/lib/companies";
+import { isCompanyEnabled, usesClover as cloverEnabled } from "@/lib/company-settings";
+import type { PublicCompanySettings } from "@/lib/company-settings";
 import {
   applyPowertrainToForm,
   CLOVER_SERIAL_HINT,
@@ -77,6 +80,7 @@ function CheckoutStartPage() {
   const [starting, setStarting] = useState(false);
   const [powertrainOverride, setPowertrainOverride] = useState<Powertrain | "">("");
   const [allowDriverAdd, setAllowDriverAdd] = useState(false);
+  const [companySettings, setCompanySettings] = useState<PublicCompanySettings | null>(null);
   const [showErrors, setShowErrors] = useState(false);
   const inspectionDate = formatDateOnly(new Date().toISOString());
 
@@ -93,6 +97,10 @@ function CheckoutStartPage() {
   useEffect(() => {
     if (user) setDriverName(user.name);
   }, [user]);
+
+  useEffect(() => {
+    void fetchCompanySettings().then(setCompanySettings).catch(() => {});
+  }, []);
 
   useEffect(() => {
     void getCachedCompanies().then((cached) => {
@@ -320,7 +328,7 @@ function CheckoutStartPage() {
         model.trim(),
         vehicle.powertrain || inferredPowertrain
       );
-      const usesClover = companyUsesClover(companyId);
+      const usesClover = cloverEnabled(companySettings, companyId);
       const inspectionForm = applyPowertrainToForm(
         {
           ...(existing?.inspectionForm ??
@@ -404,7 +412,7 @@ function CheckoutStartPage() {
                   <span className="font-semibold">Date:</span> {inspectionDate}
                 </p>
                 <p className="text-xs text-gray-500 mt-1">
-                  {companyUsesClover(companyId)
+                  {cloverEnabled(companySettings, companyId)
                     ? "Same header as the paper form — date, name, vehicle, optional Clover serial (last digits), odometer start."
                     : "Same header as the paper form — date, name, vehicle, and odometer start."}
                 </p>
@@ -418,7 +426,7 @@ function CheckoutStartPage() {
                   onChange={(e) => setCompanyId(e.target.value)}
                   className="w-full rounded-xl border-2 border-gray-300 px-4 py-4 text-lg min-h-[56px] bg-white"
                 >
-                  {companies.map((c) => (
+                  {companies.filter((c) => isCompanyEnabled(companySettings, c.id)).map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
                     </option>
@@ -581,7 +589,7 @@ function CheckoutStartPage() {
                 }
                 hint="Mileage on the dash — must be readable in the odometer photo"
               />
-              {companyUsesClover(companyId) ? (
+              {cloverEnabled(companySettings, companyId) ? (
               <Input
                 label={`${CLOVER_SERIAL_LABEL} (optional)`}
                 value={cloverSerial}

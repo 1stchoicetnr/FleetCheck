@@ -215,6 +215,7 @@ export async function pgMigrateAndSeed(): Promise<void> {
       allow_driver_add_vehicles BOOLEAN NOT NULL DEFAULT FALSE
     )
   `;
+  await sql`ALTER TABLE fleet_settings ADD COLUMN IF NOT EXISTS settings_json JSONB`;
   await sql`
     CREATE TABLE IF NOT EXISTS app_users (
       id TEXT PRIMARY KEY,
@@ -679,6 +680,19 @@ export async function pgGetFleetSettings(orgId: string): Promise<FleetSettings> 
   return {
     allowDriverAddVehicles: Boolean(row?.allow_driver_add_vehicles),
   };
+}
+
+export async function pgReadCompanySettings(orgId: string): Promise<unknown> {
+  await pgMigrateAndSeed();
+  return orgData.readCompanySettings(orgDb(), orgId);
+}
+
+export async function pgWriteCompanySettings(
+  orgId: string,
+  settingsJson: string | null
+): Promise<void> {
+  await pgMigrateAndSeed();
+  await orgData.writeCompanySettings(orgDb(), orgId, settingsJson);
 }
 
 export async function pgSetReportArchived(
