@@ -296,12 +296,16 @@ export default function PeoplePage() {
                     <p className="text-sm text-gray-600">{person.email}</p>
                     <p className="text-xs text-gray-500">
                       {person.roleTitle || "No membership"} ·{" "}
-                      {person.hasPassword ? "Password set" : "No password yet"}
+                      {person.active
+                        ? person.hasPassword
+                          ? "Password set"
+                          : "No password yet"
+                        : "Inactive"}
                     </p>
                   </div>
                   <button
                     type="button"
-                    disabled={busy === person.id}
+                    disabled={!person.active || busy === person.id}
                     onClick={() => void issueSetup(person)}
                     className="min-h-[44px] rounded-xl border border-gray-300 px-3 text-sm font-semibold text-gray-900 disabled:opacity-60"
                   >

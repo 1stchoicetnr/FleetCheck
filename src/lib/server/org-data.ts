@@ -1,3 +1,4 @@
+import { FIRST_CHOICE_ORG_ID } from "./org-stamp";
 import { OrgAccessError, requireOrgId } from "./org-scope";
 
 /**
@@ -15,6 +16,10 @@ export type OrgDb = {
 
 function org(orgId: string): string {
   return requireOrgId(orgId);
+}
+
+function storedEmail(email: string): string {
+  return email.trim().toLowerCase();
 }
 
 export async function assertFleetInOrg(
@@ -550,7 +555,7 @@ export async function insertUser(
   await db.query(
     `INSERT INTO app_users (id, name, email, role, active, created_at, org_id)
      VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-    [user.id, user.name, user.email, user.role, user.active, user.createdAt, org(orgId)]
+    [user.id, user.name, storedEmail(user.email), user.role, user.active, user.createdAt, org(orgId)]
   );
 }
 
@@ -573,7 +578,7 @@ export async function updateUser(
      SET name = $1, email = $2, role = $3, active = $4
      WHERE id = $5 AND org_id = $6
      RETURNING id`,
-    [user.name, user.email, user.role, user.active, id, org(orgId)]
+    [user.name, storedEmail(user.email), user.role, user.active, id, org(orgId)]
   );
   if (!rows[0]) throw new OrgAccessError();
 }
@@ -914,7 +919,7 @@ export async function insertMemberUser(
     [
       user.id,
       user.name,
-      user.email,
+      storedEmail(user.email),
       user.role,
       user.active,
       user.createdAt,
@@ -928,6 +933,198 @@ export async function insertMemberUser(
     role: user.memberRole,
     createdAt: user.createdAt,
   });
+}
+
+const ASHLEY_USER_ID = "user-ashley";
+const JAMES_USER_ID = "user-james";
+const OFFICE_USER_ID = "user-office";
+const ASHLEY_PLACEHOLDER = "ashley@fleetcheck.local";
+const JAMES_PLACEHOLDER = "james@fleetcheck.local";
+const ASHLEY_EMAIL = "ashley@warecovery.com";
+const JAMES_EMAIL = "james@warecovery.com";
+const RETIRED_OFFICE_EMAIL = "retired-user-office@fleetcheck.local";
+
+/**
+ * One-time swap of the placeholder owner emails in 1st Choice / Rad Cab.
+ * Ashley keeps her Owner account and takes the email the Office login used.
+ * That Office login is deactivated and its email is freed. James keeps his
+ * Owner account and takes james@warecovery.com; any other login already using
+ * that address is deactivated and its sessions follow James. A second run
+ * changes nothing. Report and feedback text is left as it was written.
+ */
+export async function applyOwnerEmailSwap(db: OrgDb, orgId: string): Promise<number> {
+  const scoped = org(orgId);
+  if (scoped !== FIRST_CHOICE_ORG_ID) return 0;
+  let changes = 0;
+
+  const movedSessions = await db.query(
+    `UPDATE auth_sessions
+     SET user_id = $2
+     WHERE org_id = $1
+       AND user_id = $3
+       AND EXISTS (
+         SELECT 1 FROM app_users
+         WHERE id = $3 AND org_id = $1 AND lower(email) = $4
+       )
+     RETURNING token_hash`,
+    [scoped, ASHLEY_USER_ID, OFFICE_USER_ID, ASHLEY_EMAIL]
+  );
+  changes += movedSessions.length;
+
+  const movedInvites = await db.query(
+    `UPDATE auth_invites
+     SET user_id = $2
+     WHERE org_id = $1
+       AND user_id = $3
+       AND EXISTS (
+         SELECT 1 FROM app_users
+         WHERE id = $3 AND org_id = $1 AND lower(email) = $4
+       )
+     RETURNING id`,
+    [scoped, ASHLEY_USER_ID, OFFICE_USER_ID, ASHLEY_EMAIL]
+  );
+  changes += movedInvites.length;
+
+  const retired = await db.query(
+    `UPDATE app_users
+     SET email = $2, active = FALSE
+     WHERE id = $3 AND org_id = $1 AND lower(email) = $4
+     RETURNING id`,
+    [scoped, RETIRED_OFFICE_EMAIL, OFFICE_USER_ID, ASHLEY_EMAIL]
+  );
+  changes += retired.length;
+
+  const ashley = await db.query(
+    `UPDATE app_users
+     SET email = $2
+     WHERE id = $3
+       AND org_id = $1
+       AND lower(email) = $4
+       AND NOT EXISTS (
+         SELECT 1 FROM app_users other
+         WHERE other.org_id = $1 AND other.id <> $3 AND lower(other.email) = $2
+       )
+     RETURNING id`,
+    [scoped, ASHLEY_EMAIL, ASHLEY_USER_ID, ASHLEY_PLACEHOLDER]
+  );
+  changes += ashley.length;
+
+  const ashleyCase = await db.query(
+    `UPDATE app_users
+     SET email = lower(email)
+     WHERE id = $2 AND org_id = $1 AND lower(email) = $3 AND email <> lower(email)
+     RETURNING id`,
+    [scoped, ASHLEY_USER_ID, ASHLEY_EMAIL]
+  );
+  changes += ashleyCase.length;
+
+  const movedJamesSessions = await db.query(
+    `UPDATE auth_sessions
+     SET user_id = $2
+     WHERE org_id = $1
+       AND user_id IN (
+         SELECT id FROM app_users
+         WHERE org_id = $1 AND id <> $2 AND lower(email) = $3
+       )
+     RETURNING token_hash`,
+    [scoped, JAMES_USER_ID, JAMES_EMAIL]
+  );
+  changes += movedJamesSessions.length;
+
+  const movedJamesInvites = await db.query(
+    `UPDATE auth_invites
+     SET user_id = $2
+     WHERE org_id = $1
+       AND user_id IN (
+         SELECT id FROM app_users
+         WHERE org_id = $1 AND id <> $2 AND lower(email) = $3
+       )
+     RETURNING id`,
+    [scoped, JAMES_USER_ID, JAMES_EMAIL]
+  );
+  changes += movedJamesInvites.length;
+
+  const retiredJames = await db.query(
+    `UPDATE app_users
+     SET email = 'retired-' || id || '@fleetcheck.local', active = FALSE
+     WHERE org_id = $1 AND id <> $2 AND lower(email) = $3
+     RETURNING id`,
+    [scoped, JAMES_USER_ID, JAMES_EMAIL]
+  );
+  changes += retiredJames.length;
+
+  const james = await db.query(
+    `UPDATE app_users
+     SET email = $2
+     WHERE id = $3
+       AND org_id = $1
+       AND lower(email) = $4
+       AND NOT EXISTS (
+         SELECT 1 FROM app_users other
+         WHERE other.org_id = $1 AND other.id <> $3 AND lower(other.email) = $2
+       )
+     RETURNING id`,
+    [scoped, JAMES_EMAIL, JAMES_USER_ID, JAMES_PLACEHOLDER]
+  );
+  changes += james.length;
+
+  const jamesCase = await db.query(
+    `UPDATE app_users
+     SET email = lower(email)
+     WHERE id = $2 AND org_id = $1 AND lower(email) = $3 AND email <> lower(email)
+     RETURNING id`,
+    [scoped, JAMES_USER_ID, JAMES_EMAIL]
+  );
+  changes += jamesCase.length;
+
+  const ashleyRow = await db.query(
+    "SELECT id FROM app_users WHERE id = $1 AND org_id = $2 LIMIT 1",
+    [ASHLEY_USER_ID, scoped]
+  );
+  if (ashleyRow[0]) {
+    const membership = await db.query(
+      "SELECT role FROM org_memberships WHERE org_id = $1 AND user_id = $2 LIMIT 1",
+      [scoped, ASHLEY_USER_ID]
+    );
+    if (!membership[0]) {
+      await ensureMembership(db, scoped, {
+        id: `member-${ASHLEY_USER_ID}`,
+        userId: ASHLEY_USER_ID,
+        role: "owner",
+        createdAt: new Date().toISOString(),
+      });
+      changes += 1;
+    } else if (String(membership[0].role) !== "owner") {
+      const promoted = await db.query(
+        `UPDATE org_memberships
+         SET role = 'owner'
+         WHERE org_id = $1 AND user_id = $2 AND role <> 'owner'
+         RETURNING id`,
+        [scoped, ASHLEY_USER_ID]
+      );
+      changes += promoted.length;
+    }
+  }
+
+  const ashleyInvites = await db.query(
+    `UPDATE auth_invites
+     SET email = $2
+     WHERE org_id = $1 AND user_id = $3 AND lower(COALESCE(email, '')) = $4
+     RETURNING id`,
+    [scoped, ASHLEY_EMAIL, ASHLEY_USER_ID, ASHLEY_PLACEHOLDER]
+  );
+  changes += ashleyInvites.length;
+
+  const jamesInvites = await db.query(
+    `UPDATE auth_invites
+     SET email = $2
+     WHERE org_id = $1 AND user_id = $3 AND lower(COALESCE(email, '')) = $4
+     RETURNING id`,
+    [scoped, JAMES_EMAIL, JAMES_USER_ID, JAMES_PLACEHOLDER]
+  );
+  changes += jamesInvites.length;
+
+  return changes;
 }
 
 export async function deleteMemberUser(db: OrgDb, orgId: string, userId: string) {

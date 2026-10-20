@@ -321,6 +321,11 @@ export async function pgMigrateAndSeed(): Promise<void> {
     );
   }
 
+  const ownerEmailChanges = await orgData.applyOwnerEmailSwap(db, orgId);
+  if (ownerEmailChanges > 0) {
+    console.log(`[owner-email] updated ${ownerEmailChanges} account rows`);
+  }
+
   migrated = true;
 }
 
