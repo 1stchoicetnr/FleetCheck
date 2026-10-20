@@ -67,7 +67,9 @@ const SCHEMA = `
     signature_data_url TEXT,
     signed_at TIMESTAMPTZ,
     inspection_form JSONB,
-    archived_at TIMESTAMPTZ
+    archived_at TIMESTAMPTZ,
+    idempotency_key TEXT,
+    sent_at TIMESTAMPTZ
   );
   CREATE TABLE fleet_alerts (
     id TEXT PRIMARY KEY,

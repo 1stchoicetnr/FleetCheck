@@ -172,6 +172,7 @@ export function mergeOutboxAttempt(
 export interface OutboxTransport {
   create(item: CheckoutOutboxItem): Promise<CheckoutReport>;
   upload(reportId: string, photos: OutboxPhoto[]): Promise<CheckoutReport>;
+  markSent?(reportId: string): Promise<CheckoutReport>;
 }
 
 export async function deliverOutboxItem(
@@ -206,6 +207,9 @@ export async function deliverOutboxItem(
       current = { ...current, uploadedTokens, lastError: undefined };
       await save(current);
       onProgress?.(uploaded, current.photos.length);
+    }
+    if (transport.markSent && current.serverReportId) {
+      report = await transport.markSent(current.serverReportId);
     }
     return { done: true, item: current, report };
   } catch (err) {

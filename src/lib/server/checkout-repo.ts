@@ -54,11 +54,15 @@ import { deleteStoredPhoto, persistCheckoutPhoto } from "./photo-store";
 import { recordCheckoutAlerts } from "./report-alerts";
 import { notifyCheckoutReport } from "./slack-notify";
 import { assertIdempotencyKey, isUniqueViolation } from "@/lib/checkout-idempotency";
+import { isStuckUpload, STUCK_UPLOAD_AFTER_MS } from "@/lib/delivery-status";
 import {
   pgAssertFleetInOrg,
   pgFindVehicleByPlate,
+  pgCountStuckUploads,
   pgFindReportByIdempotency,
   pgGetReport,
+  pgListReportsForDriver,
+  pgMarkReportSent,
   pgGetVehicle,
   pgListCompanies,
   pgDeleteAlert,
@@ -316,14 +320,46 @@ export async function listReportPage(orgId: string, query: OfficeListQuery) {
       limit,
       offset,
     });
+    const olderThan = new Date(Date.now() - STUCK_UPLOAD_AFTER_MS).toISOString();
     return {
       ...page,
       reports: page.reports.map(toOfficeListReport),
+      stuck: await pgCountStuckUploads(orgId, olderThan),
       limit,
       offset,
     };
   }
-  return pageOfficeReports(await localListReports(), { ...query, limit, offset });
+  const local = pageOfficeReports(await localListReports(), { ...query, limit, offset });
+  const stuck = (await localListReports()).filter((report) => isStuckUpload(report)).length;
+  return { ...local, stuck };
+}
+
+export async function listMyReports(orgId: string, driverName: string): Promise<CheckoutReport[]> {
+  const mode = assertConfigured();
+  const name = driverName.trim();
+  if (!name) return [];
+  if (mode === "postgres") return pgListReportsForDriver(orgId, name);
+  const reports = await localListReports();
+  return reports
+    .filter(
+      (report) =>
+        !report.archivedAt && report.driverName.trim().toLowerCase() === name.toLowerCase()
+    )
+    .slice(0, 30);
+}
+
+export async function confirmReportSent(orgId: string, id: string): Promise<CheckoutReport> {
+  const mode = assertConfigured();
+  const existing = await getReport(orgId, id);
+  if (!existing) throw new SharedBackendError("Checkout report not found", 404);
+  if (existing.sentAt) return existing;
+  const sentAt = new Date().toISOString();
+  if (mode === "postgres") {
+    const stored = await pgMarkReportSent(orgId, id, sentAt);
+    return { ...existing, sentAt: stored || sentAt };
+  }
+  const saved = await localPutReport({ ...existing, sentAt });
+  return saved;
 }
 
 export async function getReport(orgId: string, id: string): Promise<CheckoutReport | undefined> {

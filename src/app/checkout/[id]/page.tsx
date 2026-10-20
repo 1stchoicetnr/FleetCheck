@@ -371,7 +371,10 @@ function CheckoutCapturePage() {
             comes back. Submitting again will not create a second report.
           </p>
           {submitError && <p className="text-sm text-red-600 font-medium">{submitError}</p>}
-          <Button size="lg" className="w-full" onClick={() => router.push("/dashboard")}>
+          <Button size="lg" className="w-full" onClick={() => router.push("/my-checks")}>
+            My recent checks
+          </Button>
+          <Button size="lg" variant="secondary" className="w-full" onClick={() => router.push("/dashboard")}>
             Back to dashboard
           </Button>
         </div>
@@ -398,7 +401,7 @@ function CheckoutCapturePage() {
             {completed.make} {completed.model}
           </p>
           <p className="text-sm text-gray-500">
-            Saved to Office {formatDate(completed.completedAt)} · pending review.
+            Sent {formatDate(completed.sentAt || completed.completedAt)} · pending review.
             Slack is only a copy — Office is the record.
           </p>
           <div className="space-y-3 pt-2">

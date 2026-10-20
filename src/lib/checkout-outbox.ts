@@ -1,6 +1,6 @@
 "use client";
 
-import { createCheckoutReport, uploadCheckoutPhotos } from "./checkout-api";
+import { createCheckoutReport, markCheckoutSent, uploadCheckoutPhotos } from "./checkout-api";
 import {
   CheckoutOutboxItem,
   deliverOutboxItem,
@@ -11,6 +11,7 @@ import {
 import {
   deleteCheckoutDraft,
   deleteCheckoutOutboxItem,
+  saveCheckoutReport,
   getCheckoutOutboxItem,
   getPendingSyncCount,
   listCheckoutOutbox,
@@ -46,6 +47,9 @@ function transport() {
     upload(reportId: string, photos: OutboxPhoto[]) {
       return uploadCheckoutPhotos(reportId, photos);
     },
+    markSent(reportId: string) {
+      return markCheckoutSent(reportId);
+    },
   };
 }
 
@@ -68,6 +72,12 @@ async function runFlush(): Promise<number> {
   for (const item of items) {
     const result = await deliverOutboxItem(item, transport(), saveCheckoutOutboxItem, now);
     if (!result.done) continue;
+    if (result.report) {
+      await saveCheckoutReport({
+        ...result.report,
+        sentAt: result.report.sentAt || new Date().toISOString(),
+      });
+    }
     await deleteCheckoutOutboxItem(item.id);
     await deleteCheckoutDraft(item.draftId);
   }
@@ -172,6 +182,12 @@ export async function submitCheckoutFromDraft(input: {
     }
   );
   if (result.done) {
+    if (result.report) {
+      await saveCheckoutReport({
+        ...result.report,
+        sentAt: result.report.sentAt || new Date().toISOString(),
+      });
+    }
     await deleteCheckoutOutboxItem(item.id);
     await deleteCheckoutDraft(input.draftId);
     if (result.report) return { state: "sent", report: result.report };

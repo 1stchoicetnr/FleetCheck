@@ -31,6 +31,7 @@ import { DEFAULT_FLEET_SETTINGS } from "@/lib/fleet-settings";
 import { SEEDED_APP_USERS } from "./seed-users";
 import * as orgData from "./org-data";
 import { applyOrgStamp } from "./org-stamp";
+import { HISTORICAL_SENT_BEFORE } from "@/lib/delivery-status";
 import { orgFromSession } from "./org-scope";
 import { carryOverMemberships } from "./auth-accounts";
 import type { UserRole } from "@/lib/types";
@@ -82,6 +83,7 @@ type ReportRow = {
   inspection_form: CheckoutInspectionForm | null;
   archived_at?: string | null;
   idempotency_key?: string | null;
+  sent_at?: string | null;
 };
 
 function rowToReport(row: ReportRow): CheckoutReport {
@@ -119,6 +121,7 @@ function rowToReport(row: ReportRow): CheckoutReport {
     signedAt: row.signed_at ? new Date(row.signed_at).toISOString() : undefined,
     inspectionForm: row.inspection_form ?? undefined,
     idempotencyKey: row.idempotency_key ?? undefined,
+    sentAt: row.sent_at ? new Date(row.sent_at).toISOString() : undefined,
     archivedAt: row.archived_at
       ? new Date(row.archived_at).toISOString()
       : undefined,
@@ -262,6 +265,7 @@ export async function pgMigrateAndSeed(): Promise<void> {
   const db = orgDb();
   await applyOrgStamp(db);
   await sql`ALTER TABLE checkout_reports ADD COLUMN IF NOT EXISTS idempotency_key TEXT`;
+  await sql`ALTER TABLE checkout_reports ADD COLUMN IF NOT EXISTS sent_at TIMESTAMPTZ`;
   await sql`
     CREATE UNIQUE INDEX IF NOT EXISTS checkout_reports_org_idempotency_idx
     ON checkout_reports (org_id, idempotency_key)
@@ -327,6 +331,15 @@ export async function pgMigrateAndSeed(): Promise<void> {
     console.log(
       "[front-photo] restored original front on 1792511911545-kehi03k"
     );
+  }
+
+  const sentBackfill = await orgData.backfillHistoricalSent(
+    db,
+    orgId,
+    HISTORICAL_SENT_BEFORE
+  );
+  if (sentBackfill > 0) {
+    console.log(`[delivery] marked ${sentBackfill} existing checks as sent`);
   }
 
   const ownerEmailChanges = await orgData.applyOwnerEmailSwap(db, orgId);
@@ -585,6 +598,31 @@ export async function pgGetReport(orgId: string, id: string): Promise<CheckoutRe
   return row ? rowToReport(row as ReportRow) : undefined;
 }
 
+export async function pgMarkReportSent(
+  orgId: string,
+  id: string,
+  sentAt: string
+): Promise<string | undefined> {
+  await pgMigrateAndSeed();
+  const row = await orgData.markReportSent(orgDb(), orgId, id, sentAt);
+  const value = row?.sent_at;
+  return value ? new Date(String(value)).toISOString() : undefined;
+}
+
+export async function pgListReportsForDriver(
+  orgId: string,
+  driverName: string
+): Promise<CheckoutReport[]> {
+  await pgMigrateAndSeed();
+  const rows = (await orgData.listReportsForDriver(orgDb(), orgId, driverName)) as ReportRow[];
+  return rows.map(rowToReport);
+}
+
+export async function pgCountStuckUploads(orgId: string, olderThan: string): Promise<number> {
+  await pgMigrateAndSeed();
+  return orgData.countStuckUploads(orgDb(), orgId, olderThan);
+}
+
 export async function pgFindReportByIdempotency(
   orgId: string,
   key: string
@@ -624,6 +662,7 @@ async function upsertReportRow(orgId: string, report: CheckoutReport): Promise<v
     signedAt: report.signedAt ?? null,
     inspectionFormJson: JSON.stringify(report.inspectionForm ?? null),
     idempotencyKey: report.idempotencyKey ?? null,
+    sentAt: report.sentAt ?? null,
   });
   await orgData.setVehicleMileage(db, orgId, report.vehicleId, report.odometer);
 }

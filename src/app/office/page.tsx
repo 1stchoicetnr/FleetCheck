@@ -7,6 +7,7 @@ import { AppHeader } from "@/components/app-header";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { OfficePinGate } from "@/components/office-pin-gate";
 import { ReviewStatusBadge } from "@/components/review-status-badge";
+import { DeliveryBadge } from "@/components/delivery-badge";
 import { useAuth } from "@/hooks/use-auth";
 import { canManageFleet, canReviewCheckout } from "@/lib/fleet-config";
 import { isCheckoutFlagged } from "@/lib/storage";
@@ -52,6 +53,7 @@ function OfficeReportsPage() {
   const [reports, setReports] = useState<CheckoutReport[]>([]);
   const [reportTotal, setReportTotal] = useState(0);
   const [flagCount, setFlagCount] = useState(0);
+  const [stuckCount, setStuckCount] = useState(0);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [vehicles, setVehicles] = useState<SharedVehicle[]>([]);
   const [loadError, setLoadError] = useState("");
@@ -95,6 +97,7 @@ function OfficeReportsPage() {
           );
           setReportTotal(page.total);
           setFlagCount(page.flagged);
+          setStuckCount(page.stuck ?? 0);
           setCompanies(c);
           setVehicles(v);
           setLoadError("");
@@ -198,6 +201,11 @@ function OfficeReportsPage() {
           {loadError && (
             <p className="text-sm text-red-600 font-medium">{loadError}</p>
           )}
+          {stuckCount > 0 && (
+            <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-900">
+              {stuckCount} check{stuckCount === 1 ? "" : "s"} stuck uploading for more than 30 minutes.
+            </p>
+          )}
 
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -206,7 +214,7 @@ function OfficeReportsPage() {
               </h2>
               <p className="text-sm text-gray-500">
                 {listReady
-                  ? `${filtered.length} of ${reportTotal} shown · ${flagCount} flagged · paged Neon list`
+                  ? `${filtered.length} of ${reportTotal} shown · ${flagCount} flagged · ${stuckCount} stuck`
                   : "Loading reports…"}
               </p>
               <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1">
@@ -401,9 +409,12 @@ function OfficeReportsPage() {
                             : ""}
                         </p>
                       )}
-                      <p className="text-xs text-gray-400">
-                        Complete {formatDate(report.completedAt)}
-                      </p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <DeliveryBadge createdAt={report.createdAt} sentAt={report.sentAt} />
+                        <p className="text-xs text-gray-400">
+                          Complete {formatDate(report.completedAt)}
+                        </p>
+                      </div>
                       {report.newDamageNotes && (
                         <p className="text-sm text-orange-800 bg-orange-50 rounded-lg px-2 py-1">
                           New damage: {report.newDamageNotes}

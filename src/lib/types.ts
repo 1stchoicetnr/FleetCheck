@@ -151,6 +151,8 @@ export interface CheckoutReport {
   signedAt?: string;
   /** Set when the phone submitted this check. Retries reuse it. */
   idempotencyKey?: string;
+  /** Set when the phone finished uploading. Empty means Office is still waiting. */
+  sentAt?: string;
   /** ISO timestamp when Office archived this report. Absent = visible in the default list. */
   archivedAt?: string;
 }

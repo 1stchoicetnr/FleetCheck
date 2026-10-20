@@ -134,6 +134,7 @@ export async function fetchCheckoutReports(options?: {
   reports: CheckoutReport[];
   total: number;
   flagged: number;
+  stuck?: number;
   limit: number;
   offset: number;
 }> {
@@ -211,6 +212,19 @@ export async function setOfficeAlertArchived(
 
 export async function deleteOfficeAlert(id: string): Promise<void> {
   await api(`/api/alerts/${id}`, { method: "DELETE" });
+}
+
+export async function fetchMyChecks(): Promise<CheckoutReport[]> {
+  const data = await api<{ reports: CheckoutReport[] }>("/api/my-checks");
+  return data.reports;
+}
+
+export async function markCheckoutSent(reportId: string): Promise<CheckoutReport> {
+  const data = await api<{ report: CheckoutReport }>(
+    `/api/checkout-reports/${reportId}/sent`,
+    { method: "POST", body: "{}" }
+  );
+  return data.report;
 }
 
 export async function fetchCheckoutReport(

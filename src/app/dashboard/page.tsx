@@ -46,8 +46,17 @@ export default function DashboardPage() {
     color: "bg-emerald-100 text-emerald-700",
   };
 
+  const myChecksLink = {
+    href: "/my-checks",
+    icon: <ClipboardList className="h-7 w-7" />,
+    label: "My recent checks",
+    desc: "Saved on phone, uploading, or sent",
+    color: "bg-sky-100 text-sky-800",
+  };
+
   const driverLinks = [
     checkoutLink,
+    myChecksLink,
     {
       href: "/vehicles",
       icon: <ClipboardList className="h-7 w-7" />,
@@ -75,6 +84,7 @@ export default function DashboardPage() {
 
   const techLinks = [
     officeLink,
+    myChecksLink,
     unitsLink,
     {
       href: "/vehicles",
@@ -108,6 +118,7 @@ export default function DashboardPage() {
 
   const managementLinks = [
     officeLink,
+    myChecksLink,
     unitsLink,
     checkoutLink,
     {

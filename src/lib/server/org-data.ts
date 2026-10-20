@@ -254,7 +254,7 @@ export async function listReportPage(
       id, company_id, vehicle_id, unit_number, plate, year, make, model, odometer,
       driver_name, dispatcher_name, type, status, completed_at, review_status,
       review_notes, new_damage_notes, retake_angles, reviewed_at, reviewed_by,
-      flagged, created_at, signed_at, inspection_form, archived_at,
+      flagged, created_at, signed_at, inspection_form, archived_at, sent_at,
       COALESCE(
         (
           SELECT jsonb_agg(
@@ -286,7 +286,7 @@ export async function listVehicleReports(db: OrgDb, orgId: string, vehicleId: st
       id, company_id, vehicle_id, unit_number, plate, year, make, model, odometer,
       driver_name, dispatcher_name, type, status, completed_at, review_status,
       review_notes, new_damage_notes, retake_angles, reviewed_at, reviewed_by,
-      flagged, photos, created_at, signed_at, inspection_form, archived_at
+      flagged, photos, created_at, signed_at, inspection_form, archived_at, sent_at
     FROM checkout_reports
     WHERE org_id = $1 AND vehicle_id = $2 AND archived_at IS NULL
     ORDER BY completed_at DESC`,
@@ -307,6 +307,60 @@ export async function getReport(db: OrgDb, orgId: string, id: string) {
     [id, org(orgId)]
   );
   return rows[0];
+}
+
+export async function backfillHistoricalSent(
+  db: OrgDb,
+  orgId: string,
+  before: string
+) {
+  const rows = await db.query(
+    `UPDATE checkout_reports
+     SET sent_at = completed_at
+     WHERE org_id = $1
+       AND sent_at IS NULL
+       AND created_at < $2
+     RETURNING id`,
+    [org(orgId), before]
+  );
+  return rows.length;
+}
+
+export async function markReportSent(db: OrgDb, orgId: string, id: string, sentAt: string) {
+  const rows = await db.query(
+    `UPDATE checkout_reports
+     SET sent_at = COALESCE(sent_at, $3)
+     WHERE id = $1 AND org_id = $2
+     RETURNING sent_at`,
+    [id, org(orgId), sentAt]
+  );
+  return rows[0];
+}
+
+export async function listReportsForDriver(db: OrgDb, orgId: string, driverName: string) {
+  return db.query(
+    `SELECT *
+     FROM checkout_reports
+     WHERE org_id = $1
+       AND archived_at IS NULL
+       AND lower(driver_name) = lower($2)
+     ORDER BY completed_at DESC
+     LIMIT 30`,
+    [org(orgId), driverName.trim()]
+  );
+}
+
+export async function countStuckUploads(db: OrgDb, orgId: string, olderThan: string) {
+  const rows = await db.query(
+    `SELECT COUNT(*)::int AS stuck
+     FROM checkout_reports
+     WHERE org_id = $1
+       AND archived_at IS NULL
+       AND sent_at IS NULL
+       AND created_at < $2`,
+    [org(orgId), olderThan]
+  );
+  return Number(rows[0]?.stuck ?? 0);
 }
 
 export async function getReportByIdempotency(db: OrgDb, orgId: string, key: string) {
@@ -348,6 +402,7 @@ export async function upsertReport(
     signedAt: string | null;
     inspectionFormJson: string;
     idempotencyKey?: string | null;
+    sentAt?: string | null;
   }
 ) {
   await assertFleetInOrg(db, orgId, report.companyId);
@@ -357,12 +412,12 @@ export async function upsertReport(
       driver_name, dispatcher_name, type, status, completed_at, review_status,
       review_notes, new_damage_notes, retake_angles, reviewed_at, reviewed_by,
       flagged, photos, created_at, signature_data_url, signed_at, inspection_form,
-      idempotency_key
+      idempotency_key, sent_at
     ) VALUES (
       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
       $11,$12,$13,$14,$15,$16,
       $17,$18,CAST($19 AS jsonb),$20,$21,
-      $22,CAST($23 AS jsonb),$24,$25,$26,CAST($27 AS jsonb),$28
+      $22,CAST($23 AS jsonb),$24,$25,$26,CAST($27 AS jsonb),$28,$29
     )
     ON CONFLICT (id) DO UPDATE SET
       review_status = EXCLUDED.review_status,
@@ -377,7 +432,8 @@ export async function upsertReport(
       plate = EXCLUDED.plate,
       signature_data_url = EXCLUDED.signature_data_url,
       signed_at = EXCLUDED.signed_at,
-      inspection_form = EXCLUDED.inspection_form
+      inspection_form = EXCLUDED.inspection_form,
+      sent_at = COALESCE(EXCLUDED.sent_at, checkout_reports.sent_at)
     WHERE checkout_reports.org_id = EXCLUDED.org_id
     RETURNING id`,
     [
@@ -409,6 +465,7 @@ export async function upsertReport(
       report.signedAt,
       report.inspectionFormJson,
       report.idempotencyKey || null,
+      report.sentAt || null,
     ]
   );
   if (!rows[0]) throw new OrgAccessError();
