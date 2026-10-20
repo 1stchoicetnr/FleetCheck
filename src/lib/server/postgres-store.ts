@@ -519,9 +519,9 @@ export async function pgListReportPage(query: {
     SELECT
       (COUNT(*) FILTER (
         WHERE (
-          ${status}::text IS NULL
+          CAST(${status} AS text) IS NULL
           OR (
-            ${status} = 'flagged'
+            CAST(${status} AS text) = 'flagged'
             AND (
               flagged
               OR review_status IN ('conditional', 'fail')
@@ -529,9 +529,9 @@ export async function pgListReportPage(query: {
             )
           )
           OR (
-            ${status} IS NOT NULL
-            AND ${status} <> 'flagged'
-            AND review_status = ${status}
+            CAST(${status} AS text) IS NOT NULL
+            AND CAST(${status} AS text) <> 'flagged'
+            AND review_status = CAST(${status} AS text)
           )
         )
       ))::int AS total,
@@ -542,9 +542,9 @@ export async function pgListReportPage(query: {
           OR btrim(COALESCE(new_damage_notes, '')) <> ''
       ))::int AS flagged
     FROM checkout_reports
-    WHERE (${includeArchived}::boolean OR archived_at IS NULL)
-      AND (${companyId}::text IS NULL OR company_id = ${companyId})
-      AND (${vehicleId}::text IS NULL OR vehicle_id = ${vehicleId})
+    WHERE (CAST(${includeArchived} AS boolean) OR archived_at IS NULL)
+      AND (CAST(${companyId} AS text) IS NULL OR company_id = CAST(${companyId} AS text))
+      AND (CAST(${vehicleId} AS text) IS NULL OR vehicle_id = CAST(${vehicleId} AS text))
   `;
   const rows = (await sql`
     SELECT
@@ -567,13 +567,13 @@ export async function pgListReportPage(query: {
         '[]'::jsonb
       ) AS photos
     FROM checkout_reports
-    WHERE (${includeArchived}::boolean OR archived_at IS NULL)
-      AND (${companyId}::text IS NULL OR company_id = ${companyId})
-      AND (${vehicleId}::text IS NULL OR vehicle_id = ${vehicleId})
+    WHERE (CAST(${includeArchived} AS boolean) OR archived_at IS NULL)
+      AND (CAST(${companyId} AS text) IS NULL OR company_id = CAST(${companyId} AS text))
+      AND (CAST(${vehicleId} AS text) IS NULL OR vehicle_id = CAST(${vehicleId} AS text))
       AND (
-        ${status}::text IS NULL
+        CAST(${status} AS text) IS NULL
         OR (
-          ${status} = 'flagged'
+          CAST(${status} AS text) = 'flagged'
           AND (
             flagged
             OR review_status IN ('conditional', 'fail')
@@ -581,9 +581,9 @@ export async function pgListReportPage(query: {
           )
         )
         OR (
-          ${status} IS NOT NULL
-          AND ${status} <> 'flagged'
-          AND review_status = ${status}
+          CAST(${status} AS text) IS NOT NULL
+          AND CAST(${status} AS text) <> 'flagged'
+          AND review_status = CAST(${status} AS text)
         )
       )
     ORDER BY completed_at DESC
