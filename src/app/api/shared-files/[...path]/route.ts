@@ -21,9 +21,16 @@ export async function GET(
   const filePath = path.join(process.cwd(), ".data", "blobs", safe);
   try {
     const data = await readFile(filePath);
+    const contentType = filePath.endsWith(".png")
+      ? "image/png"
+      : filePath.endsWith(".webp")
+        ? "image/webp"
+        : filePath.endsWith(".gif")
+          ? "image/gif"
+          : "image/jpeg";
     return new NextResponse(new Uint8Array(data), {
       headers: {
-        "Content-Type": "image/jpeg",
+        "Content-Type": contentType,
         "Cache-Control": "public, max-age=31536000, immutable",
       },
     });

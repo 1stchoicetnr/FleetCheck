@@ -9,6 +9,7 @@ import {
 } from "@/lib/types";
 import type { FleetSettings } from "@/lib/fleet-settings";
 import type { UserRole } from "@/lib/types";
+import type { StoredFeedback } from "@/lib/feedback";
 
 export interface SharedVehicle {
   id: string;
@@ -94,6 +95,7 @@ export interface SharedStore {
   alerts?: SharedOfficeAlert[];
   users?: SharedAppUser[];
   settings?: FleetSettings;
+  feedback?: StoredFeedback[];
 }
 
 export type { FleetSettings, CheckoutReport, Company, VehiclePhoto };

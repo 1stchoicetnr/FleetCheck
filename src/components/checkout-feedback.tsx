@@ -15,12 +15,13 @@ import { Image as ImageIcon, MessageSquarePlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   FEEDBACK_NOTE_MAX,
-  FEEDBACK_TO_DEFAULT,
   FEEDBACK_TYPES,
+  FeedbackDelivery,
   FeedbackPhotoStep,
   FeedbackType,
 } from "@/lib/feedback";
 import { compressImage, fileToDataUrl } from "@/lib/utils";
+import { useAuth } from "@/hooks/use-auth";
 
 const FEEDBACK_SCREENSHOT_EDGE = 1280;
 const FEEDBACK_SCREENSHOT_QUALITY = 0.7;
@@ -154,8 +155,11 @@ function FeedbackDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
-  const [loggedOnly, setLoggedOnly] = useState(false);
+  const [resultMessage, setResultMessage] = useState("");
+  const [delivered, setDelivered] = useState<FeedbackDelivery | "">("");
   const [canCaptureScreen, setCanCaptureScreen] = useState(false);
+  const [hint, setHint] = useState("");
+  const { user } = useAuth();
 
   useEffect(() => {
     if (!open) return;
@@ -165,11 +169,23 @@ function FeedbackDialog({
     setBusy(false);
     setError("");
     setDone(false);
-    setLoggedOnly(false);
+    setResultMessage("");
+    setDelivered("");
     setCanCaptureScreen(
       typeof navigator !== "undefined" &&
         typeof navigator.mediaDevices?.getDisplayMedia === "function"
     );
+    setHint("");
+    void fetch("/api/feedback")
+      .then((res) => res.json())
+      .then((data: { delivery?: FeedbackDelivery }) => {
+        if (data.delivery === "office") {
+          setHint("Slack isn't connected yet. This note will be saved for Office.");
+        } else if (data.delivery === "email") {
+          setHint("Slack isn't connected. This note will be emailed, and Office keeps a copy.");
+        }
+      })
+      .catch(() => setHint(""));
   }, [open]);
 
   useEffect(() => {
@@ -266,19 +282,25 @@ function FeedbackDialog({
             typeof navigator !== "undefined" ? navigator.userAgent : undefined,
           timestamp: new Date().toISOString(),
           driverName: meta.driverName,
+          userName: user?.name,
+          userRole: user?.role,
         }),
       });
       const data = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
         error?: string;
-        logged?: boolean;
+        delivered?: FeedbackDelivery;
+        message?: string;
       };
       if (!res.ok || !data.ok) {
         throw new Error(data.error || "Could not send feedback.");
       }
-      setLoggedOnly(Boolean(data.logged));
+      setDelivered(data.delivered || "office");
+      setResultMessage(data.message || "Saved for Office.");
       setDone(true);
-      setTimeout(onClose, 1400);
+      if (data.delivered === "slack" || data.delivered === "email") {
+        setTimeout(onClose, 1600);
+      }
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Could not send feedback."
@@ -308,8 +330,8 @@ function FeedbackDialog({
               App feedback
             </h2>
             <p className="text-xs text-gray-500">
-              Bugs, glitches, or ideas — not vehicle damage. Goes to{" "}
-              {FEEDBACK_TO_DEFAULT}.
+              Bugs, glitches, or ideas — not vehicle damage. Slack gets a copy
+              when it is connected. Office always keeps one.
             </p>
           </div>
           <button
@@ -323,10 +345,12 @@ function FeedbackDialog({
         </div>
 
         {done ? (
-          <p className="px-4 py-8 text-center text-sm font-semibold text-green-700">
-            {loggedOnly
-              ? "Saved on this machine — set RESEND_API_KEY on Vercel to email Ashley."
-              : "Sent. Thanks — Ashley will see it."}
+          <p
+            className={`px-4 py-8 text-center text-sm font-semibold ${
+              delivered === "office" ? "text-amber-800" : "text-green-700"
+            }`}
+          >
+            {resultMessage}
           </p>
         ) : (
           <div className="px-4 py-4 space-y-4">
@@ -416,6 +440,9 @@ function FeedbackDialog({
               />
             </div>
 
+            {hint && !error && (
+              <p className="text-sm font-medium text-amber-800">{hint}</p>
+            )}
             {error && (
               <p className="text-sm text-red-600 font-medium">{error}</p>
             )}
@@ -426,7 +453,7 @@ function FeedbackDialog({
               onClick={() => void submit()}
               disabled={busy || !type}
             >
-              {busy ? "Sending…" : "Send to Ashley"}
+              {busy ? "Sending…" : "Send feedback"}
             </Button>
           </div>
         )}

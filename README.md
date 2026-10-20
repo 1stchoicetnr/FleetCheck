@@ -107,21 +107,22 @@ Walkaround order (photo slots after Precheck — tire-tread photos dropped; same
 - Dash / odometer: office mainly needs mileage readable.
 - Night interiors: turn the lights on.
 - **Take photo** opens the phone’s native rear camera. **Choose from library** is the backup. There is no in-app Live Preview or flashlight.
-- Checkout header has a **Feedback** pill (Bug / Glitch / Idea, optional note + screenshot) on start, Precheck, and photo walkaround. Mail goes to `ashley@warecovery.com` (or `FEEDBACK_TO_EMAIL`).
+- Checkout header has a **Feedback** pill (Bug / Glitch / Idea, optional note + screenshot) on start, Precheck, and photo walkaround. It posts to Slack (`SLACK_WEBHOOK_FEEDBACK`) and Office keeps a copy at `/office/feedback`.
 - Super Admin **Add Vehicle** writes to the shared checkout unit list (not IndexedDB-only).
 - Super Admin can allow/deny **drivers adding vehicles** on Checkout (default off).
 
-## Feedback mailer (Vercel)
+## Feedback (Vercel)
 
-The Feedback UI always opens. Real email needs these Vercel env vars, then a redeploy:
+The Feedback button always saves a row Office can open at `/office/feedback`. Slack is the notification. Add the webhook on Vercel, then redeploy.
 
 | Var | Required | Notes |
 |---|---|---|
-| `RESEND_API_KEY` | yes for delivery | Resend API key |
-| `FEEDBACK_FROM_EMAIL` | yes for delivery | Verified Resend from-address, e.g. `FleetCheck <noreply@warecovery.com>` |
+| `SLACK_WEBHOOK_FEEDBACK` | for Slack delivery | Incoming webhook. The message includes type, note, who/role, page, unit, and a screenshot link when the image has a public URL. |
+| `RESEND_API_KEY` | no | Email fallback, used only when the Slack webhook is unset |
+| `FEEDBACK_FROM_EMAIL` | with Resend | Verified Resend from-address |
 | `FEEDBACK_TO_EMAIL` | no | Defaults to `ashley@warecovery.com` |
 
-If the mailer is not wired, submit shows a clear error (HTTP 503). Local `next dev` logs the report instead of emailing.
+If neither Slack nor Resend is set, submit still saves the note and tells the sender that Slack isn't connected.
 
 ## PWA
 

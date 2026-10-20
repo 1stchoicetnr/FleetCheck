@@ -24,6 +24,30 @@ export interface FeedbackPayload {
   userAgent?: string;
   timestamp?: string;
   driverName?: string;
+  userName?: string;
+  userRole?: string;
+}
+
+export type FeedbackDelivery = "slack" | "email" | "office";
+
+export interface StoredFeedback {
+  id: string;
+  type: FeedbackType;
+  note?: string;
+  unitId?: string;
+  unitNumber?: string;
+  plate?: string;
+  pagePhase?: string;
+  photoStep?: FeedbackPhotoStep | null;
+  pageUrl?: string;
+  userAgent?: string;
+  userName?: string;
+  userRole?: string;
+  driverName?: string;
+  /** Public URL, local /api/shared-files path, or a data URL Office can render. */
+  screenshotUrl?: string;
+  createdAt: string;
+  deliveredVia: FeedbackDelivery;
 }
 
 export function isFeedbackType(value: unknown): value is FeedbackType {
@@ -62,6 +86,66 @@ export function feedbackStepLabel(
   if (pagePhase === "start") return "start";
   if (pagePhase === "complete") return "complete";
   return "";
+}
+
+export function feedbackDeliveryChannel(input: {
+  slackWebhook?: string | null;
+  resendApiKey?: string | null;
+}): FeedbackDelivery {
+  if (input.slackWebhook?.trim()) return "slack";
+  if (input.resendApiKey?.trim()) return "email";
+  return "office";
+}
+
+export function feedbackRoleLabel(role?: string | null): string {
+  if (role === "management") return "Office";
+  if (role === "super_admin") return "Super Admin";
+  if (role === "tech") return "Tech";
+  if (role === "driver") return "Driver";
+  return role?.trim() || "Unknown role";
+}
+
+export function feedbackSavedMessage(
+  delivered: FeedbackDelivery,
+  options?: { slackFailed?: boolean }
+): string {
+  if (delivered === "slack") return "Sent to Slack. Office has a copy too.";
+  if (delivered === "email") return "Emailed. Office has a copy too.";
+  if (options?.slackFailed) {
+    return "Saved for Office. Slack did not accept it. Check SLACK_WEBHOOK_FEEDBACK.";
+  }
+  return "Saved for Office. Slack isn't connected yet. Set SLACK_WEBHOOK_FEEDBACK so the next note posts there.";
+}
+
+export function formatFeedbackSlack(input: {
+  payload: FeedbackPayload;
+  screenshotUrl?: string;
+}): { text: string; imageUrl?: string } {
+  const { payload } = input;
+  const who = payload.userName?.trim() || payload.driverName?.trim() || "Unknown";
+  const lines = [
+    `*FleetCheck feedback* — ${payload.type}`,
+    `*Note:* ${payload.note?.trim() || "(no note)"}`,
+    `*From:* ${who} · ${feedbackRoleLabel(payload.userRole)}`,
+  ];
+  const checkoutName = payload.driverName?.trim();
+  if (checkoutName && checkoutName !== who) {
+    lines.push(`*Checkout name:* ${checkoutName}`);
+  }
+  const step = feedbackStepLabel(payload.photoStep, payload.pagePhase);
+  const page = [step || payload.pagePhase?.trim(), payload.pageUrl?.trim()]
+    .filter(Boolean)
+    .join(" · ");
+  lines.push(`*Page:* ${page || "—"}`);
+  const unitBits = [payload.unitNumber?.trim(), payload.plate?.trim()].filter(Boolean);
+  if (payload.unitId?.trim()) unitBits.push(payload.unitId.trim());
+  if (unitBits.length) lines.push(`*Unit:* ${unitBits.join(" · ")}`);
+  const screenshot = input.screenshotUrl?.trim() || "";
+  const imageUrl = screenshot.startsWith("https://") ? screenshot : undefined;
+  if (imageUrl) lines.push(`*Screenshot:* ${imageUrl}`);
+  else if (screenshot) lines.push("*Screenshot:* saved in Office");
+  else lines.push("*Screenshot:* none");
+  return { text: lines.join("\n"), imageUrl };
 }
 
 export function parseImageDataUrl(dataUrl: string): {

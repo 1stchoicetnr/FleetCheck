@@ -323,6 +323,15 @@ export interface AppUserRecord {
   createdAt: string;
 }
 
+export async function fetchAppFeedback(): Promise<
+  import("@/lib/feedback").StoredFeedback[]
+> {
+  const data = await api<{ feedback?: import("@/lib/feedback").StoredFeedback[] }>(
+    "/api/feedback"
+  );
+  return data.feedback ?? [];
+}
+
 export async function fetchAppUsers(): Promise<AppUserRecord[]> {
   const data = await api<{ users: AppUserRecord[] }>("/api/users");
   return data.users;

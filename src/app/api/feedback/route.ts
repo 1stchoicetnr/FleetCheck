@@ -4,14 +4,28 @@ import {
   FEEDBACK_SCREENSHOT_MAX_CHARS,
   FeedbackPayload,
   FeedbackPhotoStep,
+  feedbackDeliveryChannel,
+  feedbackSavedMessage,
   isFeedbackType,
   parseImageDataUrl,
 } from "@/lib/feedback";
 import {
   feedbackMailerConfigured,
-  formatFeedbackEmail,
   sendFeedbackEmail,
 } from "@/lib/server/feedback-mail";
+import {
+  feedbackSlackWebhook,
+  postFeedbackToSlack,
+} from "@/lib/server/feedback-slack";
+import { generateId } from "@/lib/utils";
+import {
+  listFeedback,
+  markFeedbackDelivered,
+  saveFeedback,
+  storeFeedbackScreenshot,
+} from "@/lib/server/feedback-store";
+import { errorResponse } from "@/lib/server/api-error";
+import { isOfficeRequest } from "@/lib/server/office-pin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,13 +50,30 @@ function parsePhotoStep(value: unknown): FeedbackPhotoStep | undefined {
   };
 }
 
-export async function GET() {
-  return NextResponse.json(
-    {
-      configured: feedbackMailerConfigured(),
-    },
-    { headers: { "Cache-Control": "no-store" } }
-  );
+function deliveryChannel() {
+  return feedbackDeliveryChannel({
+    slackWebhook: feedbackSlackWebhook(),
+    resendApiKey: process.env.RESEND_API_KEY,
+  });
+}
+
+export async function GET(req: Request) {
+  try {
+    const delivery = deliveryChannel();
+    if (await isOfficeRequest(req)) {
+      const feedback = await listFeedback();
+      return NextResponse.json(
+        { delivery, feedback },
+        { headers: { "Cache-Control": "no-store" } }
+      );
+    }
+    return NextResponse.json(
+      { delivery },
+      { headers: { "Cache-Control": "no-store" } }
+    );
+  } catch (err) {
+    return errorResponse(err, "Could not load feedback.");
+  }
 }
 
 export async function POST(req: Request) {
@@ -76,7 +107,6 @@ export async function POST(req: Request) {
     const payload: FeedbackPayload = {
       type: body.type,
       note,
-      screenshotDataUrl,
       unitId: optionalString(body.unitId, 80),
       unitNumber: optionalString(body.unitNumber, 40),
       plate: optionalString(body.plate, 40),
@@ -86,35 +116,69 @@ export async function POST(req: Request) {
       userAgent: optionalString(body.userAgent, 400),
       timestamp: optionalString(body.timestamp, 80) || new Date().toISOString(),
       driverName: optionalString(body.driverName, 80),
+      userName: optionalString(body.userName, 80),
+      userRole: optionalString(body.userRole, 40),
     };
 
-    if (!feedbackMailerConfigured()) {
-      if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
-        const { subject, text } = formatFeedbackEmail(payload);
-        console.info("[FleetCheck Feedback] RESEND_API_KEY not set — logging instead of emailing");
-        console.info(subject);
-        console.info(text);
-        return NextResponse.json({ ok: true, logged: true });
+    const planned = deliveryChannel();
+    const id = generateId();
+    const screenshotUrl = await storeFeedbackScreenshot(id, screenshotDataUrl);
+    const saved = await saveFeedback(payload, screenshotUrl, "office", id);
+
+    if (planned === "slack") {
+      try {
+        await postFeedbackToSlack({ payload, screenshotUrl });
+        await markFeedbackDelivered(saved.id, "slack").catch((markErr) => {
+          console.error("[api] feedback delivery mark failed:", markErr);
+        });
+        return NextResponse.json({
+          ok: true,
+          id: saved.id,
+          delivered: "slack",
+          message: feedbackSavedMessage("slack"),
+        });
+      } catch (err) {
+        console.error("[api] feedback slack failed:", err);
+        return NextResponse.json({
+          ok: true,
+          id: saved.id,
+          delivered: "office",
+          message: feedbackSavedMessage("office", { slackFailed: true }),
+        });
       }
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "Feedback is not set up yet. Please tell the office.",
-        },
-        { status: 503 }
-      );
     }
 
-    const result = await sendFeedbackEmail(payload);
-    return NextResponse.json({ ok: true, id: result.id });
+    if (planned === "email" && feedbackMailerConfigured()) {
+      try {
+        await sendFeedbackEmail({ ...payload, screenshotDataUrl });
+        await markFeedbackDelivered(saved.id, "email").catch((markErr) => {
+          console.error("[api] feedback delivery mark failed:", markErr);
+        });
+        return NextResponse.json({
+          ok: true,
+          id: saved.id,
+          delivered: "email",
+          message: feedbackSavedMessage("email"),
+        });
+      } catch (err) {
+        console.error("[api] feedback email failed:", err);
+        return NextResponse.json({
+          ok: true,
+          id: saved.id,
+          delivered: "office",
+          message:
+            "Saved for Office. Email did not send. Slack isn't connected yet — set SLACK_WEBHOOK_FEEDBACK.",
+        });
+      }
+    }
+
+    return NextResponse.json({
+      ok: true,
+      id: saved.id,
+      delivered: "office",
+      message: feedbackSavedMessage("office"),
+    });
   } catch (err) {
-    console.error("[api] feedback send failed:", err);
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "Could not send feedback. Please try again.",
-      },
-      { status: 500 }
-    );
+    return errorResponse(err, "Could not save feedback. Please try again.");
   }
 }

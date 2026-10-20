@@ -26,6 +26,7 @@ import {
   FleetSettings,
   DEFAULT_FLEET_SETTINGS,
 } from "@/lib/fleet-settings";
+import type { StoredFeedback } from "@/lib/feedback";
 
 const STORE_PATH = path.join(process.cwd(), ".data", "shared.json");
 
@@ -416,5 +417,36 @@ export async function localSetFleetSettings(
     store.settings = next;
     await writeStore(store);
     return next;
+  });
+}
+
+export async function localInsertFeedback(
+  entry: StoredFeedback
+): Promise<StoredFeedback> {
+  return enqueueWrite(async () => {
+    const store = await loadAndSeedUnlocked();
+    store.feedback = [entry, ...(store.feedback ?? [])].slice(0, 100);
+    await writeStore(store);
+    return entry;
+  });
+}
+
+export async function localListFeedback(): Promise<StoredFeedback[]> {
+  const store = await localEnsureSeed();
+  return [...(store.feedback ?? [])].sort((a, b) =>
+    b.createdAt.localeCompare(a.createdAt)
+  );
+}
+
+export async function localSetFeedbackDelivery(
+  id: string,
+  deliveredVia: StoredFeedback["deliveredVia"]
+): Promise<void> {
+  return enqueueWrite(async () => {
+    const store = await loadAndSeedUnlocked();
+    const idx = (store.feedback ?? []).findIndex((item) => item.id === id);
+    if (idx < 0) return;
+    store.feedback![idx] = { ...store.feedback![idx], deliveredVia };
+    await writeStore(store);
   });
 }

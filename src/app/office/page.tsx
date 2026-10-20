@@ -203,6 +203,12 @@ function OfficeReportsPage() {
                 >
                   Manage units (archive)
                 </Link>
+                <Link
+                  href="/office/feedback"
+                  className="text-xs font-semibold text-brand-700 underline underline-offset-2"
+                >
+                  App feedback
+                </Link>
               </div>
             </div>
             {flagCount > 0 && (
