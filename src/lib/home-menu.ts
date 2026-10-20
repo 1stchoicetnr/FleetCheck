@@ -46,6 +46,16 @@ export function canAddVehicle(role: string): boolean {
   return role === "super_admin";
 }
 
+/** Office and Owner edit fleets. Tech can open Settings and only sees the list. */
+export function canEditFleets(user: MenuUser): boolean {
+  return (
+    user.role === "super_admin" ||
+    user.role === "management" ||
+    user.roleTitle === "Owner" ||
+    user.roleTitle === "Office"
+  );
+}
+
 /** Daily actions first, then the combined vehicles and settings tiles. */
 export function homeTiles(user: MenuUser): HomeTileId[] {
   const tiles: HomeTileId[] = ["my-checks"];

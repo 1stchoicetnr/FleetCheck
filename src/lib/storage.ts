@@ -772,6 +772,10 @@ export async function saveFleet(fleet: Fleet): Promise<void> {
   await (await getDB()).put("fleets", fleet);
 }
 
+export async function deleteLocalFleet(id: string): Promise<void> {
+  await (await getDB()).delete("fleets", id);
+}
+
 // Vehicles
 export async function getVehicles(): Promise<Vehicle[]> {
   return (await getDB()).getAll("vehicles");

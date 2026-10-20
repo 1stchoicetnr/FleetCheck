@@ -3,32 +3,23 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { getFleets, getCompanies } from "@/lib/storage";
+import { getCompanies } from "@/lib/storage";
 import {
   fetchAppUsers,
   fetchCompanies,
   fetchFleetSettings,
   fetchVehicles,
   updateFleetSettings,
-  type SharedVehicle,
 } from "@/lib/checkout-api";
-import {
-  activeCountByFleetId,
-  activeCountLabel,
-  fleetSubtitle,
-  fleetTitle,
-} from "@/lib/fleet-rows";
-import { Company, Fleet } from "@/lib/types";
+import { Company } from "@/lib/types";
 import { summarizeUnits, unitCountLine, UnitCounts } from "@/lib/unit-counts";
 import Link from "next/link";
 import { Users, Truck } from "lucide-react";
 import { UnitImportNote } from "@/components/unit-import-note";
 
 export function PeopleSettingsPanel() {
-  const [fleets, setFleets] = useState<Fleet[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [unitSummary, setUnitSummary] = useState<UnitCounts | null>(null);
-  const [sharedVehicles, setSharedVehicles] = useState<SharedVehicle[]>([]);
   const [serverUserCount, setServerUserCount] = useState<number | null>(null);
   const [unitsError, setUnitsError] = useState("");
   const [allowDriverAdd, setAllowDriverAdd] = useState(false);
@@ -36,8 +27,7 @@ export function PeopleSettingsPanel() {
   const [settingsError, setSettingsError] = useState("");
 
   useEffect(() => {
-    Promise.all([getFleets(), getCompanies()]).then(([f, companiesList]) => {
-      setFleets(f);
+    getCompanies().then((companiesList) => {
       setCompanies((current) => (current.length > 0 ? current : companiesList));
     });
     Promise.all([
@@ -46,7 +36,6 @@ export function PeopleSettingsPanel() {
       fetchAppUsers(),
     ])
       .then(([list, serverCompanies, serverUsers]) => {
-        setSharedVehicles(list);
         setUnitSummary(summarizeUnits(list));
         setCompanies(serverCompanies);
         setServerUserCount(serverUsers.length);
@@ -65,13 +54,11 @@ export function PeopleSettingsPanel() {
       });
   }, []);
 
-  const fleetCounts = activeCountByFleetId(fleets, sharedVehicles);
-
   return (
     <div id="people" className="space-y-4">
       <div>
         <h2 className="text-lg font-bold text-ink">People and invites</h2>
-        <p className="text-sm text-muted mt-1">Users, invites, and fleets.</p>
+        <p className="text-sm text-muted mt-1">Users and invites.</p>
       </div>
         {/* Stats */}
         <div className="grid grid-cols-3 gap-3">
@@ -200,34 +187,6 @@ export function PeopleSettingsPanel() {
                 </span>
               </div>
             ))}
-          </CardContent>
-        </Card>
-
-        {/* Fleets */}
-        <Card>
-          <CardContent className="py-5 space-y-3">
-            <CardTitle>Fleets</CardTitle>
-            {fleets.map((f) => {
-              const company = companies.find((item) => item.id === f.companyId);
-              const title = fleetTitle(f, company?.name);
-              const subtitle = fleetSubtitle(title, f.type);
-              return (
-                <div
-                  key={f.id}
-                  className="flex justify-between items-center py-2 border-b border-gray-100 last:border-0"
-                >
-                  <div>
-                    <p className="font-medium">{title}</p>
-                    {subtitle ? (
-                      <p className="text-xs text-gray-500">{subtitle}</p>
-                    ) : null}
-                  </div>
-                  <span className="text-sm text-gray-400 text-right">
-                    {unitSummary ? activeCountLabel(fleetCounts[f.id] ?? 0) : "…"}
-                  </span>
-                </div>
-              );
-            })}
           </CardContent>
         </Card>
 

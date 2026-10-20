@@ -5,6 +5,7 @@ import {
   shouldMoveUnitToTuro,
   TURO_COMPANY_ID,
 } from "@/lib/companies";
+import { FLEET_SEED_CREATED_AT, SEEDED_SERVER_FLEETS } from "@/lib/fleet-catalog";
 import { CheckoutReport, VehicleKnownIssue } from "@/lib/types";
 import { inferPowertrain } from "@/lib/inspection-form";
 import { displayPlate, normalizePlate } from "@/lib/utils";
@@ -16,6 +17,7 @@ import {
 import {
   ListVehiclesOptions,
   SharedAppUser,
+  SharedFleet,
   SharedOfficeAlert,
   SharedStore,
   SharedVehicle,
@@ -70,6 +72,18 @@ async function loadAndSeedUnlocked(): Promise<SharedStore> {
       }
     }
   }
+  store.fleets = store.fleets ?? [];
+  for (const fleet of SEEDED_SERVER_FLEETS) {
+    if (store.fleets.some((item) => item.id === fleet.id)) continue;
+    store.fleets.push({
+      id: fleet.id,
+      name: fleet.name,
+      type: fleet.type,
+      companyId: fleet.companyId,
+      createdAt: FLEET_SEED_CREATED_AT,
+    });
+    changed = true;
+  }
   const seedVehicles = sharedSeedVehicles();
   if (store.vehicles.length === 0) {
     store.vehicles = seedVehicles;
@@ -113,6 +127,20 @@ async function loadAndSeedUnlocked(): Promise<SharedStore> {
       continue;
     }
     report.companyId = TURO_COMPANY_ID;
+    changed = true;
+  }
+  for (const vehicle of store.vehicles) {
+    const current = (store.fleets ?? []).find((fleet) => fleet.id === vehicle.fleetId);
+    if (vehicle.fleetId && (!current || current.companyId !== vehicle.companyId)) {
+      delete vehicle.fleetId;
+      changed = true;
+    }
+    if (vehicle.fleetId) continue;
+    const matches = (store.fleets ?? []).filter(
+      (fleet) => fleet.companyId === vehicle.companyId && !fleet.archivedAt
+    );
+    if (matches.length !== 1) continue;
+    vehicle.fleetId = matches[0].id;
     changed = true;
   }
   if (changed) await writeStore(store);
@@ -212,10 +240,24 @@ export async function localUpsertVehicle(
         (normalizePlate(v.plate) === plateKey ||
           normalizePlate(v.unitNumber) === plateKey)
     );
+    let fleetId = input.fleetId || existing?.fleetId;
+    if (input.fleetId) {
+      const fleet = (store.fleets ?? []).find((item) => item.id === input.fleetId);
+      if (!fleet || fleet.companyId !== input.companyId) {
+        throw new Error("Fleet not found");
+      }
+      fleetId = input.fleetId;
+    } else if (!fleetId) {
+      const matches = (store.fleets ?? []).filter(
+        (fleet) => fleet.companyId === input.companyId && !fleet.archivedAt
+      );
+      if (matches.length === 1) fleetId = matches[0].id;
+    }
     const now = new Date().toISOString();
     const vehicle: SharedVehicle = {
       id: existing?.id ?? `vehicle-${input.companyId}-${plateKey.toLowerCase()}`,
       companyId: input.companyId,
+      fleetId: fleetId || undefined,
       unitNumber: (input.unitNumber || existing?.unitNumber || plate).trim(),
       plate,
       make: input.make.trim(),
@@ -240,6 +282,60 @@ export async function localUpsertVehicle(
     }
     await writeStore(store);
     return vehicle;
+  });
+}
+
+export async function localListFleets(includeArchived = false): Promise<SharedFleet[]> {
+  const store = await localEnsureSeed();
+  return (store.fleets ?? [])
+    .filter((fleet) => includeArchived || !fleet.archivedAt)
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function localInsertFleet(fleet: SharedFleet): Promise<SharedFleet> {
+  return enqueueWrite(async () => {
+    const store = await loadAndSeedUnlocked();
+    store.fleets = store.fleets ?? [];
+    const company = store.companies.find((item) => item.id === fleet.companyId);
+    if (!company) throw new Error("Fleet not found");
+    store.fleets.push(fleet);
+    await writeStore(store);
+    return fleet;
+  });
+}
+
+export async function localUpdateFleet(
+  id: string,
+  patch: { name?: string; archived?: boolean }
+): Promise<SharedFleet | undefined> {
+  return enqueueWrite(async () => {
+    const store = await loadAndSeedUnlocked();
+    const fleets = store.fleets ?? [];
+    const idx = fleets.findIndex((fleet) => fleet.id === id);
+    if (idx < 0) return undefined;
+    const next: SharedFleet = {
+      ...fleets[idx],
+      name: patch.name?.trim() || fleets[idx].name,
+    };
+    if (typeof patch.archived === "boolean") {
+      if (patch.archived) next.archivedAt = new Date().toISOString();
+      else delete next.archivedAt;
+    }
+    fleets[idx] = next;
+    store.fleets = fleets;
+    await writeStore(store);
+    return next;
+  });
+}
+
+export async function localDeleteFleet(id: string): Promise<boolean> {
+  return enqueueWrite(async () => {
+    const store = await loadAndSeedUnlocked();
+    const before = store.fleets?.length ?? 0;
+    store.fleets = (store.fleets ?? []).filter((fleet) => fleet.id !== id);
+    const removed = store.fleets.length !== before;
+    if (removed) await writeStore(store);
+    return removed;
   });
 }
 

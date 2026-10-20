@@ -7,7 +7,7 @@ const ROOT = path.join(import.meta.dirname, "../..");
 
 /** Tables that must be read and written only inside the org helper. */
 const SCOPED_TABLES =
-  "companies|vehicles|checkout_reports|fleet_alerts|app_users|app_feedback|fleet_settings";
+  "companies|vehicles|checkout_reports|fleet_alerts|app_users|app_feedback|fleet_settings|fleets";
 
 export const SCOPED_QUERY =
   new RegExp(
@@ -57,6 +57,7 @@ test("the query check matches real statements and ignores schema DDL", () => {
   assert.match("UPDATE fleet_alerts SET read = true", SCOPED_QUERY);
   assert.match("DELETE FROM app_feedback WHERE id = $1", SCOPED_QUERY);
   assert.match("JOIN companies ON companies.id = vehicles.company_id", SCOPED_QUERY);
+  assert.match("SELECT id FROM fleets WHERE org_id = $1", SCOPED_QUERY);
   assert.doesNotMatch("CREATE TABLE companies (", SCOPED_QUERY);
   assert.doesNotMatch(
     "CREATE INDEX IF NOT EXISTS checkout_reports_vehicle_idx ON checkout_reports (vehicle_id)",

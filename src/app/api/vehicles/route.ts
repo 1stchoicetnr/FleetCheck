@@ -47,6 +47,7 @@ export async function POST(req: Request) {
     const auth = await resolveRequestAuth(req);
     const body = (await req.json()) as {
       companyId?: string;
+      fleetId?: string;
       unitNumber?: string;
       plate?: string;
       make?: string;
@@ -88,6 +89,7 @@ export async function POST(req: Request) {
     }
     const vehicle = await upsertVehicle(auth.orgId, {
       companyId: body.companyId,
+      fleetId: body.fleetId?.trim() || undefined,
       unitNumber: body.unitNumber,
       plate: body.plate,
       make: body.make,

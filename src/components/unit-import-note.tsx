@@ -1,34 +1,23 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { runLocalUnitImport, UnitImportReport } from "@/lib/run-local-unit-import";
+import { runFleetSync, type FleetSyncReport } from "@/lib/run-fleet-sync";
 
 export function UnitImportNote() {
-  const [report, setReport] = useState<UnitImportReport | null>(null);
+  const [report, setReport] = useState<FleetSyncReport | null>(null);
 
   useEffect(() => {
-    runLocalUnitImport()
+    runFleetSync()
       .then(setReport)
       .catch(() => setReport(null));
   }, []);
 
-  if (!report || (report.imported.length === 0 && report.skipped.length === 0)) {
-    return null;
-  }
+  if (!report || report.uploaded.length === 0) return null;
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-gray-700 space-y-2">
-      <p className="font-semibold text-gray-900">On-device vehicles checked against the shared list.</p>
-      <p>
-        Imported: {report.imported.length ? report.imported.join(", ") : "none"}
-      </p>
-      {report.skipped.length > 0 && (
-        <ul className="list-disc pl-5 space-y-1">
-          {report.skipped.map((item) => (
-            <li key={item.detail}>{item.detail}</li>
-          ))}
-        </ul>
-      )}
+      <p className="font-semibold text-gray-900">Vehicles saved on the server.</p>
+      <p>{report.uploaded.join(", ")}</p>
     </div>
   );
 }

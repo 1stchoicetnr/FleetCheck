@@ -34,15 +34,19 @@ import {
   isVehicleArchived,
 } from "@/lib/vehicle-archive";
 import {
+  localDeleteFleet,
   localFindVehicleByPlate,
   localFindReportByIdempotency,
   localGetReport,
   localGetVehicle,
+  localInsertFleet,
   localListCompanies,
+  localListFleets,
   localDeleteReport,
   localInsertUser,
   localListAlerts,
   localListUsers,
+  localUpdateFleet,
   localUpdateUser,
   localDeleteAlert,
   localListReports,
@@ -67,6 +71,7 @@ import { assertIdempotencyKey, isUniqueViolation } from "@/lib/checkout-idempote
 import { isStuckUpload, STUCK_UPLOAD_AFTER_MS } from "@/lib/delivery-status";
 import {
   pgAssertFleetInOrg,
+  pgDeleteFleet,
   pgFindVehicleByPlate,
   pgCountStuckUploads,
   pgFindReportByIdempotency,
@@ -74,12 +79,15 @@ import {
   pgListReportsForDriver,
   pgMarkReportSent,
   pgGetVehicle,
+  pgInsertFleet,
   pgListCompanies,
+  pgListFleets,
   pgDeleteAlert,
   pgDeleteReport,
   pgInsertUser,
   pgListAlerts,
   pgListUsers,
+  pgUpdateFleet,
   pgUpdateUser,
   pgListReportPage,
   pgListReports,
@@ -104,6 +112,7 @@ import {
   CheckoutReviewInput,
   ListVehiclesOptions,
   SharedAppUser,
+  SharedFleet,
   SharedOfficeAlert,
   SharedVehicle,
   UpsertVehicleInput,
@@ -156,6 +165,55 @@ export async function listCompanies(orgId: string): Promise<Company[]> {
   });
 }
 
+export async function listFleets(
+  orgId: string,
+  options?: { includeArchived?: boolean }
+): Promise<SharedFleet[]> {
+  const mode = assertConfigured();
+  const includeArchived = Boolean(options?.includeArchived);
+  const fleets =
+    mode === "postgres"
+      ? await pgListFleets(orgId, includeArchived)
+      : await localListFleets(includeArchived);
+  return [...fleets].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function createFleet(
+  orgId: string,
+  input: { name: string; type: string; companyId: string }
+): Promise<SharedFleet> {
+  const mode = assertConfigured();
+  await assertFleet(mode, orgId, input.companyId);
+  const fleet: SharedFleet = {
+    id: generateId(),
+    name: input.name.trim(),
+    type: input.type,
+    companyId: input.companyId,
+    createdAt: new Date().toISOString(),
+  };
+  return mode === "postgres" ? pgInsertFleet(orgId, fleet) : localInsertFleet(fleet);
+}
+
+export async function updateFleet(
+  orgId: string,
+  id: string,
+  patch: { name?: string; archived?: boolean }
+): Promise<SharedFleet> {
+  const mode = assertConfigured();
+  const fleet =
+    mode === "postgres"
+      ? await pgUpdateFleet(orgId, id, patch)
+      : await localUpdateFleet(id, patch);
+  if (!fleet) throw new SharedBackendError("Fleet not found", 404);
+  return fleet;
+}
+
+export async function deleteFleet(orgId: string, id: string): Promise<void> {
+  const mode = assertConfigured();
+  const removed = mode === "postgres" ? await pgDeleteFleet(orgId, id) : await localDeleteFleet(id);
+  if (!removed) throw new SharedBackendError("Fleet not found", 404);
+}
+
 export async function listVehicles(
   orgId: string,
   companyId?: string,
@@ -203,6 +261,12 @@ export async function upsertVehicle(
   }
   if (input.powertrain && input.powertrain !== "ev" && input.powertrain !== "gas") {
     throw new SharedBackendError("Powertrain must be gas or ev", 400);
+  }
+  if (input.fleetId) {
+    const fleet = (await listFleets(orgId, { includeArchived: true })).find(
+      (item) => item.id === input.fleetId
+    );
+    if (!fleet || fleet.companyId !== input.companyId) throw new OrgAccessError();
   }
   const existing = await findVehicleByPlate(orgId, input.companyId, input.plate);
   if (existing && isVehicleArchived(existing)) {

@@ -85,6 +85,7 @@ export default function NewVehiclePage() {
     try {
       await upsertSharedVehicle({
         companyId: form.companyId,
+        fleetId: form.fleetId || undefined,
         unitNumber: form.unitNumber.trim() || form.plate.trim(),
         plate: form.plate.trim(),
         make: form.make.trim(),

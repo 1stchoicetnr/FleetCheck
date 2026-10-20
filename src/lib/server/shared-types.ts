@@ -12,9 +12,19 @@ import type { FleetSettings } from "@/lib/fleet-settings";
 import type { UserRole } from "@/lib/types";
 import type { StoredFeedback } from "@/lib/feedback";
 
+export interface SharedFleet {
+  id: string;
+  name: string;
+  type: string;
+  companyId: string;
+  archivedAt?: string;
+  createdAt: string;
+}
+
 export interface SharedVehicle {
   id: string;
   companyId: string;
+  fleetId?: string;
   unitNumber: string;
   plate: string;
   make: string;
@@ -55,6 +65,7 @@ export interface CheckoutReportInput {
 
 export interface UpsertVehicleInput {
   companyId: string;
+  fleetId?: string;
   unitNumber?: string;
   plate: string;
   make: string;
@@ -95,6 +106,7 @@ export interface SharedAppUser {
 
 export interface SharedStore {
   companies: Company[];
+  fleets?: SharedFleet[];
   vehicles: SharedVehicle[];
   reports: CheckoutReport[];
   alerts?: SharedOfficeAlert[];

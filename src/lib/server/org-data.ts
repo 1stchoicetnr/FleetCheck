@@ -3,7 +3,7 @@ import { OrgAccessError, requireOrgId } from "./org-scope";
 
 /**
  * The only application module that may read or write
- * companies, vehicles, checkout_reports, fleet_alerts,
+ * companies, vehicles, fleets, checkout_reports, fleet_alerts,
  * app_users, app_feedback, and fleet_settings.
  * Every statement includes org_id. org-stamp.ts is the migration only.
  */
@@ -41,6 +41,126 @@ export async function listCompanies(db: OrgDb, orgId: string) {
     "SELECT id, name, slug, checklist_id, created_at FROM companies WHERE org_id = $1 ORDER BY name",
     [org(orgId)]
   );
+}
+
+export async function listFleets(db: OrgDb, orgId: string, includeArchived: boolean) {
+  return db.query(
+    `SELECT id, company_id, name, type, archived_at, created_at
+     FROM fleets
+     WHERE org_id = $1
+       AND ($2::boolean OR archived_at IS NULL)
+     ORDER BY name`,
+    [org(orgId), includeArchived]
+  );
+}
+
+export async function getFleet(db: OrgDb, orgId: string, id: string) {
+  const rows = await db.query(
+    `SELECT id, company_id, name, type, archived_at, created_at
+     FROM fleets WHERE id = $1 AND org_id = $2`,
+    [id, org(orgId)]
+  );
+  return rows[0];
+}
+
+/** A fleet row, not a company id. companyId must be the fleet's company. */
+export async function assertFleetRecord(
+  db: OrgDb,
+  orgId: string,
+  fleetId: string,
+  companyId: string
+): Promise<void> {
+  const id = org(orgId);
+  if (!fleetId.trim() || !companyId.trim()) throw new OrgAccessError();
+  const rows = await db.query(
+    "SELECT id FROM fleets WHERE id = $1 AND org_id = $2 AND company_id = $3",
+    [fleetId, id, companyId]
+  );
+  if (!rows[0]) throw new OrgAccessError();
+}
+
+export async function seedFleet(
+  db: OrgDb,
+  orgId: string,
+  fleet: {
+    id: string;
+    companyId: string;
+    name: string;
+    type: string;
+    createdAt: string;
+  }
+) {
+  await db.query(
+    `INSERT INTO fleets (id, org_id, company_id, name, type, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6)
+     ON CONFLICT (id) DO NOTHING`,
+    [fleet.id, org(orgId), fleet.companyId, fleet.name, fleet.type, fleet.createdAt]
+  );
+}
+
+/** Fill only vehicles that do not already have a fleet, so a later edit survives. */
+export async function assignVehiclesToFleet(
+  db: OrgDb,
+  orgId: string,
+  fleetId: string,
+  companyId: string
+) {
+  await db.query(
+    `UPDATE vehicles SET fleet_id = $1
+     WHERE org_id = $2 AND company_id = $3 AND fleet_id IS NULL`,
+    [fleetId, org(orgId), companyId]
+  );
+}
+
+export async function insertFleet(
+  db: OrgDb,
+  orgId: string,
+  fleet: {
+    id: string;
+    companyId: string;
+    name: string;
+    type: string;
+    createdAt: string;
+  }
+) {
+  await assertFleetInOrg(db, orgId, fleet.companyId);
+  const rows = await db.query(
+    `INSERT INTO fleets (id, org_id, company_id, name, type, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6)
+     RETURNING id, company_id, name, type, archived_at, created_at`,
+    [fleet.id, org(orgId), fleet.companyId, fleet.name, fleet.type, fleet.createdAt]
+  );
+  if (!rows[0]) throw new OrgAccessError();
+  return rows[0];
+}
+
+export async function renameFleet(db: OrgDb, orgId: string, id: string, name: string) {
+  const rows = await db.query(
+    "UPDATE fleets SET name = $1 WHERE id = $2 AND org_id = $3 RETURNING id",
+    [name, id, org(orgId)]
+  );
+  if (!rows[0]) throw new OrgAccessError();
+}
+
+export async function setFleetArchivedAt(
+  db: OrgDb,
+  orgId: string,
+  id: string,
+  archivedAt: string | null
+) {
+  const rows = await db.query(
+    "UPDATE fleets SET archived_at = $1 WHERE id = $2 AND org_id = $3 RETURNING id",
+    [archivedAt, id, org(orgId)]
+  );
+  if (!rows[0]) throw new OrgAccessError();
+}
+
+export async function deleteFleet(db: OrgDb, orgId: string, id: string): Promise<boolean> {
+  const rows = await db.query(
+    "DELETE FROM fleets WHERE id = $1 AND org_id = $2 RETURNING id",
+    [id, org(orgId)]
+  );
+  return Boolean(rows[0]);
 }
 
 export async function listVehicles(
@@ -103,20 +223,22 @@ export async function upsertVehicle(
     lastMileage: number | null;
     createdAt: string;
     powertrain: string;
+    fleetId?: string | null;
   }
 ) {
   await assertFleetInOrg(db, orgId, vehicle.companyId);
   const rows = await db.query(
     `INSERT INTO vehicles (
-      id, company_id, unit_number, plate, make, model, year, last_mileage, created_at, powertrain, org_id
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      id, company_id, unit_number, plate, make, model, year, last_mileage, created_at, powertrain, org_id, fleet_id
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
     ON CONFLICT (id) DO UPDATE SET
       unit_number = EXCLUDED.unit_number,
       plate = EXCLUDED.plate,
       make = EXCLUDED.make,
       model = EXCLUDED.model,
       year = EXCLUDED.year,
-      powertrain = EXCLUDED.powertrain
+      powertrain = EXCLUDED.powertrain,
+      fleet_id = COALESCE(EXCLUDED.fleet_id, vehicles.fleet_id)
     WHERE vehicles.org_id = EXCLUDED.org_id
     RETURNING id`,
     [
@@ -131,6 +253,7 @@ export async function upsertVehicle(
       vehicle.createdAt,
       vehicle.powertrain,
       org(orgId),
+      vehicle.fleetId ?? null,
     ]
   );
   if (!rows[0]) throw new OrgAccessError();

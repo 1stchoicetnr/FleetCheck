@@ -202,6 +202,7 @@ export interface Fleet {
   type: StoredFleetType;
   companyId: string;
   createdAt: string;
+  archivedAt?: string;
 }
 
 export interface Vehicle {

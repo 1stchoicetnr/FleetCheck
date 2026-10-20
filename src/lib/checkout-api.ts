@@ -10,9 +10,19 @@ import {
 } from "./types";
 import type { FleetSettings } from "./fleet-settings";
 
+export interface SharedFleet {
+  id: string;
+  name: string;
+  type: string;
+  companyId: string;
+  archivedAt?: string;
+  createdAt: string;
+}
+
 export interface SharedVehicle {
   id: string;
   companyId: string;
+  fleetId?: string;
   unitNumber: string;
   plate: string;
   make: string;
@@ -67,6 +77,43 @@ export async function fetchCompanies(): Promise<Company[]> {
   return data.companies;
 }
 
+export async function fetchFleets(options?: {
+  includeArchived?: boolean;
+}): Promise<SharedFleet[]> {
+  const params = new URLSearchParams();
+  if (options?.includeArchived) params.set("includeArchived", "1");
+  const qs = params.toString();
+  const data = await api<{ fleets: SharedFleet[] }>(`/api/fleets${qs ? `?${qs}` : ""}`);
+  return data.fleets;
+}
+
+export async function createFleet(input: {
+  name: string;
+  type: string;
+  companyId: string;
+}): Promise<SharedFleet> {
+  const data = await api<{ fleet: SharedFleet }>("/api/fleets", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return data.fleet;
+}
+
+export async function updateFleet(
+  id: string,
+  patch: { name?: string; archived?: boolean }
+): Promise<SharedFleet> {
+  const data = await api<{ fleet: SharedFleet }>(`/api/fleets/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+  return data.fleet;
+}
+
+export async function deleteFleet(id: string): Promise<void> {
+  await api(`/api/fleets/${id}`, { method: "DELETE" });
+}
+
 export async function fetchVehicles(
   companyId?: string,
   options?: { includeArchived?: boolean }
@@ -109,6 +156,7 @@ export async function setVehiclePowertrain(
 
 export async function upsertSharedVehicle(input: {
   companyId: string;
+  fleetId?: string;
   unitNumber?: string;
   plate: string;
   make: string;

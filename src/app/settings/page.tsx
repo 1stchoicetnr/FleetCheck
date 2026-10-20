@@ -8,7 +8,8 @@ import { CompanySettingsPanel } from "@/components/company-settings-panel";
 import { NotificationSettingsPanel } from "@/components/notification-settings-panel";
 import { PeopleSettingsPanel } from "@/components/people-settings-panel";
 import { useAuth } from "@/hooks/use-auth";
-import { settingsSections, type SettingsSectionId } from "@/lib/home-menu";
+import { canEditFleets, settingsSections, type SettingsSectionId } from "@/lib/home-menu";
+import { FleetManager } from "@/components/fleet-manager";
 
 const LABELS: Record<SettingsSectionId, string> = {
   company: "Company",
@@ -52,6 +53,9 @@ function SettingsPage() {
         ))}
       </div>
       {sections.includes("company") && <CompanySettingsPanel />}
+      {sections.includes("company") && user ? (
+        <FleetManager canEdit={canEditFleets(user)} />
+      ) : null}
       {sections.includes("notifications") && <NotificationSettingsPanel />}
       {sections.includes("people") && <PeopleSettingsPanel />}
     </div>

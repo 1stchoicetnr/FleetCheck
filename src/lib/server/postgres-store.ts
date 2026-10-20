@@ -1,5 +1,6 @@
 import { neon } from "@neondatabase/serverless";
 import { SEEDED_COMPANIES, TURO_COMPANY_ID, shouldMoveUnitToTuro } from "@/lib/companies";
+import { FLEET_SEED_CREATED_AT, SEEDED_SERVER_FLEETS } from "@/lib/fleet-catalog";
 import {
   CheckoutInspectionForm,
   inferPowertrain,
@@ -22,6 +23,7 @@ import {
 import {
   ListVehiclesOptions,
   SharedAppUser,
+  SharedFleet,
   SharedOfficeAlert,
   SharedVehicle,
   UpsertVehicleInput,
@@ -191,6 +193,19 @@ export async function pgMigrateAndSeed(): Promise<void> {
   await sql`ALTER TABLE checkout_reports ADD COLUMN IF NOT EXISTS signed_at TIMESTAMPTZ`;
   await sql`ALTER TABLE checkout_reports ADD COLUMN IF NOT EXISTS inspection_form JSONB`;
   await sql`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ`;
+  await sql`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS fleet_id TEXT`;
+  await sql`
+    CREATE TABLE IF NOT EXISTS fleets (
+      id TEXT PRIMARY KEY,
+      org_id TEXT NOT NULL,
+      company_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL,
+      archived_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS fleets_org_idx ON fleets (org_id)`;
   await sql`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS powertrain TEXT`;
   await sql`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS last_oil_change_mileage INT`;
   await sql`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS known_issue JSONB`;
@@ -301,6 +316,15 @@ export async function pgMigrateAndSeed(): Promise<void> {
     await orgData.moveVehicleToFleet(db, orgId, String(row.id), TURO_COMPANY_ID);
   }
   await orgData.alignReportsWithFleet(db, orgId, TURO_COMPANY_ID);
+  for (const fleet of SEEDED_SERVER_FLEETS) {
+    await orgData.seedFleet(db, orgId, {
+      id: fleet.id,
+      companyId: fleet.companyId,
+      name: fleet.name,
+      type: fleet.type,
+      createdAt: FLEET_SEED_CREATED_AT,
+    });
+  }
   for (const vehicle of sharedSeedVehicles()) {
     await orgData.seedVehicle(db, orgId, {
       id: vehicle.id,
@@ -314,6 +338,9 @@ export async function pgMigrateAndSeed(): Promise<void> {
       createdAt: vehicle.createdAt,
       powertrain: vehicle.powertrain ?? "gas",
     });
+  }
+  for (const fleet of SEEDED_SERVER_FLEETS) {
+    await orgData.assignVehiclesToFleet(db, orgId, fleet.id, fleet.companyId);
   }
 
   if (!(await orgData.hasAnyReport(db, orgId))) {
@@ -387,6 +414,7 @@ function mapVehicleRow(row: Record<string, unknown>): SharedVehicle {
   return {
     id: String(row.id),
     companyId: String(row.company_id),
+    fleetId: row.fleet_id ? String(row.fleet_id) : undefined,
     unitNumber: String(row.unit_number),
     plate: String(row.plate),
     make: String(row.make),
@@ -459,10 +487,20 @@ export async function pgUpsertVehicle(
   const plateKey = normalizePlate(input.plate);
   const plate = displayPlate(input.plate);
   const existing = await pgFindVehicleByPlate(orgId, input.companyId, plateKey);
+  let fleetId = input.fleetId || existing?.fleetId;
+  if (input.fleetId) {
+    await orgData.assertFleetRecord(orgDb(), orgId, input.fleetId, input.companyId);
+    fleetId = input.fleetId;
+  } else if (!fleetId) {
+    const fleets = await orgData.listFleets(orgDb(), orgId, false);
+    const matches = fleets.filter((row) => String(row.company_id) === input.companyId);
+    if (matches.length === 1) fleetId = String(matches[0].id);
+  }
   const now = new Date().toISOString();
   const vehicle: SharedVehicle = {
     id: existing?.id ?? `vehicle-${input.companyId}-${plateKey.toLowerCase()}`,
     companyId: input.companyId,
+    fleetId: fleetId || undefined,
     unitNumber: (input.unitNumber || existing?.unitNumber || plate).trim(),
     plate,
     make: input.make.trim(),
@@ -490,8 +528,72 @@ export async function pgUpsertVehicle(
     lastMileage: vehicle.lastMileage ?? null,
     createdAt: vehicle.createdAt,
     powertrain: vehicle.powertrain ?? "gas",
+    fleetId: fleetId ?? null,
   });
   return vehicle;
+}
+
+function mapFleetRow(row: Record<string, unknown>): SharedFleet {
+  return {
+    id: String(row.id),
+    companyId: String(row.company_id),
+    name: String(row.name),
+    type: String(row.type),
+    archivedAt: row.archived_at
+      ? new Date(String(row.archived_at)).toISOString()
+      : undefined,
+    createdAt: new Date(String(row.created_at)).toISOString(),
+  };
+}
+
+export async function pgListFleets(
+  orgId: string,
+  includeArchived = false
+): Promise<SharedFleet[]> {
+  await pgMigrateAndSeed();
+  const rows = await orgData.listFleets(orgDb(), orgId, includeArchived);
+  return rows.map((row) => mapFleetRow(row));
+}
+
+export async function pgInsertFleet(
+  orgId: string,
+  fleet: {
+    id: string;
+    companyId: string;
+    name: string;
+    type: string;
+    createdAt: string;
+  }
+): Promise<SharedFleet> {
+  await pgMigrateAndSeed();
+  const row = await orgData.insertFleet(orgDb(), orgId, fleet);
+  return mapFleetRow(row);
+}
+
+export async function pgUpdateFleet(
+  orgId: string,
+  id: string,
+  patch: { name?: string; archived?: boolean }
+): Promise<SharedFleet | undefined> {
+  await pgMigrateAndSeed();
+  const existing = await orgData.getFleet(orgDb(), orgId, id);
+  if (!existing) return undefined;
+  if (patch.name) await orgData.renameFleet(orgDb(), orgId, id, patch.name);
+  if (typeof patch.archived === "boolean") {
+    await orgData.setFleetArchivedAt(
+      orgDb(),
+      orgId,
+      id,
+      patch.archived ? new Date().toISOString() : null
+    );
+  }
+  const row = await orgData.getFleet(orgDb(), orgId, id);
+  return row ? mapFleetRow(row) : undefined;
+}
+
+export async function pgDeleteFleet(orgId: string, id: string): Promise<boolean> {
+  await pgMigrateAndSeed();
+  return orgData.deleteFleet(orgDb(), orgId, id);
 }
 
 export async function pgSetVehicleArchived(
