@@ -22,6 +22,7 @@ import {
   localListFeedback,
   localSetFeedbackDelivery,
 } from "./local-store";
+import { applyOrgStamp, FIRST_CHOICE_ORG_ID } from "./org-stamp";
 
 const DATA_DIR = path.join(process.cwd(), ".data", "blobs");
 
@@ -56,6 +57,9 @@ async function ensureFeedbackTable(): Promise<void> {
       delivered_via TEXT NOT NULL
     )
   `;
+  await applyOrgStamp({
+    query: (text, params) => sql.query(text, params ?? []),
+  });
   tableReady = true;
 }
 
@@ -151,11 +155,12 @@ export async function saveFeedback(
   const sql = sqlClient();
   await sql`
     INSERT INTO app_feedback (
-      id, type, note, unit_id, unit_number, plate, page_phase, photo_step,
+      id, org_id, type, note, unit_id, unit_number, plate, page_phase, photo_step,
       page_url, user_agent, user_name, user_role, driver_name, screenshot_url,
       created_at, delivered_via
     ) VALUES (
       ${entry.id},
+      ${FIRST_CHOICE_ORG_ID},
       ${entry.type},
       ${entry.note ?? null},
       ${entry.unitId ?? null},

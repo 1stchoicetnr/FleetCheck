@@ -29,6 +29,7 @@ import {
 import type { FleetSettings } from "@/lib/fleet-settings";
 import { DEFAULT_FLEET_SETTINGS } from "@/lib/fleet-settings";
 import { SEEDED_APP_USERS } from "./seed-users";
+import { applyOrgStamp, FIRST_CHOICE_ORG_ID } from "./org-stamp";
 import type { UserRole } from "@/lib/types";
 
 function sqlClient() {
@@ -195,11 +196,6 @@ export async function pgMigrateAndSeed(): Promise<void> {
     )
   `;
   await sql`
-    INSERT INTO fleet_settings (id, allow_driver_add_vehicles)
-    VALUES ('app', FALSE)
-    ON CONFLICT (id) DO NOTHING
-  `;
-  await sql`
     CREATE TABLE IF NOT EXISTS app_users (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -209,18 +205,26 @@ export async function pgMigrateAndSeed(): Promise<void> {
       created_at TIMESTAMPTZ NOT NULL
     )
   `;
+  await applyOrgStamp({
+    query: (text, params) => sql.query(text, params ?? []),
+  });
+  await sql`
+    INSERT INTO fleet_settings (id, allow_driver_add_vehicles, org_id)
+    VALUES ('app', FALSE, ${FIRST_CHOICE_ORG_ID})
+    ON CONFLICT (id) DO NOTHING
+  `;
   for (const user of SEEDED_APP_USERS) {
     await sql`
-      INSERT INTO app_users (id, name, email, role, active, created_at)
-      VALUES (${user.id}, ${user.name}, ${user.email}, ${user.role}, ${user.active}, ${user.createdAt})
+      INSERT INTO app_users (id, name, email, role, active, created_at, org_id)
+      VALUES (${user.id}, ${user.name}, ${user.email}, ${user.role}, ${user.active}, ${user.createdAt}, ${FIRST_CHOICE_ORG_ID})
       ON CONFLICT (id) DO NOTHING
     `;
   }
 
   for (const company of SEEDED_COMPANIES) {
     await sql`
-      INSERT INTO companies (id, name, slug, checklist_id, created_at)
-      VALUES (${company.id}, ${company.name}, ${company.slug}, ${company.checklistId}, ${company.createdAt})
+      INSERT INTO companies (id, name, slug, checklist_id, created_at, org_id)
+      VALUES (${company.id}, ${company.name}, ${company.slug}, ${company.checklistId}, ${company.createdAt}, ${FIRST_CHOICE_ORG_ID})
       ON CONFLICT (id) DO NOTHING
     `;
   }
@@ -253,11 +257,11 @@ export async function pgMigrateAndSeed(): Promise<void> {
   `;
   for (const vehicle of sharedSeedVehicles()) {
     await sql`
-      INSERT INTO vehicles (id, company_id, unit_number, plate, make, model, year, last_mileage, created_at, powertrain)
+      INSERT INTO vehicles (id, company_id, unit_number, plate, make, model, year, last_mileage, created_at, powertrain, org_id)
       VALUES (
         ${vehicle.id}, ${vehicle.companyId}, ${vehicle.unitNumber}, ${vehicle.plate},
         ${vehicle.make}, ${vehicle.model}, ${vehicle.year}, ${vehicle.lastMileage ?? null},
-        ${vehicle.createdAt}, ${vehicle.powertrain ?? "gas"}
+        ${vehicle.createdAt}, ${vehicle.powertrain ?? "gas"}, ${FIRST_CHOICE_ORG_ID}
       )
       ON CONFLICT (id) DO NOTHING
     `;
@@ -423,11 +427,11 @@ export async function pgUpsertVehicle(
   };
   const sql = sqlClient();
   await sql`
-    INSERT INTO vehicles (id, company_id, unit_number, plate, make, model, year, last_mileage, created_at, powertrain)
+    INSERT INTO vehicles (id, company_id, unit_number, plate, make, model, year, last_mileage, created_at, powertrain, org_id)
     VALUES (
       ${vehicle.id}, ${vehicle.companyId}, ${vehicle.unitNumber}, ${vehicle.plate},
       ${vehicle.make}, ${vehicle.model}, ${vehicle.year}, ${vehicle.lastMileage ?? null},
-      ${vehicle.createdAt}, ${vehicle.powertrain ?? "gas"}
+      ${vehicle.createdAt}, ${vehicle.powertrain ?? "gas"}, ${FIRST_CHOICE_ORG_ID}
     )
     ON CONFLICT (id) DO UPDATE SET
       unit_number = EXCLUDED.unit_number,
@@ -638,12 +642,12 @@ async function upsertReportRow(report: CheckoutReport): Promise<void> {
   const sql = sqlClient();
   await sql`
     INSERT INTO checkout_reports (
-      id, company_id, vehicle_id, unit_number, plate, year, make, model, odometer,
+      id, org_id, company_id, vehicle_id, unit_number, plate, year, make, model, odometer,
       driver_name, dispatcher_name, type, status, completed_at, review_status,
       review_notes, new_damage_notes, retake_angles, reviewed_at, reviewed_by,
       flagged, photos, created_at, signature_data_url, signed_at, inspection_form
     ) VALUES (
-      ${report.id}, ${report.companyId}, ${report.vehicleId}, ${report.unitNumber},
+      ${report.id}, ${FIRST_CHOICE_ORG_ID}, ${report.companyId}, ${report.vehicleId}, ${report.unitNumber},
       ${report.plate ?? null},
       ${report.year}, ${report.make}, ${report.model}, ${report.odometer},
       ${report.driverName}, ${report.dispatcherName}, ${report.type}, ${report.status},
@@ -761,9 +765,9 @@ export async function pgInsertAlert(alert: SharedOfficeAlert): Promise<void> {
   const sql = sqlClient();
   await sql`
     INSERT INTO fleet_alerts (
-      id, type, message, vehicle_id, vehicle_plate, actor_name, report_id, created_at, read, archived_at
+      id, org_id, type, message, vehicle_id, vehicle_plate, actor_name, report_id, created_at, read, archived_at
     ) VALUES (
-      ${alert.id}, ${alert.type}, ${alert.message}, ${alert.vehicleId}, ${alert.vehiclePlate},
+      ${alert.id}, ${FIRST_CHOICE_ORG_ID}, ${alert.type}, ${alert.message}, ${alert.vehicleId}, ${alert.vehiclePlate},
       ${alert.actorName}, ${alert.reportId ?? null}, ${alert.createdAt}, ${alert.read},
       ${alert.archivedAt ?? null}
     )
@@ -823,8 +827,8 @@ export async function pgInsertUser(user: SharedAppUser): Promise<SharedAppUser> 
   await pgMigrateAndSeed();
   const sql = sqlClient();
   await sql`
-    INSERT INTO app_users (id, name, email, role, active, created_at)
-    VALUES (${user.id}, ${user.name}, ${user.email}, ${user.role}, ${user.active}, ${user.createdAt})
+    INSERT INTO app_users (id, name, email, role, active, created_at, org_id)
+    VALUES (${user.id}, ${user.name}, ${user.email}, ${user.role}, ${user.active}, ${user.createdAt}, ${FIRST_CHOICE_ORG_ID})
   `;
   return user;
 }
@@ -865,8 +869,8 @@ export async function pgSetFleetSettings(
   };
   const sql = sqlClient();
   await sql`
-    INSERT INTO fleet_settings (id, allow_driver_add_vehicles)
-    VALUES ('app', ${next.allowDriverAddVehicles})
+    INSERT INTO fleet_settings (id, allow_driver_add_vehicles, org_id)
+    VALUES ('app', ${next.allowDriverAddVehicles}, ${FIRST_CHOICE_ORG_ID})
     ON CONFLICT (id) DO UPDATE SET
       allow_driver_add_vehicles = EXCLUDED.allow_driver_add_vehicles
   `;
