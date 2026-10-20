@@ -263,6 +263,12 @@ export async function pgMigrateAndSeed(): Promise<void> {
     }
   }
 
+  if (await orgData.restoreReplacedFrontPhoto(db, orgId)) {
+    console.log(
+      "[front-photo] restored original front on 1792511911545-kehi03k"
+    );
+  }
+
   migrated = true;
 }
 

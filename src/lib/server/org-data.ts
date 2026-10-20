@@ -787,3 +787,54 @@ export async function reportExists(db: OrgDb, orgId: string, id: string) {
   );
   return rows.length > 0;
 }
+
+/** The one checkout whose front photo was replaced by a verification upload. */
+const FRONT_RESTORE_REPORT_ID = "1792511911545-kehi03k";
+const FRONT_RESTORE_TEST_URL =
+  "https://vgsmegupovts2rut.public.blob.vercel-storage.com/checkout/1792511911545-kehi03k/front-qpk4tUMrklIykPIKDop3I6elYvVv4r.jpg";
+const FRONT_RESTORE_ORIGINAL_URL =
+  "https://vgsmegupovts2rut.public.blob.vercel-storage.com/checkout/1792511911545-kehi03k/front-2EFdktrQqgi7cVSdrKAc5UfFZYSUfH.jpg";
+
+/**
+ * Point that report's front photo back at the original file when it still
+ * points at the test upload. A second run matches nothing and writes nothing.
+ * Does not delete the test file or change any other column or photo.
+ */
+export async function restoreReplacedFrontPhoto(
+  db: OrgDb,
+  orgId: string
+): Promise<boolean> {
+  const rows = await db.query(
+    `UPDATE checkout_reports
+     SET photos = (
+       SELECT COALESCE(
+         jsonb_agg(
+           CASE
+             WHEN elem->>'angle' = 'front' AND elem->>'dataUrl' = $2
+             THEN jsonb_set(elem, '{dataUrl}', to_jsonb($3::text))
+             ELSE elem
+           END
+           ORDER BY ord
+         ),
+         '[]'::jsonb
+       )
+       FROM jsonb_array_elements(photos) WITH ORDINALITY AS shot(elem, ord)
+     )
+     WHERE id = $1
+       AND org_id = $4
+       AND EXISTS (
+         SELECT 1
+         FROM jsonb_array_elements(photos) AS elem
+         WHERE elem->>'angle' = 'front'
+           AND elem->>'dataUrl' = $2
+       )
+     RETURNING id`,
+    [
+      FRONT_RESTORE_REPORT_ID,
+      FRONT_RESTORE_TEST_URL,
+      FRONT_RESTORE_ORIGINAL_URL,
+      org(orgId),
+    ]
+  );
+  return Boolean(rows[0]);
+}
