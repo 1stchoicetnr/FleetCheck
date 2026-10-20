@@ -10,7 +10,8 @@ import { canManageFleet } from "@/lib/fleet-config";
 import { getCompanies, getFleets } from "@/lib/storage";
 import { upsertSharedVehicle } from "@/lib/checkout-api";
 import { inferPowertrain, Powertrain } from "@/lib/inspection-form";
-import { Company, Fleet, fleetTypeLabel } from "@/lib/types";
+import { fleetSubtitle, fleetTitle } from "@/lib/fleet-rows";
+import { Company, Fleet } from "@/lib/types";
 import { defaultCompanyId } from "@/lib/companies";
 import { cn } from "@/lib/utils";
 
@@ -222,11 +223,16 @@ export default function NewVehiclePage() {
             onChange={(e) => setForm({ ...form, fleetId: e.target.value })}
             className="w-full rounded-xl border border-gray-300 px-4 py-3 text-base min-h-[48px] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none"
           >
-            {fleets.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.name} ({fleetTypeLabel(f.type)})
-              </option>
-            ))}
+            {fleets.map((f) => {
+              const company = companies.find((item) => item.id === f.companyId);
+              const title = fleetTitle(f, company?.name);
+              const subtitle = fleetSubtitle(title, f.type);
+              return (
+                <option key={f.id} value={f.id}>
+                  {subtitle ? `${title} (${subtitle})` : title}
+                </option>
+              );
+            })}
           </select>
         </div>
 

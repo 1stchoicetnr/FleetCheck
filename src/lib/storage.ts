@@ -118,10 +118,9 @@ async function migrateFleetCategories(
     fleets.some((f) => f.type === "camera_car" || f.type === "other") ||
     fleets.filter((f) => normalizeFleetType(f.type) === "service_vehicle")
       .length > 1;
-  const needsRename = fleets.some((f) => {
-    const type = normalizeFleetType(f.type);
-    return f.type !== type || f.name !== FLEET_CANONICAL_NAMES[type];
-  });
+  const needsRename = fleets.some(
+    (f) => f.type !== normalizeFleetType(f.type)
+  );
   if (!needsMerge && !needsRename) return;
 
   const serviceCandidates = fleets.filter(
@@ -174,9 +173,8 @@ async function migrateFleetCategories(
   const refreshed = await db.getAll("fleets");
   for (const fleet of refreshed) {
     const type = normalizeFleetType(fleet.type);
-    const name = FLEET_CANONICAL_NAMES[type];
-    if (fleet.type !== type || fleet.name !== name) {
-      await db.put("fleets", { ...fleet, type, name });
+    if (fleet.type !== type) {
+      await db.put("fleets", { ...fleet, type });
     }
   }
 }

@@ -10,8 +10,15 @@ import {
   fetchFleetSettings,
   fetchVehicles,
   updateFleetSettings,
+  type SharedVehicle,
 } from "@/lib/checkout-api";
-import { Company, Fleet, fleetTypeLabel } from "@/lib/types";
+import {
+  activeCountByFleetId,
+  activeCountLabel,
+  fleetSubtitle,
+  fleetTitle,
+} from "@/lib/fleet-rows";
+import { Company, Fleet } from "@/lib/types";
 import { summarizeUnits, unitCountLine, UnitCounts } from "@/lib/unit-counts";
 import Link from "next/link";
 import { Users, Truck } from "lucide-react";
@@ -21,6 +28,7 @@ export function PeopleSettingsPanel() {
   const [fleets, setFleets] = useState<Fleet[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [unitSummary, setUnitSummary] = useState<UnitCounts | null>(null);
+  const [sharedVehicles, setSharedVehicles] = useState<SharedVehicle[]>([]);
   const [serverUserCount, setServerUserCount] = useState<number | null>(null);
   const [unitsError, setUnitsError] = useState("");
   const [allowDriverAdd, setAllowDriverAdd] = useState(false);
@@ -38,6 +46,7 @@ export function PeopleSettingsPanel() {
       fetchAppUsers(),
     ])
       .then(([list, serverCompanies, serverUsers]) => {
+        setSharedVehicles(list);
         setUnitSummary(summarizeUnits(list));
         setCompanies(serverCompanies);
         setServerUserCount(serverUsers.length);
@@ -55,6 +64,8 @@ export function PeopleSettingsPanel() {
         setSettingsError(err.message || "Could not load Super Admin settings.");
       });
   }, []);
+
+  const fleetCounts = activeCountByFleetId(fleets, sharedVehicles);
 
   return (
     <div id="people" className="space-y-4">
@@ -196,22 +207,27 @@ export function PeopleSettingsPanel() {
         <Card>
           <CardContent className="py-5 space-y-3">
             <CardTitle>Fleets</CardTitle>
-            {fleets.map((f) => (
-              <div
-                key={f.id}
-                className="flex justify-between items-center py-2 border-b border-gray-100 last:border-0"
-              >
-                <div>
-                  <p className="font-medium">{f.name}</p>
-                  <p className="text-xs text-gray-500">
-                    {fleetTypeLabel(f.type)}
-                  </p>
+            {fleets.map((f) => {
+              const company = companies.find((item) => item.id === f.companyId);
+              const title = fleetTitle(f, company?.name);
+              const subtitle = fleetSubtitle(title, f.type);
+              return (
+                <div
+                  key={f.id}
+                  className="flex justify-between items-center py-2 border-b border-gray-100 last:border-0"
+                >
+                  <div>
+                    <p className="font-medium">{title}</p>
+                    {subtitle ? (
+                      <p className="text-xs text-gray-500">{subtitle}</p>
+                    ) : null}
+                  </div>
+                  <span className="text-sm text-gray-400 text-right">
+                    {unitSummary ? activeCountLabel(fleetCounts[f.id] ?? 0) : "…"}
+                  </span>
                 </div>
-                <span className="text-sm text-gray-400 text-right">
-                  {fleetCountLabel(f, fleets, unitSummary)}
-                </span>
-              </div>
-            ))}
+              );
+            })}
           </CardContent>
         </Card>
 
@@ -233,17 +249,3 @@ export function PeopleSettingsPanel() {
   );
 }
 
-function fleetCountLabel(
-  fleet: Fleet,
-  fleets: Fleet[],
-  summary: UnitCounts | null
-): string {
-  if (!summary) return "…";
-  const companyId = fleet.companyId;
-  if (!companyId) return "0 active";
-  const active = summary.byCompany[companyId]?.active ?? 0;
-  const sharesCompany =
-    fleets.filter((item) => item.companyId === companyId).length > 1;
-  if (sharesCompany) return `Same ${active} active units`;
-  return `${active} active`;
-}
