@@ -22,6 +22,7 @@ import { Company } from "@/lib/types";
 import { summarizeUnits, unitCountLine } from "@/lib/unit-counts";
 import { formatDate, formatMileage, formatUnitLabel } from "@/lib/utils";
 import { isVehicleArchived } from "@/lib/vehicle-archive";
+import { UnitImportNote } from "@/components/unit-import-note";
 import { Archive, ArchiveRestore, Truck } from "lucide-react";
 
 type UnitFilter = "active" | "archived" | "all";
@@ -133,6 +134,7 @@ export default function OfficeUnitsPage() {
       <AppHeader title="Office — Units" backHref="/office" />
       <OfficePinGate onUnlocked={markOfficeUnlocked}>
         <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
+          <UnitImportNote />
           {loadError && (
             <p className="text-sm text-red-600 font-medium">{loadError}</p>
           )}

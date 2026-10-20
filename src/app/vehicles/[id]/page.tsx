@@ -16,6 +16,7 @@ import {
   getChecksByVehicleSorted,
   getMaintenanceLogsByVehicle,
 } from "@/lib/storage";
+import { fetchCompanies, fetchVehicles, SharedVehicle } from "@/lib/checkout-api";
 import {
   canManageVehicleMaintenance,
   canViewVehicleHistory,
@@ -39,6 +40,7 @@ export default function VehicleDetailPage() {
   const vehicleId = params.id as string;
 
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
+  const [shared, setShared] = useState<SharedVehicle | null>(null);
   const [fleet, setFleet] = useState<Fleet | null>(null);
   const [checks, setChecks] = useState<CheckRecord[]>([]);
   const [logs, setLogs] = useState<MaintenanceLogEntry[]>([]);
@@ -51,7 +53,16 @@ export default function VehicleDetailPage() {
 
   useEffect(() => {
     async function load() {
-      const v = await getVehicleById(vehicleId);
+      const [v, companies] = await Promise.all([
+        getVehicleById(vehicleId),
+        fetchCompanies().catch(() => []),
+      ]);
+      const lists = await Promise.all(
+        companies.map((company) =>
+          fetchVehicles(company.id, { includeArchived: true }).catch(() => [])
+        )
+      );
+      setShared(lists.flat().find((item) => item.id === vehicleId) ?? null);
       if (!v) return;
       setVehicle(v);
       const f = await getFleetById(v.fleetId);
@@ -68,9 +79,43 @@ export default function VehicleDetailPage() {
 
   if (loading || !user) return null;
   if (!vehicle) {
+    if (!shared) {
+      return (
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <p className="text-gray-500">Vehicle not found.</p>
+        </div>
+      );
+    }
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <p className="text-gray-500">Vehicle not found.</p>
+      <div className="min-h-screen bg-gray-50">
+        <AppHeader title={formatUnitLabel(shared.unitNumber, shared.plate)} />
+        <div className="max-w-lg mx-auto px-4 py-6 space-y-4">
+          <Card>
+            <CardContent className="py-4 space-y-2">
+              <CardTitle>
+                {shared.year} {shared.make} {shared.model}
+              </CardTitle>
+              <p className="text-sm text-gray-600">
+                {formatUnitLabel(shared.unitNumber, shared.plate)}
+                {shared.powertrain === "ev" ? " · EV" : ""}
+              </p>
+              {shared.lastMileage != null && (
+                <p className="text-sm text-gray-500">
+                  Last mileage: {formatMileage(shared.lastMileage)}
+                </p>
+              )}
+              <p className="text-sm text-gray-500">
+                This van is on the shared unit list. Archive it from Office units.
+              </p>
+            </CardContent>
+          </Card>
+          <Link href={`/office?unitId=${shared.id}`}>
+            <Button className="w-full">Office reports</Button>
+          </Link>
+          <Link href="/vehicles">
+            <Button variant="secondary" className="w-full">Back to fleet</Button>
+          </Link>
+        </div>
       </div>
     );
   }

@@ -2,7 +2,6 @@ import { PHOTO_EXAMPLE_PATHS } from "@/lib/photo-examples";
 import {
   FIRST_CHOICE_COMPANY_ID,
   OTHER_FLEETS_COMPANY_ID,
-  PINKIE_TOW_COMPANY_ID,
   RAD_CAB_COMPANY_ID,
   SEEDED_COMPANIES,
 } from "@/lib/companies";
@@ -17,7 +16,6 @@ export const RAD_CAB_UNIT_12_ID = "vehicle-radcab-12";
 export const RAD_CAB_UNIT_18_ID = "vehicle-radcab-18";
 export const RAD_CAB_UNIT_23_ID = "vehicle-radcab-23";
 export const RAD_CAB_UNIT_CXB9373_ID = "vehicle-radcab-cxb9373";
-export const RAD_CAB_UNIT_091_ID = "vehicle-radcab-091";
 export const FIRST_CHOICE_UNIT_T1_ID = "vehicle-1st-t1";
 
 function checkedForm(
@@ -96,18 +94,6 @@ export function sharedSeedVehicles(): SharedVehicle[] {
       createdAt: now,
     },
     {
-      id: RAD_CAB_UNIT_091_ID,
-      companyId: RAD_CAB_COMPANY_ID,
-      unitNumber: "091",
-      plate: "EV-0091",
-      make: "Tesla",
-      model: "Model Y",
-      year: 2024,
-      lastMileage: 55280,
-      powertrain: "ev",
-      createdAt: now,
-    },
-    {
       id: RAD_CAB_UNIT_CXB9373_ID,
       companyId: RAD_CAB_COMPANY_ID,
       unitNumber: "CXB9373",
@@ -142,67 +128,13 @@ export function sharedSeedVehicles(): SharedVehicle[] {
       powertrain: "gas",
       createdAt: now,
     },
-    {
-      id: "vehicle-pinkie-placeholder",
-      companyId: PINKIE_TOW_COMPANY_ID,
-      unitNumber: "P1",
-      plate: "PNK-0001",
-      make: "Ford",
-      model: "F-450",
-      year: 2019,
-      lastMileage: 61000,
-      powertrain: "gas",
-      createdAt: now,
-    },
   ];
-}
-
-function teslaPaperExampleReport(): CheckoutReport {
-  const completedAt = "2024-09-10T16:00:00.000Z";
-  return {
-    id: "cr-seed-unit091-paper-example",
-    companyId: RAD_CAB_COMPANY_ID,
-    vehicleId: RAD_CAB_UNIT_091_ID,
-    unitNumber: "091",
-    plate: "EV-0091",
-    year: 2024,
-    make: "Tesla",
-    model: "Model Y",
-    odometer: 55280,
-    driverName: "KEN",
-    dispatcherName: "Ashley",
-    type: "check_out",
-    photos: examplePhotos(completedAt),
-    status: "complete",
-    completedAt,
-    reviewStatus: "pending",
-    inspectionForm: checkedForm("ev", {
-      cloverSerial: "4821",
-      inspectedAt: completedAt,
-      checks: {
-        ...checkedForm("ev").checks,
-        tirePressure: { result: "ok", note: "35 Psi" },
-      },
-      interiorClean: "yes",
-      exteriorClean: "yes",
-      treadLevel: "good",
-      treadByTire: { lf: "good", rf: "good", lr: "good", rr: "good" },
-      trafficLight: "yellow",
-      trafficNote: "Right-side bumper scratches — note & drive.",
-      damage: { right: "SCRATCHES", marks: ["right"] },
-      additionalComments: "Right-side bumper scratches circled on paper form.",
-    }),
-    flagged: true,
-    synced: true,
-    createdAt: completedAt,
-  };
 }
 
 /** Slack PDFs are not Office records. This backfills Nathan's missing CXB9373 CR. */
 export function sharedRecoveredReports(): CheckoutReport[] {
   const completedAt = "2026-09-11T11:46:05.237Z";
   return [
-    teslaPaperExampleReport(),
     {
       id: "cr-slack-cxb9373-1789127165237",
       companyId: RAD_CAB_COMPANY_ID,
@@ -325,7 +257,6 @@ export function sharedSeedReports(): CheckoutReport[] {
       synced: true,
       createdAt: pendingAt,
     },
-    teslaPaperExampleReport(),
   ];
 }
 

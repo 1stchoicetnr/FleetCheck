@@ -1,275 +1,185 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { AppHeader } from "@/components/app-header";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
-import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
+import { canViewFleetOverview } from "@/lib/fleet-config";
 import {
-  getVehicles,
-  getFleets,
-  getChecks,
-  updateVehicleStatus,
-  getFleetById,
-} from "@/lib/storage";
-import { canUpdateStatus, canManageKnownIssues, canViewVehicleHistory, canViewFleetOverview, canManageVehicleMaintenance } from "@/lib/fleet-config";
-import { buildLastCheckMap, formatLastCheckLine } from "@/lib/vehicle-check-status";
-import { dispatchStatusChangeAlert } from "@/lib/alerts";
-import { Vehicle, Fleet, VehicleStatus, FLEET_TYPE_LABELS, FLEET_TYPES, CheckRecord, STATUS_LABELS, fleetTypeLabel, normalizeFleetType } from "@/lib/types";
+  FIRST_CHOICE_COMPANY_ID,
+  OTHER_FLEETS_COMPANY_ID,
+  RAD_CAB_COMPANY_ID,
+  SEEDED_COMPANIES,
+} from "@/lib/companies";
+import { fetchVehicles, SharedVehicle } from "@/lib/checkout-api";
+import { summarizeUnits, unitCountLine } from "@/lib/unit-counts";
 import { formatMileage, formatUnitLabel } from "@/lib/utils";
-import Link from "next/link";
-import { KnownIssueEditor } from "@/components/known-issue-editor";
-import { OilChangeStatusBadge } from "@/components/oil-change-status";
-import { OilChangeEditor } from "@/components/oil-change-editor";
-import { VehicleStatusControls } from "@/components/vehicle-status-controls";
-import { MANUAL_VEHICLE_STATUSES, VEHICLE_STATUSES } from "@/lib/vehicle-status";
+import { UnitImportNote } from "@/components/unit-import-note";
 
-const STATUS_PARAM_VALUES = new Set<string>([
-  "all",
-  ...VEHICLE_STATUSES,
-]);
+const GROUPS = [
+  { id: RAD_CAB_COMPANY_ID, label: "Taxi / Rad Cab" },
+  { id: FIRST_CHOICE_COMPANY_ID, label: "Tow" },
+  { id: OTHER_FLEETS_COMPANY_ID, label: "Turo and service" },
+];
 
 function VehiclesPageContent() {
   const { user, loading } = useAuth();
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [fleets, setFleets] = useState<Fleet[]>([]);
-  const [checks, setChecks] = useState<CheckRecord[]>([]);
-  const [filter, setFilter] = useState<VehicleStatus | "all">("all");
-  const [statusSavingId, setStatusSavingId] = useState<string | null>(null);
-
-  useEffect(() => {
-    const status = searchParams.get("status");
-    if (status && STATUS_PARAM_VALUES.has(status)) {
-      setFilter(status as VehicleStatus | "all");
-    }
-  }, [searchParams]);
+  const [vehicles, setVehicles] = useState<SharedVehicle[]>([]);
+  const [ready, setReady] = useState(false);
+  const [error, setError] = useState("");
+  const [companyId, setCompanyId] = useState("all");
 
   useEffect(() => {
     if (!loading && !user) router.replace("/");
   }, [user, loading, router]);
 
   useEffect(() => {
-    Promise.all([getVehicles(), getFleets(), getChecks()]).then(([v, f, c]) => {
-      setVehicles(v);
-      setFleets(f);
-      setChecks(c);
-    });
+    const companyIds = SEEDED_COMPANIES.map((company) => company.id);
+    Promise.all(companyIds.map((id) => fetchVehicles(id, { includeArchived: true })))
+      .then((lists) => {
+        const byId = new Map<string, SharedVehicle>();
+        for (const list of lists) {
+          for (const vehicle of list) byId.set(vehicle.id, vehicle);
+        }
+        setVehicles([...byId.values()]);
+        setError("");
+      })
+      .catch((err: Error) => setError(err.message || "Could not load units."))
+      .finally(() => setReady(true));
   }, []);
 
-  const lastCheckMap = buildLastCheckMap(checks);
-
-  const fleetMap = Object.fromEntries(fleets.map((f) => [f.id, f]));
-  const filtered =
-    filter === "all" ? vehicles : vehicles.filter((v) => v.status === filter);
-
-  const statusCounts = vehicles.reduce(
-    (acc, v) => {
-      acc[v.status] = (acc[v.status] ?? 0) + 1;
-      return acc;
-    },
-    {} as Record<VehicleStatus, number>
-  );
-
-  const fleetOverview = user ? canViewFleetOverview(user.role) : false;
-
-  const fleetGroups = fleetOverview
-    ? FLEET_TYPES.map((type) => ({
-        type,
-        label: FLEET_TYPE_LABELS[type],
-        vehicles: filtered.filter((v) => {
-          const fleet = fleetMap[v.fleetId];
-          return fleet && normalizeFleetType(fleet.type) === type;
-        }),
-      })).filter((g) => g.vehicles.length > 0)
-    : [{ type: "all" as const, label: "", vehicles: filtered }];
-
-  const renderVehicleCard = (v: Vehicle) => {
-    const fleet = fleetMap[v.fleetId];
-    const lastCheck = lastCheckMap.get(v.id);
-    const fleetLabel = fleet ? fleetTypeLabel(fleet.type) : null;
-    const fleetSubtitle =
-      fleet && fleetLabel && fleet.name.trim().toLowerCase() !== fleetLabel.toLowerCase()
-        ? `${fleet.name} · ${fleetLabel}`
-        : fleetLabel ?? fleet?.name;
-
-    return (
-      <Card key={v.id}>
-        <CardContent className="py-4 space-y-3">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <CardTitle>
-                {formatUnitLabel(v.unitNumber, v.plate)}
-                {v.unitNumber && v.plate ? (
-                  <span className="text-gray-400 font-medium"> · {v.plate}</span>
-                ) : null}
-              </CardTitle>
-              <p className="text-sm text-gray-600">
-                {v.year} {v.make} {v.model}
-              </p>
-              {fleetSubtitle && (
-                <p className="text-xs text-gray-400 mt-1">{fleetSubtitle}</p>
-              )}
-            </div>
-            <StatusBadge status={v.status} />
-          </div>
-
-          {lastCheck && (
-            <p className="text-xs text-gray-500">
-              {formatLastCheckLine(lastCheck)}
-            </p>
-          )}
-
-          {v.lastMileage != null && (
-            <p className="text-sm text-gray-500">
-              Mileage: {formatMileage(v.lastMileage)}
-            </p>
-          )}
-
-          {v.lastMileage != null && fleetOverview && (
-            <OilChangeStatusBadge
-              vehicle={v}
-              currentMileage={v.lastMileage}
-              compact
-            />
-          )}
-
-          {fleetOverview && canManageVehicleMaintenance(user!.role) && (
-            <OilChangeEditor
-              vehicle={v}
-              canEdit
-              onUpdated={(updated) =>
-                setVehicles((prev) =>
-                  prev.map((item) => (item.id === updated.id ? updated : item))
-                )
-              }
-            />
-          )}
-
-          {(fleetOverview || (v.knownIssue?.isOpen && v.knownIssue.text.trim())) && (
-            <KnownIssueEditor
-              vehicle={v}
-              canEdit={canManageKnownIssues(user!.role)}
-              userId={user!.id}
-              userName={user!.name}
-              onUpdated={(updated) =>
-                setVehicles((prev) =>
-                  prev.map((item) => (item.id === updated.id ? updated : item))
-                )
-              }
-            />
-          )}
-
-          {canUpdateStatus(user!.role) && (
-            <VehicleStatusControls
-              current={v.status}
-              disabled={statusSavingId === v.id}
-              onChange={(status) => handleStatusChange(v.id, status)}
-            />
-          )}
-
-          {canViewVehicleHistory(user!.role) && (
-            <Link href={`/vehicles/${v.id}`}>
-              <Button size="sm" variant="outline" className="w-full">
-                History & maintenance
-              </Button>
-            </Link>
-          )}
-
-          {user!.role === "driver" &&
-            (v.status === "ready" ||
-              v.status === "checked_out" ||
-              v.status === "needs_work") && (
-              <Link href="/checkout">
-                <Button size="md" className="w-full">
-                  Checkout Report
-                </Button>
-              </Link>
-            )}
-        </CardContent>
-      </Card>
-    );
-  };
-
-  const handleStatusChange = async (id: string, status: VehicleStatus) => {
-    const vehicle = vehicles.find((v) => v.id === id);
-    if (!vehicle || !user) return;
-    if (!(MANUAL_VEHICLE_STATUSES as readonly VehicleStatus[]).includes(status)) return;
-    setStatusSavingId(id);
-    const previousStatus = vehicle.status;
-    try {
-      await updateVehicleStatus(id, status);
-      setVehicles((prev) =>
-        prev.map((v) => (v.id === id ? { ...v, status } : v))
-      );
-      const fleet = await getFleetById(vehicle.fleetId);
-      if (fleet) {
-        await dispatchStatusChangeAlert(
-          { ...vehicle, status },
-          normalizeFleetType(fleet.type),
-          user.name,
-          status,
-          previousStatus
-        );
-      }
-    } finally {
-      setStatusSavingId(null);
-    }
-  };
+  const summary = useMemo(() => summarizeUnits(vehicles), [vehicles]);
+  const visible = useMemo(() => {
+    return vehicles
+      .filter((vehicle) => companyId === "all" || vehicle.companyId === companyId)
+      .filter((vehicle) => !vehicle.archivedAt)
+      .sort((a, b) => a.unitNumber.localeCompare(b.unitNumber, undefined, { numeric: true }));
+  }, [vehicles, companyId]);
 
   if (loading || !user) return null;
 
-  const pageTitle = fleetOverview ? "Fleet Overview" : "Vehicles";
+  const overview = canViewFleetOverview(user.role);
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <AppHeader title={pageTitle} />
+      <AppHeader title={overview ? "Fleet" : "Vehicles"} />
       <div className="max-w-lg mx-auto px-4 py-6 space-y-4">
-        {fleetOverview && (
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {(["all", ...VEHICLE_STATUSES] as const).map((s) => {
-              const count =
-                s === "all"
-                  ? vehicles.length
-                  : statusCounts[s as VehicleStatus] ?? 0;
-              return (
-                <button
-                  key={s}
-                  onClick={() => setFilter(s)}
-                  className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap ${
-                    filter === s
-                      ? "bg-brand-600 text-white"
-                      : "bg-white text-gray-600 border border-gray-200"
-                  }`}
-                >
-                  {s === "all" ? "All" : STATUS_LABELS[s]} ({count})
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        <div className="space-y-6">
-          {fleetGroups.map((group) => (
-            <div key={String(group.type)} className="space-y-3">
-              {group.label ? (
+        <UnitImportNote />
+        <p className="text-sm text-gray-600">
+          {ready ? unitCountLine(summary) : "Loading units…"}
+        </p>
+        {error && <p className="text-sm font-medium text-red-600">{error}</p>}
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          <FilterChip active={companyId === "all"} onClick={() => setCompanyId("all")}>
+            All
+          </FilterChip>
+          {GROUPS.map((group) => (
+            <FilterChip
+              key={group.id}
+              active={companyId === group.id}
+              onClick={() => setCompanyId(group.id)}
+            >
+              {group.label}
+            </FilterChip>
+          ))}
+        </div>
+        {!ready ? (
+          <p className="text-center text-gray-500 py-8">Loading units…</p>
+        ) : visible.length === 0 ? (
+          <p className="text-center text-gray-500 py-8">No active units in this list.</p>
+        ) : (
+          GROUPS.filter((group) => companyId === "all" || companyId === group.id).map((group) => {
+            const rows = visible.filter((vehicle) => vehicle.companyId === group.id);
+            if (rows.length === 0) return null;
+            return (
+              <section key={group.id} className="space-y-3">
                 <h2 className="text-sm font-bold text-gray-800 uppercase tracking-wide">
                   {group.label}
+                  <span className="ml-2 font-medium normal-case text-gray-400">
+                    {summary.byCompany[group.id]?.active ?? 0} active
+                  </span>
                 </h2>
-              ) : null}
-              {group.vehicles.map((v) => renderVehicleCard(v))}
-            </div>
-          ))}
-
-          {filtered.length === 0 && (
-            <p className="text-center text-gray-500 py-8">No vehicles found.</p>
-          )}
-        </div>
+                {rows.map((vehicle) => (
+                  <Card key={vehicle.id}>
+                    <CardContent className="py-4 space-y-3">
+                      <div>
+                        <CardTitle>{formatUnitLabel(vehicle.unitNumber, vehicle.plate)}</CardTitle>
+                        <p className="text-sm text-gray-600">
+                          {vehicle.year} {vehicle.make} {vehicle.model}
+                          {vehicle.powertrain === "ev" ? " · EV" : ""}
+                        </p>
+                        {vehicle.lastMileage != null && (
+                          <p className="text-sm text-gray-500 mt-1">
+                            Mileage: {formatMileage(vehicle.lastMileage)}
+                          </p>
+                        )}
+                      </div>
+                      <Link href="/checkout">
+                        <Button size="sm" className="w-full">Checkout Report</Button>
+                      </Link>
+                      {overview && (
+                        <Link href={`/office?unitId=${vehicle.id}`}>
+                          <Button size="sm" variant="outline" className="w-full">
+                            Office reports
+                          </Button>
+                        </Link>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </section>
+            );
+          })
+        )}
+        {ready &&
+          visible
+            .filter((vehicle) => !GROUPS.some((group) => group.id === vehicle.companyId))
+            .map((vehicle) => (
+              <Card key={vehicle.id}>
+                <CardContent className="py-4">
+                  <CardTitle>{formatUnitLabel(vehicle.unitNumber, vehicle.plate)}</CardTitle>
+                  <p className="text-sm text-gray-600">
+                    {vehicle.year} {vehicle.make} {vehicle.model}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    This company is not one of the taxi, tow, Turo, or service fleets.
+                  </p>
+                </CardContent>
+              </Card>
+            ))}
+        {overview && (
+          <Link href="/office/units">
+            <Button variant="secondary" className="w-full">Archive or restore a unit</Button>
+          </Link>
+        )}
       </div>
     </div>
+  );
+}
+
+function FilterChip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap ${
+        active ? "bg-brand-600 text-white" : "bg-white text-gray-600 border border-gray-200"
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 

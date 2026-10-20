@@ -6,13 +6,8 @@ import { AppHeader } from "@/components/app-header";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
-import { canManageFleet, canManageKnownIssues } from "@/lib/fleet-config";
-import {
-  getFleets,
-  getVehicles,
-  getChecks,
-  getCompanies,
-} from "@/lib/storage";
+import { canManageFleet } from "@/lib/fleet-config";
+import { getFleets, getCompanies } from "@/lib/storage";
 import {
   fetchAppUsers,
   fetchCompanies,
@@ -21,24 +16,18 @@ import {
   SharedVehicle,
   updateFleetSettings,
 } from "@/lib/checkout-api";
-import { Company, Fleet, Vehicle, fleetTypeLabel } from "@/lib/types";
+import { Company, Fleet, fleetTypeLabel } from "@/lib/types";
 import { summarizeUnits, unitCountLine, UnitCounts } from "@/lib/unit-counts";
 import { formatUnitLabel } from "@/lib/utils";
 import Link from "next/link";
-import { buildLastCheckMap, formatLastCheckLine } from "@/lib/vehicle-check-status";
 import { Plus, Bell, Users, Truck } from "lucide-react";
-import { StatusBadge } from "@/components/ui/status-badge";
-import { formatDate } from "@/lib/utils";
-import { KnownIssueEditor } from "@/components/known-issue-editor";
-import { hasOpenKnownIssue } from "@/lib/known-issue";
+import { UnitImportNote } from "@/components/unit-import-note";
 
 export default function AdminPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const [fleets, setFleets] = useState<Fleet[]>([]);
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
-  const [checks, setChecks] = useState<Awaited<ReturnType<typeof getChecks>>>([]);
   const [checkoutUnits, setCheckoutUnits] = useState<SharedVehicle[]>([]);
   const [unitSummary, setUnitSummary] = useState<UnitCounts | null>(null);
   const [serverUserCount, setServerUserCount] = useState<number | null>(null);
@@ -53,15 +42,8 @@ export default function AdminPage() {
   }, [user, loading, router]);
 
   useEffect(() => {
-    Promise.all([
-      getFleets(),
-      getVehicles(),
-      getChecks(),
-      getCompanies(),
-    ]).then(([f, v, c, companiesList]) => {
+    Promise.all([getFleets(), getCompanies()]).then(([f, companiesList]) => {
       setFleets(f);
-      setVehicles(v);
-      setChecks(c);
       setCompanies((current) => (current.length > 0 ? current : companiesList));
     });
     Promise.all([
@@ -90,9 +72,6 @@ export default function AdminPage() {
   }, []);
 
   if (loading || !user) return null;
-
-  const lastCheckMap = buildLastCheckMap(checks);
-  const fleetMap = Object.fromEntries(fleets.map((f) => [f.id, f]));
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -286,60 +265,17 @@ export default function AdminPage() {
           </CardContent>
         </Card>
 
-        {/* Fleet vehicles */}
+        <UnitImportNote />
         <Card>
           <CardContent className="py-5 space-y-3">
-            <CardTitle>Fleet Vehicles</CardTitle>
-            <p className="text-xs text-gray-500">
-              Current status for each vehicle in the fleet.
+            <CardTitle>Fleet vehicles</CardTitle>
+            <p className="text-sm text-gray-600">
+              The shared Units list is the fleet. Taxi, tow, Turo, and service
+              vans live there. The old on-device list is no longer shown.
             </p>
-            {vehicles.map((v) => {
-              const fleet = fleetMap[v.fleetId];
-              const lastCheck = lastCheckMap.get(v.id);
-              return (
-                <div
-                  key={v.id}
-                  className="py-3 border-b border-gray-100 last:border-0 space-y-2"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="font-medium">{v.plate}</p>
-                      <p className="text-xs text-gray-500">
-                        {v.year} {v.make} {v.model}
-                        {fleet ? ` · ${fleet.name}` : ""}
-                      </p>
-                    </div>
-                    <StatusBadge status={v.status} />
-                  </div>
-                  {lastCheck && (
-                    <p className="text-xs text-gray-400">
-                      {formatLastCheckLine(lastCheck)}
-                    </p>
-                  )}
-                  {hasOpenKnownIssue(v) && (
-                    <p className="text-xs text-amber-800 font-medium">
-                      Known issue: {v.knownIssue!.text.trim()}
-                    </p>
-                  )}
-                  {user && canManageKnownIssues(user.role) && (
-                    <KnownIssueEditor
-                      vehicle={v}
-                      canEdit
-                      userId={user.id}
-                      userName={user.name}
-                      onUpdated={(updated) =>
-                        setVehicles((prev) =>
-                          prev.map((item) => (item.id === updated.id ? updated : item))
-                        )
-                      }
-                    />
-                  )}
-                </div>
-              );
-            })}
-            {vehicles.length === 0 && (
-              <p className="text-sm text-gray-500">No vehicles registered.</p>
-            )}
+            <Link href="/office/units">
+              <Button variant="secondary" className="w-full">Open units</Button>
+            </Link>
           </CardContent>
         </Card>
 

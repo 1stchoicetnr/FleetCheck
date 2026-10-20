@@ -7,10 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
 import { canManageFleet } from "@/lib/fleet-config";
-import { getCompanies, getFleets, saveVehicle } from "@/lib/storage";
+import { getCompanies, getFleets } from "@/lib/storage";
 import { upsertSharedVehicle } from "@/lib/checkout-api";
 import { inferPowertrain, Powertrain } from "@/lib/inspection-form";
-import { Company, Fleet, Vehicle, fleetTypeLabel } from "@/lib/types";
+import { Company, Fleet, fleetTypeLabel } from "@/lib/types";
 import { defaultCompanyId } from "@/lib/companies";
 import { cn } from "@/lib/utils";
 
@@ -82,7 +82,7 @@ export default function NewVehiclePage() {
     );
 
     try {
-      const shared = await upsertSharedVehicle({
+      await upsertSharedVehicle({
         companyId: form.companyId,
         unitNumber: form.unitNumber.trim() || form.plate.trim(),
         plate: form.plate.trim(),
@@ -92,22 +92,7 @@ export default function NewVehiclePage() {
         powertrain,
       });
 
-      const vehicle: Vehicle = {
-        id: shared.id,
-        fleetId: form.fleetId || fleets[0]?.id || "fleet-taxi",
-        companyId: shared.companyId,
-        unitNumber: shared.unitNumber,
-        plate: shared.plate,
-        make: shared.make,
-        model: shared.model,
-        year: shared.year,
-        vin: form.vin || undefined,
-        status: "ready",
-        qrCode: `FC-${shared.plate.replace(/[\s-]/g, "").toUpperCase()}`,
-        createdAt: shared.createdAt,
-      };
-      await saveVehicle(vehicle);
-      router.push("/admin");
+      router.push("/office/units");
     } catch (err) {
       setError(
         err instanceof Error
