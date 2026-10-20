@@ -100,7 +100,7 @@ export default function OfficeReportDetailPage() {
           return;
         }
         setReport(found);
-        setDecision(found.reviewStatus === "pending" ? "pass" : found.reviewStatus);
+        setDecision(found.reviewStatus === "pending" ? "" : found.reviewStatus);
         setReviewNotes(found.reviewNotes ?? "");
         setNewDamageNotes(found.newDamageNotes ?? "");
         setRetakeAngles(found.retakeAngles ?? []);
