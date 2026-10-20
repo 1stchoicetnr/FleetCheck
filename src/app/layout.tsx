@@ -6,6 +6,7 @@ import { ServiceWorkerRegister } from "@/components/service-worker-register";
 import { OrientationUnlock } from "@/components/orientation-unlock";
 import { OfflineBanner } from "@/components/offline-banner";
 import { NavTiming } from "@/components/nav-timing";
+import { FirstTour } from "@/components/first-tour";
 import { appleStartupImages } from "@/lib/apple-startup-images";
 import { INSPEKT_NAVY } from "@/lib/brand-mark";
 
@@ -56,6 +57,7 @@ export default function RootLayout({
           <NavTiming />
           <OrientationUnlock />
           <OfflineBanner />
+          <FirstTour />
           <main className="min-h-screen safe-bottom">{children}</main>
         </AuthProvider>
       </body>

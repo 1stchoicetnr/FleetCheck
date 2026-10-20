@@ -5,10 +5,11 @@ import { useAuth } from "@/hooks/use-auth";
 import Image from "next/image";
 import { ROLE_LABELS } from "@/lib/types";
 import { INSPEKT_ICON } from "@/lib/brand-mark";
-import { ArrowLeft, Home, LogOut } from "lucide-react";
+import { requestTourReplay } from "@/lib/tour";
+import { ArrowLeft, Home, LogOut, Menu } from "lucide-react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 interface AppHeaderProps {
   title?: string;
@@ -26,6 +27,11 @@ export function AppHeader({
   const { user, logout } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [pathname]);
   const onDashboard = pathname === "/dashboard" || title === "Dashboard";
   const onCheckout = pathname.startsWith("/checkout");
 
@@ -101,14 +107,42 @@ export function AppHeader({
           </button>
         )}
 
-        <button
-          type="button"
-          onClick={() => logout()}
-          className="flex-shrink-0 p-2 rounded-xl hover:bg-raised text-muted active:bg-line min-h-[44px] min-w-[44px] flex items-center justify-center touch-manipulation"
-          aria-label="Log out"
-        >
-          <LogOut className="h-5 w-5" />
-        </button>
+        <div className="relative flex-shrink-0">
+          <button
+            type="button"
+            onClick={() => setMenuOpen((open) => !open)}
+            className="p-2 rounded-xl hover:bg-raised text-muted active:bg-line min-h-[44px] min-w-[44px] flex items-center justify-center touch-manipulation"
+            aria-label="Menu"
+            aria-expanded={menuOpen}
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+          {menuOpen && (
+            <div className="absolute right-0 top-12 z-[70] w-48 rounded-xl border border-line bg-white shadow-lg py-1">
+              <button
+                type="button"
+                className="block w-full text-left px-3 py-3 text-sm font-semibold text-gray-900 hover:bg-gray-50"
+                onClick={() => {
+                  setMenuOpen(false);
+                  requestTourReplay();
+                }}
+              >
+                Show the tour
+              </button>
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 text-left px-3 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                onClick={() => {
+                  setMenuOpen(false);
+                  logout();
+                }}
+              >
+                <LogOut className="h-4 w-4" />
+                Log out
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </header>
   );
