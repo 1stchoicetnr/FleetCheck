@@ -443,7 +443,7 @@ export function photoStepsForReport(
  * `walkaroundPhotoSteps` drops them from the required driver checklist (~26 shots).
  *
  * One clockwise lap grouped by physical station so the driver does not
- * circle the van twice (exteriors first, then a second interior lap):
+ * circle the vehicle twice (exteriors first, then a second interior lap):
  *
  *   1. Driver seat (already sitting) — odometer, windshield, radio, registration
  *   2. Driver door / left-front — interior in, door panels, LF fender/wheel/3/4

@@ -596,9 +596,9 @@ function CheckoutCapturePage() {
             <div>
               <h3 className="text-base font-bold text-gray-900">Precheck</h3>
               <p className="text-sm text-gray-600">
-                About a minute. If the van is OK to drive, continue to the photo
+                About a minute. If the vehicle is OK to drive, continue to the photo
                 walkaround. Tire tread is answered on this form, not as its own
-                photo. A red precheck parks the van and skips photos.
+                photo. A red precheck parks the vehicle and skips photos.
               </p>
             </div>
             <InspectionFormFields

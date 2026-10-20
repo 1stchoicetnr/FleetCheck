@@ -59,7 +59,7 @@ function label(unitNumber: string | undefined, plate: string): string {
 }
 
 /**
- * Decide which on-device vans can join the server list.
+ * Decide which on-device vehicles can join the server list.
  * A matching plate in the same company is one unit, even when the unit number differs.
  */
 export function planLocalUnitImport(
@@ -97,7 +97,7 @@ export function planLocalUnitImport(
     if (DEMO.has(plateKey)) {
       plan.skipped.push({
         reason: "demo",
-        detail: `${label(local.unitNumber, local.plate)} is an on-device example, not a fleet van.`,
+        detail: `${label(local.unitNumber, local.plate)} is an on-device example, not a fleet vehicle.`,
         local,
       });
       continue;

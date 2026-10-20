@@ -146,7 +146,7 @@ export default function OfficeUnitsPage() {
           <div>
             <h2 className="text-xl font-bold text-gray-900">Units</h2>
             <p className="text-sm text-gray-500">
-              Archive vans that are no longer in service. Mark EV vs Gas so
+              Archive vehicles that are no longer in service. Mark EV vs Gas so
               Precheck skips Oil and Fuel. Checkout hides archived units. Past
               checkout reports stay visible.
             </p>

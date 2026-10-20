@@ -62,7 +62,7 @@ export type CheckoutInspectionForm = {
   inspectedAt?: string;
   /**
    * Last digits of the borrowed Clover card-reader serial.
-   * Not the vehicle unit number — devices are not assigned to a van.
+   * Not the vehicle unit number — devices are not assigned to a vehicle.
    */
   cloverSerial?: string;
   /** @deprecated Legacy alias written when Clover was mixed with unit #. */
@@ -215,7 +215,7 @@ function emptyChecks(powertrain: Powertrain): Record<
 
 export const CLOVER_SERIAL_LABEL = "Clover serial (last digits)";
 export const CLOVER_SERIAL_HINT =
-  "Optional. Borrowed card reader from Rad Cab — not the van. Last 3–4 digits of the Clover serial if you have one.";
+  "Optional. Borrowed card reader from Rad Cab — not the vehicle. Last 3–4 digits of the Clover serial if you have one.";
 export const UNIT_NUMBER_LABEL = "Unit #";
 
 export function normalizeCloverSerial(raw: unknown): string {

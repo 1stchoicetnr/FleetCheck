@@ -42,7 +42,7 @@ export default function DashboardPage() {
     href: "/checkout",
     icon: <ClipboardCheck className="h-7 w-7" />,
     label: "Checkout Report",
-    desc: "Precheck, then photos if the van is OK to drive",
+    desc: "Precheck, then photos if the vehicle is OK to drive",
     color: "bg-emerald-100 text-emerald-700",
   };
 
@@ -69,7 +69,7 @@ export default function DashboardPage() {
     href: "/office/units",
     icon: <Archive className="h-7 w-7" />,
     label: "Units",
-    desc: "Archive vans that are no longer in service",
+    desc: "Archive vehicles that are no longer in service",
     color: "bg-slate-100 text-slate-700",
   };
 

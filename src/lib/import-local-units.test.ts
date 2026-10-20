@@ -59,7 +59,7 @@ test("demo plates and Pinkie Tow stay off the server list", () => {
   );
 });
 
-test("a non-demo van missing from the server is imported once", () => {
+test("a non-demo vehicle missing from the server is imported once", () => {
   const plan = planLocalUnitImport(
     [
       {

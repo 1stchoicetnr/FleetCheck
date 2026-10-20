@@ -117,7 +117,7 @@ export default function NewVehiclePage() {
       <div className="max-w-lg mx-auto px-4 py-6 space-y-4">
         <p className="text-sm text-gray-600">
           Super Admin add writes to the same shared unit list Checkout uses.
-          After save, the van appears under active Unit # on Checkout.
+          After save, the vehicle appears under active Unit # on Checkout.
         </p>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1.5">

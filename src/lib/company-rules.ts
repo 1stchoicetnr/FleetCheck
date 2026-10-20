@@ -12,7 +12,7 @@ function compact(value?: string): string {
 }
 
 /**
- * TUR-9012 lived under Other fleets. Move that van, and any other Turo plate
+ * TUR-9012 lived under Other fleets. Move that vehicle, and any other Turo plate
  * parked in Other fleets, onto the Turo company. Leave every other company alone.
  */
 export function shouldMoveUnitToTuro(unit: {

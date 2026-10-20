@@ -148,8 +148,8 @@ export function InspectionFormFields({
             </p>
             <p className="mt-1.5 text-sm text-gray-500">
               {showClover
-                ? "Vehicle number for this van — not the Clover."
-                : "Vehicle number for this van."}
+                ? "Vehicle number for this vehicle — not the Clover."
+                : "Vehicle number for this vehicle."}
             </p>
           </div>
         ) : null}
@@ -528,7 +528,7 @@ export function InspectionFormFields({
             }
             placeholder={
               synced.trafficLight === "red"
-                ? "Why is this van parked? Office will see this."
+                ? "Why is this vehicle parked? Office will see this."
                 : "Short note — then you can drive and take photos."
             }
             className={cn(

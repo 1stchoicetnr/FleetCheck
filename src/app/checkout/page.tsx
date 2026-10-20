@@ -349,8 +349,8 @@ function CheckoutStartPage() {
             Start a vehicle checkout
           </h2>
           <p className="text-sm text-gray-600">
-            Precheck first (about a minute). If the van is OK to drive, continue
-            to the photo walkaround. A red precheck parks the van for Office.
+            Precheck first (about a minute). If the vehicle is OK to drive, continue
+            to the photo walkaround. A red precheck parks the vehicle for Office.
           </p>
         </div>
 
@@ -394,7 +394,7 @@ function CheckoutStartPage() {
                   />
                   <div>
                     <label className="block text-base font-semibold text-gray-900 mb-1.5">
-                      {UNIT_NUMBER_LABEL} (active vans)
+                      {UNIT_NUMBER_LABEL} (active vehicles)
                     </label>
                     <select
                       value={vehicleId}
@@ -410,7 +410,7 @@ function CheckoutStartPage() {
                         <option value="">
                           {allowDriverAdd
                             ? "No units in this company — add the plate below"
-                            : "No units in this company. Ask Super Admin to add this van."}
+                            : "No units in this company. Ask Super Admin to add this vehicle."}
                         </option>
                       )}
                       {filteredVehicles.map((v) => (
@@ -428,7 +428,7 @@ function CheckoutStartPage() {
                     <p className="text-xs text-gray-500 mt-1.5">
                       {unitsLoading
                         ? "Loading this company's units…"
-                        : `${filteredVehicles.length} active unit${filteredVehicles.length === 1 ? "" : "s"} in ${companies.find((c) => c.id === companyId)?.name ?? "this company"}. Archived vans stay hidden.`}
+                        : `${filteredVehicles.length} active unit${filteredVehicles.length === 1 ? "" : "s"} in ${companies.find((c) => c.id === companyId)?.name ?? "this company"}. Archived vehicles stay hidden.`}
                     </p>
                   </div>
                 </>
@@ -452,7 +452,7 @@ function CheckoutStartPage() {
               {allowDriverAdd && addingUnit && (
                 <div className="rounded-xl border-2 border-dashed border-brand-200 bg-brand-50/60 p-3 space-y-3">
                   <p className="text-sm text-gray-700">
-                    Adds this van to the shared list so Office can see it —
+                    Adds this vehicle to the shared list so Office can see it —
                     including plates that were never pre-seeded.
                   </p>
                   <Input
@@ -470,7 +470,7 @@ function CheckoutStartPage() {
                     label={`${UNIT_NUMBER_LABEL} (optional)`}
                     value={newUnitNumber}
                     onChange={(e) => setNewUnitNumber(e.target.value)}
-                    hint="Vehicle number for this van. Leave blank to use the plate."
+                    hint="Vehicle number for this vehicle. Leave blank to use the plate."
                   />
                   <div>
                     <p className="block text-base font-semibold text-gray-900 mb-1.5">

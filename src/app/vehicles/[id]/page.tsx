@@ -105,7 +105,7 @@ export default function VehicleDetailPage() {
                 </p>
               )}
               <p className="text-sm text-gray-500">
-                This van is on the shared unit list. Archive it from Office units.
+                This vehicle is on the shared unit list. Archive it from Office units.
               </p>
             </CardContent>
           </Card>

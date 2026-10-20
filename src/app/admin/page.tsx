@@ -183,7 +183,7 @@ export default function AdminPage() {
           <CardContent className="py-5 space-y-3">
             <CardTitle>Checkout units (shared)</CardTitle>
             <p className="text-xs text-gray-500">
-              Active vans on the shared list Checkout uses. Super Admin add
+              Active vehicles on the shared list Checkout uses. Super Admin add
               writes here so the unit shows up in the Unit # picker.
             </p>
             {unitsError && (
@@ -271,7 +271,7 @@ export default function AdminPage() {
             <CardTitle>Fleet vehicles</CardTitle>
             <p className="text-sm text-gray-600">
               The shared Units list is the fleet. Taxi, tow, Turo, and service
-              vans live there. The old on-device list is no longer shown.
+              vehicles live there. The old on-device list is no longer shown.
             </p>
             <Link href="/office/units">
               <Button variant="secondary" className="w-full">Open units</Button>

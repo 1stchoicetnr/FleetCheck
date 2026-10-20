@@ -7,10 +7,10 @@ A professional, mobile-first internal web app for vehicle documentation, damage 
 ## Driver vs office
 
 **Driver (phone)**  
-Start a Checkout Report: pick company → **Unit #** → confirm year/make/model → enter odometer start, **Clover serial (last digits)** of the borrowed card reader, driver name, and dispatcher. Fill **Precheck** (paper checklist, tread rating, clean Y/N, damage notes, traffic light). Clover is the payment device drivers borrow from Rad Cab — it is **not** the vehicle unit number. **Green** or **Yellow** continues to the guided photo walkaround (tire-tread photo slots are dropped — tread lives on Precheck). **Red** parks the van: no photos, sign, Office gets a repairs flag. Submit when required photos (if any) are filled and the report is signed. The report is saved **Complete** with a timestamp on the **shared server** so office can see it on another phone.
+Start a Checkout Report: pick company → **Unit #** → confirm year/make/model → enter odometer start, **Clover serial (last digits)** of the borrowed card reader, driver name, and dispatcher. Fill **Precheck** (paper checklist, tread rating, clean Y/N, damage notes, traffic light). Clover is the payment device drivers borrow from Rad Cab — it is **not** the vehicle unit number. **Green** or **Yellow** continues to the guided photo walkaround (tire-tread photo slots are dropped — tread lives on Precheck). **Red** parks the vehicle: no photos, sign, Office gets a repairs flag. Submit when required photos (if any) are filled and the report is signed. The report is saved **Complete** with a timestamp on the **shared server** so office can see it on another phone.
 
 **EV units**  
-If the unit is EV (Tesla, powertrain=EV toggle, or other electric make/model), **Oil** and **Fuel Level** on Precheck are N/A and not required. Gas vans keep them required. Set EV/Gas when adding a unit on Checkout or on Office → Units.
+If the unit is EV (Tesla, powertrain=EV toggle, or other electric make/model), **Oil** and **Fuel Level** on Precheck are N/A and not required. Gas vehicles keep them required. Set EV/Gas when adding a unit on Checkout or on Office → Units.
 
 The older **Check In / Out** shift flow (mileage, fuel, signature, Slack PDF) is **retired on this preview**. Those reports never wrote to Neon, so they never appeared in Office. `/check-in` now redirects to Checkout Report.
 
@@ -18,13 +18,13 @@ The older **Check In / Out** shift flow (mileage, fuel, signature, Slack PDF) is
 Unlock with the office PIN, list **shared** reports (filter by company, unit, status), open the gallery + metadata, compare side-by-side against the last 1–2 reports for the **same unit**, then mark **PASS**, **Conditional** (retake list), or **FAIL**.
 
 **Archive a unit**  
-Office → **Manage units (archive)** (or Dashboard → **Units**). PIN-gated like other office changes. Archive hides the van from Driver Checkout and from the Office unit picker. Past checkout reports and photos stay in Office. Unarchive puts the van back on the active list.
+Office → **Manage units (archive)** (or Dashboard → **Units**). PIN-gated like other office changes. Archive hides the vehicle from Driver Checkout and from the Office unit picker. Past checkout reports and photos stay in Office. Unarchive puts the vehicle back on the active list.
 
 **DAMAGE flags + signature**  
 After each accepted photo, drivers can mark that angle as **DAMAGE**. Office gallery/compare lists flagged angles first. PDF marks them. Submit requires a finger/stylus **driver signature**, shown on Office detail and PDF page 1.
 
 **Precheck**  
-Office detail and PDF page 1 show **Unit #** (the van) and **Clover serial (last digits)** (the borrowed card reader — not the vehicle), plus the traffic light (Green / Yellow / Red), tread rating, checklist results, optional notes, interior/exterior clean Y/N, side damage notes, additional comments, and issue flags. Red reports are flagged for Office / repairs and may have no photos.
+Office detail and PDF page 1 show **Unit #** (the vehicle) and **Clover serial (last digits)** (the borrowed card reader — not the unit number), plus the traffic light (Green / Yellow / Red), tread rating, checklist results, optional notes, interior/exterior clean Y/N, side damage notes, additional comments, and issue flags. Red reports are flagged for Office / repairs and may have no photos.
 
 Demo office PIN: **1357** (override with `OFFICE_PIN`)
 
@@ -63,7 +63,7 @@ Or locally: `npm run dev`, then Chrome + a Chrome Incognito window against `http
 Architecture is `companies (tenants) → units/vehicles → checkout reports`.
 
 - **Rad Cab** is seeded on the **server** as the first company (Units 12, 18, 23, and plate CXB9373) with two prior PASS reports on Unit 12 and one pending on Unit 18.
-- Dispatchers can **add any plate / unit** on the Checkout start screen. That van is saved to Neon so Office can list it even if it was never pre-seeded.
+- Dispatchers can **add any plate / unit** on the Checkout start screen. That vehicle is saved to Neon so Office can list it even if it was never pre-seeded.
 - Also seeded: **1st Choice Recovery**, **Pinkie Tow**, **Other fleets**.
 - Do not add RDN / 1st Choice billing in this app.
 
@@ -90,7 +90,7 @@ Open [http://localhost:3000](http://localhost:3000)
 
 ## Policy notes (Rad Cab default checklist)
 
-Walkaround order (photo slots after Precheck — tire-tread photos dropped; same list for Rad Cab and other companies). **One clockwise lap grouped by station** so the driver does not circle the van twice:
+Walkaround order (photo slots after Precheck — tire-tread photos dropped; same list for Rad Cab and other companies). **One clockwise lap grouped by station** so the driver does not circle the vehicle twice:
 
 1. **Driver seat** — odometer/fuel, windshield, radio/climate, registration (date + VIN)
 2. **Driver door / left-front** — driver door interior, driver-side doors, LF fender, LF wheel, LF 3/4
