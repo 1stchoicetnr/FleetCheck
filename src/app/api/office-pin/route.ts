@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { checkOfficePinGuarded, OfficeAuthError } from "@/lib/server/office-pin";
+import { resolveRequestAuth } from "@/lib/server/request-auth";
 import {
   createOfficeToken,
   OFFICE_COOKIE,
@@ -10,6 +11,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
+  await resolveRequestAuth(req);
   const body = (await req.json().catch(() => ({}))) as { pin?: string };
   try {
     checkOfficePinGuarded(req, body.pin || "");
@@ -32,7 +34,8 @@ export async function POST(req: Request) {
 }
 
 /** Lock office: clear the session cookie. */
-export async function DELETE() {
+export async function DELETE(req: Request) {
+  await resolveRequestAuth(req);
   const res = NextResponse.json({ ok: true });
   res.cookies.set(OFFICE_COOKIE, "", { path: "/", maxAge: 0 });
   return res;

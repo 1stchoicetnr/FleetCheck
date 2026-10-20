@@ -4,8 +4,7 @@ import {
   getReport,
   patchReportPhotoFlags,
 } from "@/lib/server/checkout-repo";
-import { assertOfficePin } from "@/lib/server/office-pin";
-import { orgFromSession } from "@/lib/server/org-scope";
+import { assertOfficeAccess, orgIdFromRequest } from "@/lib/server/request-auth";
 import { PhotoAngle } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -28,7 +27,7 @@ export async function GET(
 ) {
   try {
     const { id, angle } = await params;
-    const report = await getReport(orgFromSession(), id);
+    const report = await getReport(await orgIdFromRequest(req), id);
     if (!report) {
       return NextResponse.json({ error: "Report not found" }, { status: 404 });
     }
@@ -74,7 +73,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string; angle: string }> }
 ) {
   try {
-    await assertOfficePin(req);
+    const auth = await assertOfficeAccess(req);
     const { id, angle } = await params;
     const body = (await req.json()) as {
       flaggedDamage?: boolean;
@@ -86,7 +85,7 @@ export async function PATCH(
         { status: 400 }
       );
     }
-    const report = await patchReportPhotoFlags(orgFromSession(), id, angle as PhotoAngle, {
+    const report = await patchReportPhotoFlags(auth.orgId, id, angle as PhotoAngle, {
       flaggedDamage: body.flaggedDamage,
       damageNote: body.damageNote,
     });

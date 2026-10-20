@@ -26,7 +26,7 @@ import {
 } from "@/lib/server/feedback-store";
 import { errorResponse } from "@/lib/server/api-error";
 import { isOfficeRequest } from "@/lib/server/office-pin";
-import { orgFromSession } from "@/lib/server/org-scope";
+import { resolveRequestAuth, sessionGrantsOffice } from "@/lib/server/request-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -60,9 +60,10 @@ function deliveryChannel() {
 
 export async function GET(req: Request) {
   try {
+    const auth = await resolveRequestAuth(req);
     const delivery = deliveryChannel();
-    if (await isOfficeRequest(req)) {
-      const feedback = await listFeedback(orgFromSession());
+    if (sessionGrantsOffice(auth) || (await isOfficeRequest(req))) {
+      const feedback = await listFeedback(auth.orgId);
       return NextResponse.json(
         { delivery, feedback },
         { headers: { "Cache-Control": "no-store" } }
@@ -79,6 +80,7 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    const orgId = (await resolveRequestAuth(req)).orgId;
     const body = (await req.json()) as Partial<FeedbackPayload>;
     if (!isFeedbackType(body.type)) {
       return NextResponse.json(
@@ -123,7 +125,6 @@ export async function POST(req: Request) {
 
     const planned = deliveryChannel();
     const id = generateId();
-    const orgId = orgFromSession();
     const screenshotUrl = await storeFeedbackScreenshot(orgId, id, screenshotDataUrl);
     const saved = await saveFeedback(orgId, payload, screenshotUrl, "office", id);
 

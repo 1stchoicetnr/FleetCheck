@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { addReportPhoto, addReportPhotos } from "@/lib/server/checkout-repo";
 import { getReport } from "@/lib/server/checkout-repo";
 import { isOfficeRequest } from "@/lib/server/office-pin";
-import { orgFromSession } from "@/lib/server/org-scope";
+import { resolveRequestAuth, sessionGrantsOffice } from "@/lib/server/request-auth";
 import { RequestError } from "@/lib/server/api-error";
 import { assertPhotoDataUrl } from "@/lib/server/photo-store";
 import { PHOTO_ANGLES, PhotoAngle } from "@/lib/types";
@@ -19,7 +19,9 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    const orgId = orgFromSession();
+    const auth = await resolveRequestAuth(req);
+    const orgId = auth.orgId;
+    const office = sessionGrantsOffice(auth) || (await isOfficeRequest(req));
     const body = (await req.json()) as {
       angle?: PhotoAngle;
       dataUrl?: string;
@@ -51,7 +53,7 @@ export async function POST(
           throw new RequestError("Damage note is too long", 400);
         }
       }
-      if (!(await isOfficeRequest(req))) {
+      if (!office) {
         const existing = await getReport(orgId, id);
         const created = existing ? Date.parse(existing.createdAt) : NaN;
         if (!existing || !Number.isFinite(created) || Date.now() - created > DRIVER_UPLOAD_WINDOW_MS) {
@@ -82,7 +84,7 @@ export async function POST(
     if (typeof body.damageNote === "string" && body.damageNote.length > 2000) {
       throw new RequestError("Damage note is too long", 400);
     }
-    if (!(await isOfficeRequest(req))) {
+    if (!office) {
       // Driver upload (no PIN): only to a report created in the last few hours.
       const existing = await getReport(orgId, id);
       const created = existing ? Date.parse(existing.createdAt) : NaN;

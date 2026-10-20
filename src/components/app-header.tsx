@@ -30,7 +30,7 @@ export function AppHeader({
   const onCheckout = pathname.startsWith("/checkout");
 
   const shouldShowBack = showBack ?? (!!title && !onDashboard);
-  const roleLabel = user ? ROLE_LABELS[user.role] : "";
+  const roleLabel = user?.roleTitle || (user ? ROLE_LABELS[user.role] : "");
   const subtitle =
     user && user.name.trim().toLowerCase() === roleLabel.trim().toLowerCase()
       ? roleLabel

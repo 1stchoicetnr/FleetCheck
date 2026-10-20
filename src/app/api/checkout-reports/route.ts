@@ -1,12 +1,11 @@
 import { errorResponse } from "@/lib/server/api-error";
-import { assertOfficePin } from "@/lib/server/office-pin";
+import { assertOfficeAccess, orgIdFromRequest } from "@/lib/server/request-auth";
 import { NextRequest, NextResponse } from "next/server";
 import {
   createReport,
   listReportPage,
 } from "@/lib/server/checkout-repo";
 import { OfficeListStatus } from "@/lib/office-list";
-import { orgFromSession } from "@/lib/server/org-scope";
 import type { CheckoutInspectionForm } from "@/lib/inspection-form";
 import { CheckoutType } from "@/lib/types";
 
@@ -24,14 +23,14 @@ const LIST_STATUSES = new Set([
 
 export async function GET(req: NextRequest) {
   try {
-    await assertOfficePin(req);
+    const auth = await assertOfficeAccess(req);
     const params = req.nextUrl.searchParams;
     const statusParam = params.get("status");
     if (statusParam && !LIST_STATUSES.has(statusParam)) {
       return NextResponse.json({ error: "Unknown status filter" }, { status: 400 });
     }
     const started = performance.now();
-    const page = await listReportPage(orgFromSession(), {
+    const page = await listReportPage(auth.orgId, {
       includeArchived: params.get("includeArchived") === "1",
       companyId: params.get("companyId") || undefined,
       vehicleId: params.get("vehicleId") || undefined,
@@ -53,6 +52,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: Request) {
   try {
+    const orgId = await orgIdFromRequest(req);
     const body = (await req.json()) as {
       companyId?: string;
       vehicleId?: string;
@@ -92,7 +92,7 @@ export async function POST(req: Request) {
     ) {
       return NextResponse.json({ error: "Signature image is invalid or too large" }, { status: 400 });
     }
-    const report = await createReport(orgFromSession(), {
+    const report = await createReport(orgId, {
       companyId: body.companyId,
       vehicleId: body.vehicleId,
       unitNumber: body.unitNumber,

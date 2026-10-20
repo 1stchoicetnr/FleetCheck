@@ -21,10 +21,33 @@ export function OfficePinGate({
   const [checking, setChecking] = useState(false);
 
   useEffect(() => {
-    const open = isOfficeUnlocked();
-    setUnlocked(open);
-    setReady(true);
-    if (open) onUnlocked?.();
+    let cancelled = false;
+    async function openGate() {
+      try {
+        const res = await fetch("/api/auth/session", { cache: "no-store" });
+        if (res.ok) {
+          const data = (await res.json()) as { user?: { roleTitle?: string } | null };
+          const title = data.user?.roleTitle;
+          if (!cancelled && (title === "Owner" || title === "Office")) {
+            setUnlocked(true);
+            setReady(true);
+            onUnlocked?.();
+            return;
+          }
+        }
+      } catch {
+        // Fall through to the PIN. Demo roles still use it.
+      }
+      if (cancelled) return;
+      const open = isOfficeUnlocked();
+      setUnlocked(open);
+      setReady(true);
+      if (open) onUnlocked?.();
+    }
+    void openGate();
+    return () => {
+      cancelled = true;
+    };
   }, [onUnlocked]);
 
   const handleSubmit = async (e: FormEvent) => {

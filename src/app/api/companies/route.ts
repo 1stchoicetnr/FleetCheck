@@ -1,14 +1,14 @@
 import { errorResponse } from "@/lib/server/api-error";
 import { NextResponse } from "next/server";
 import { listCompanies } from "@/lib/server/checkout-repo";
-import { orgFromSession } from "@/lib/server/org-scope";
+import { orgIdFromRequest } from "@/lib/server/request-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const companies = await listCompanies(orgFromSession());
+    const companies = await listCompanies(await orgIdFromRequest(req));
     return NextResponse.json(
       { companies },
       { headers: { "Cache-Control": "no-store" } }

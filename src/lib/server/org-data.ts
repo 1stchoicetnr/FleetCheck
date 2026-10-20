@@ -838,3 +838,106 @@ export async function restoreReplacedFrontPhoto(
   );
   return Boolean(rows[0]);
 }
+
+export async function findUserByEmail(db: OrgDb, orgId: string, email: string) {
+  const rows = await db.query(
+    `SELECT id, name, email, role, active, password_hash
+     FROM app_users
+     WHERE org_id = $1 AND lower(email) = lower($2)
+     LIMIT 1`,
+    [org(orgId), email.trim()]
+  );
+  return rows[0];
+}
+
+export async function setUserPassword(
+  db: OrgDb,
+  orgId: string,
+  userId: string,
+  passwordHash: string
+) {
+  const rows = await db.query(
+    `UPDATE app_users
+     SET password_hash = $1
+     WHERE id = $2 AND org_id = $3
+     RETURNING id`,
+    [passwordHash, userId, org(orgId)]
+  );
+  if (!rows[0]) throw new OrgAccessError();
+}
+
+export async function ensureMembership(
+  db: OrgDb,
+  orgId: string,
+  membership: { id: string; userId: string; role: string; createdAt: string }
+) {
+  await db.query(
+    `INSERT INTO org_memberships (id, org_id, user_id, role, created_at)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (org_id, user_id) DO NOTHING`,
+    [membership.id, org(orgId), membership.userId, membership.role, membership.createdAt]
+  );
+}
+
+export async function listPeople(db: OrgDb, orgId: string) {
+  return db.query(
+    `SELECT u.id, u.name, u.email, u.active,
+            m.role AS member_role,
+            (u.password_hash IS NOT NULL) AS has_password
+     FROM app_users u
+     LEFT JOIN org_memberships m
+       ON m.user_id = u.id AND m.org_id = u.org_id
+     WHERE u.org_id = $1
+     ORDER BY u.name`,
+    [org(orgId)]
+  );
+}
+
+export async function insertMemberUser(
+  db: OrgDb,
+  orgId: string,
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    active: boolean;
+    createdAt: string;
+    passwordHash: string;
+    membershipId: string;
+    memberRole: string;
+  }
+) {
+  await db.query(
+    `INSERT INTO app_users (id, name, email, role, active, created_at, org_id, password_hash)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+    [
+      user.id,
+      user.name,
+      user.email,
+      user.role,
+      user.active,
+      user.createdAt,
+      org(orgId),
+      user.passwordHash,
+    ]
+  );
+  await ensureMembership(db, orgId, {
+    id: user.membershipId,
+    userId: user.id,
+    role: user.memberRole,
+    createdAt: user.createdAt,
+  });
+}
+
+export async function deleteMemberUser(db: OrgDb, orgId: string, userId: string) {
+  await db.query(
+    "DELETE FROM org_memberships WHERE user_id = $1 AND org_id = $2",
+    [userId, org(orgId)]
+  );
+  const rows = await db.query(
+    "DELETE FROM app_users WHERE id = $1 AND org_id = $2 RETURNING id",
+    [userId, org(orgId)]
+  );
+  return Boolean(rows[0]);
+}

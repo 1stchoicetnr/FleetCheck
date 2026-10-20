@@ -2,6 +2,7 @@
 
 import { useLayoutEffect, useRef, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { UserRole } from "@/lib/types";
@@ -180,10 +181,17 @@ export default function LoginPage() {
         </div>
 
         {error && (
-          <p className="text-red-600 text-sm text-center mt-4 font-medium">
+          <p className="text-red-600 text-sm text-center mt-4 font-medium" role="alert">
             {error}
           </p>
         )}
+
+        <Link
+          href="/sign-in"
+          className="mt-6 flex min-h-[48px] items-center justify-center rounded-2xl border border-line bg-surface px-4 py-3 text-center text-base font-semibold text-ink"
+        >
+          Sign in with email
+        </Link>
 
         <p className="text-xs text-gray-400 text-center mt-8">
           Demo mode — no password required

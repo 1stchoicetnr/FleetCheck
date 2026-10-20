@@ -1,4 +1,5 @@
 import { errorResponse } from "@/lib/server/api-error";
+import { resolveRequestAuth } from "@/lib/server/request-auth";
 import { NextRequest, NextResponse } from "next/server";
 import {
   SLACK_CHANNEL_DEFAULTS,
@@ -8,6 +9,7 @@ import {
 
 export async function POST(req: NextRequest) {
   try {
+    await resolveRequestAuth(req);
     const body = await req.json();
     const channel = body.channel as SlackRoute;
     const message = body.message as string;

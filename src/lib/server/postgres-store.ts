@@ -32,6 +32,7 @@ import { SEEDED_APP_USERS } from "./seed-users";
 import * as orgData from "./org-data";
 import { applyOrgStamp } from "./org-stamp";
 import { orgFromSession } from "./org-scope";
+import { carryOverMemberships } from "./auth-accounts";
 import type { UserRole } from "@/lib/types";
 
 function sqlClient() {
@@ -46,6 +47,10 @@ function orgDb() {
     query: async (text: string, params?: unknown[]) =>
       (await sql.query(text, params ?? [])) as Array<Record<string, unknown>>,
   };
+}
+
+export function pgDb() {
+  return orgDb();
 }
 
 type ReportRow = {
@@ -215,6 +220,43 @@ export async function pgMigrateAndSeed(): Promise<void> {
       created_at TIMESTAMPTZ NOT NULL
     )
   `;
+  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS password_hash TEXT`;
+  await sql`
+    CREATE TABLE IF NOT EXISTS org_memberships (
+      id TEXT PRIMARY KEY,
+      org_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      role TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL,
+      UNIQUE (org_id, user_id)
+    )
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS auth_sessions (
+      token_hash TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      org_id TEXT NOT NULL,
+      role TEXT NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL
+    )
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS auth_invites (
+      id TEXT PRIMARY KEY,
+      org_id TEXT NOT NULL,
+      token_hash TEXT NOT NULL UNIQUE,
+      kind TEXT NOT NULL,
+      user_id TEXT,
+      email TEXT,
+      name TEXT,
+      role TEXT NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      revoked_at TIMESTAMPTZ,
+      used_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL
+    )
+  `;
   const db = orgDb();
   await applyOrgStamp(db);
   const orgId = orgFromSession();
@@ -222,6 +264,16 @@ export async function pgMigrateAndSeed(): Promise<void> {
   for (const user of SEEDED_APP_USERS) {
     await orgData.seedUser(db, orgId, user);
   }
+  const memberRows = await orgData.listUsers(db, orgId);
+  await carryOverMemberships(
+    db,
+    orgId,
+    memberRows.map((row) => ({
+      id: String(row.id),
+      name: String(row.name),
+      role: String(row.role),
+    }))
+  );
   for (const company of SEEDED_COMPANIES) {
     await orgData.seedCompany(db, orgId, company);
   }

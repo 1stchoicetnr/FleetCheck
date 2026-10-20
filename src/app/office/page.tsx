@@ -8,7 +8,7 @@ import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { OfficePinGate } from "@/components/office-pin-gate";
 import { ReviewStatusBadge } from "@/components/review-status-badge";
 import { useAuth } from "@/hooks/use-auth";
-import { canReviewCheckout } from "@/lib/fleet-config";
+import { canManageFleet, canReviewCheckout } from "@/lib/fleet-config";
 import { isCheckoutFlagged } from "@/lib/storage";
 import {
   fetchCheckoutReports,
@@ -229,6 +229,14 @@ function OfficeReportsPage() {
                 >
                   App feedback
                 </Link>
+                {canManageFleet(user.role) && (
+                  <Link
+                    href="/office/people"
+                    className="text-xs font-semibold text-brand-700 underline underline-offset-2"
+                  >
+                    People and invites
+                  </Link>
+                )}
               </div>
             </div>
             {flagCount > 0 && (

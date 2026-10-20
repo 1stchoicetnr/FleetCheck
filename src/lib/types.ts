@@ -183,6 +183,8 @@ export interface User {
   role: UserRole;
   fleetIds: string[];
   companyIds: string[];
+  /** Membership title when signed in with email. Demo role buttons leave this empty. */
+  roleTitle?: string;
 }
 
 export interface Fleet {

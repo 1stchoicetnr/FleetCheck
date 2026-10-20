@@ -1,18 +1,17 @@
-import { assertOfficePin } from "@/lib/server/office-pin";
 import { errorResponse } from "@/lib/server/api-error";
 import { NextResponse } from "next/server";
 import {
   getFleetSettings,
   updateFleetSettings,
 } from "@/lib/server/checkout-repo";
-import { orgFromSession } from "@/lib/server/org-scope";
+import { assertOfficeAccess, orgIdFromRequest } from "@/lib/server/request-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const settings = await getFleetSettings(orgFromSession());
+    const settings = await getFleetSettings(await orgIdFromRequest(req));
     return NextResponse.json(
       { settings },
       { headers: { "Cache-Control": "no-store" } }
@@ -24,7 +23,7 @@ export async function GET() {
 
 export async function PATCH(req: Request) {
   try {
-    await assertOfficePin(req);
+    const auth = await assertOfficeAccess(req);
     const body = (await req.json()) as {
       allowDriverAddVehicles?: boolean;
     };
@@ -34,7 +33,7 @@ export async function PATCH(req: Request) {
         { status: 400 }
       );
     }
-    const settings = await updateFleetSettings(orgFromSession(), {
+    const settings = await updateFleetSettings(auth.orgId, {
       allowDriverAddVehicles: body.allowDriverAddVehicles,
     });
     return NextResponse.json({ settings });

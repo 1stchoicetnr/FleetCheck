@@ -5,8 +5,7 @@ import {
   setVehiclePowertrain,
   setVehicleService,
 } from "@/lib/server/checkout-repo";
-import { assertOfficePin } from "@/lib/server/office-pin";
-import { orgFromSession } from "@/lib/server/org-scope";
+import { assertOfficeAccess } from "@/lib/server/request-auth";
 import type { Powertrain } from "@/lib/inspection-form";
 import type { VehicleKnownIssue } from "@/lib/types";
 
@@ -18,9 +17,9 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await assertOfficePin(req);
+    const auth = await assertOfficeAccess(req);
     const { id } = await params;
-    const orgId = orgFromSession();
+    const orgId = auth.orgId;
     const body = (await req.json()) as {
       archived?: boolean;
       powertrain?: Powertrain;

@@ -7,7 +7,7 @@ import {
 } from "@/lib/server/checkout-repo";
 import { isOfficeRequest, assertOfficePin } from "@/lib/server/office-pin";
 import { getFleetSettings } from "@/lib/server/checkout-repo";
-import { orgFromSession } from "@/lib/server/org-scope";
+import { resolveRequestAuth, sessionGrantsOffice } from "@/lib/server/request-auth";
 import { parseIncludeArchived } from "@/lib/vehicle-archive";
 import type { Powertrain } from "@/lib/inspection-form";
 
@@ -16,7 +16,8 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
-    const orgId = orgFromSession();
+    const auth = await resolveRequestAuth(req);
+    const orgId = auth.orgId;
     const companyId = req.nextUrl.searchParams.get("companyId") || undefined;
     const plate = req.nextUrl.searchParams.get("plate") || undefined;
     if (companyId && plate) {
@@ -27,7 +28,7 @@ export async function GET(req: NextRequest) {
       );
     }
     // Drivers may list one company's units; the all-company list is office-only.
-    if (!companyId) await assertOfficePin(req);
+    if (!companyId && !sessionGrantsOffice(auth)) await assertOfficePin(req);
     const includeArchived = parseIncludeArchived(
       req.nextUrl.searchParams.get("includeArchived")
     );
@@ -43,6 +44,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: Request) {
   try {
+    const auth = await resolveRequestAuth(req);
     const body = (await req.json()) as {
       companyId?: string;
       unitNumber?: string;
@@ -58,10 +60,11 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
-    if (!(await isOfficeRequest(req))) {
+    const office = sessionGrantsOffice(auth) || (await isOfficeRequest(req));
+    if (!office) {
       // Driver (no PIN): may add a new unit only when the office toggle is on,
       // or update just the powertrain of a unit that already exists.
-      const orgId = orgFromSession();
+      const orgId = auth.orgId;
       const existing = await findVehicleByPlate(orgId, body.companyId, body.plate);
       if (existing) {
         const vehicle = await upsertVehicle(orgId, {
@@ -83,7 +86,7 @@ export async function POST(req: Request) {
         );
       }
     }
-    const vehicle = await upsertVehicle(orgFromSession(), {
+    const vehicle = await upsertVehicle(auth.orgId, {
       companyId: body.companyId,
       unitNumber: body.unitNumber,
       plate: body.plate,

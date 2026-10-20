@@ -1,7 +1,6 @@
 import { errorResponse } from "@/lib/server/api-error";
 import { updateAppUser } from "@/lib/server/checkout-repo";
-import { assertOfficePin } from "@/lib/server/office-pin";
-import { orgFromSession } from "@/lib/server/org-scope";
+import { assertOfficeAccess } from "@/lib/server/request-auth";
 import { NextResponse } from "next/server";
 import type { UserRole } from "@/lib/types";
 
@@ -13,7 +12,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await assertOfficePin(req);
+    const auth = await assertOfficeAccess(req);
     const { id } = await params;
     const body = (await req.json()) as {
       name?: string;
@@ -21,7 +20,7 @@ export async function PATCH(
       role?: UserRole;
       active?: boolean;
     };
-    const user = await updateAppUser(orgFromSession(), id, body);
+    const user = await updateAppUser(auth.orgId, id, body);
     return NextResponse.json({ user });
   } catch (err) {
     return errorResponse(err, "Failed to update user");

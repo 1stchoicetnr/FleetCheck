@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server";
 import { readFile } from "fs/promises";
 import path from "path";
-import { canReadStoredPath, orgFromSession } from "@/lib/server/org-scope";
+import { canReadStoredPath } from "@/lib/server/org-scope";
+import { orgIdFromRequest } from "@/lib/server/request-auth";
 import { isLocalSharedStoreEnabled } from "@/lib/server/shared-config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ path: string[] }> }
 ) {
   if (!isLocalSharedStoreEnabled()) {
@@ -19,7 +20,7 @@ export async function GET(
   }
   const { path: parts } = await params;
   const safe = parts.join("/");
-  if (!canReadStoredPath(orgFromSession(), safe)) {
+  if (!canReadStoredPath(await orgIdFromRequest(req), safe)) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
   const filePath = path.join(process.cwd(), ".data", "blobs", safe);
