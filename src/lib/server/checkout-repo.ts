@@ -67,8 +67,6 @@ import {
 import { deleteStoredPhoto, persistCheckoutPhoto } from "./photo-store";
 import { recordCheckoutAlerts } from "./report-alerts";
 import { effectiveCheckoutSlack } from "@/lib/company-settings";
-import { isCheckoutProbe, probeSlackWebhook } from "@/lib/checkout-probe";
-import { postCheckoutSlack } from "@/lib/checkout-slack";
 import { isGenericDriverName } from "@/lib/driver-name";
 import { notifyCheckoutReport } from "./slack-notify";
 import { assertIdempotencyKey, isUniqueViolation } from "@/lib/checkout-idempotency";
@@ -428,68 +426,25 @@ export async function listMyReports(orgId: string, driverName: string): Promise<
     .slice(0, 30);
 }
 
-export type CheckoutSlackPreview = {
-  destination: "ashley_dm";
-  messages: number;
-  text: string;
-};
-
-export async function confirmReportSent(
-  orgId: string,
-  id: string
-): Promise<CheckoutReport & { slackPreview?: CheckoutSlackPreview }> {
+export async function confirmReportSent(orgId: string, id: string): Promise<CheckoutReport> {
   const mode = assertConfigured();
   const existing = await getReport(orgId, id);
   if (!existing) throw new SharedBackendError("Checkout report not found", 404);
   if (existing.sentAt) return existing;
-  const probe = isCheckoutProbe(existing);
-  let slackPreview: CheckoutSlackPreview | undefined;
-  if (probe) {
-    let webhookUrl: string;
-    try {
-      webhookUrl = probeSlackWebhook({
-        feedback: process.env.SLACK_WEBHOOK_FEEDBACK,
-        radcabcr: process.env.SLACK_WEBHOOK_RADCABCR,
-        repairs: process.env.SLACK_WEBHOOK_RAD_CAB_REPAIRS,
-      });
-    } catch (err) {
-      console.error("[probe] refused Slack send:", err instanceof Error ? err.message : "unavailable");
-      throw new SharedBackendError("The test Slack message did not send.", 502);
-    }
-    try {
-      const posted = await postCheckoutSlack(existing, {
-        webhookUrl,
-        allowThread: false,
-      });
-      slackPreview = {
-        destination: "ashley_dm",
-        messages: posted.messages,
-        text: posted.text,
-      };
-    } catch (err) {
-      console.error(
-        "[probe] ashley dm post failed:",
-        err instanceof Error ? err.message : "request failed"
-      );
-      throw new SharedBackendError("The test Slack message did not send.", 502);
-    }
-  }
   const sentAt = new Date().toISOString();
   const saved =
     mode === "postgres"
       ? { ...existing, sentAt: (await pgMarkReportSent(orgId, id, sentAt)) || sentAt }
       : await localPutReport({ ...existing, sentAt });
-  if (!probe) {
-    const settingsDoc = await readStoredCompanySettings(orgId);
-    const routes = effectiveCheckoutSlack(settingsDoc);
-    void notifyCheckoutReport(saved, {
-      route: routes[saved.companyId],
-      webhooks: {
-        radcabOverride: slackWebhookOverride(settingsDoc) || undefined,
-      },
-    });
-  }
-  return slackPreview ? { ...saved, slackPreview } : saved;
+  const settingsDoc = await readStoredCompanySettings(orgId);
+  const routes = effectiveCheckoutSlack(settingsDoc);
+  void notifyCheckoutReport(saved, {
+    route: routes[saved.companyId],
+    webhooks: {
+      radcabOverride: slackWebhookOverride(settingsDoc) || undefined,
+    },
+  });
+  return saved;
 }
 
 export async function getReport(orgId: string, id: string): Promise<CheckoutReport | undefined> {

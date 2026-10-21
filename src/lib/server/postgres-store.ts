@@ -833,25 +833,6 @@ export async function pgDeleteReport(orgId: string, id: string): Promise<boolean
   return orgData.deleteReport(orgDb(), orgId, id);
 }
 
-export async function pgProbeCheckoutSnapshot(orgId: string) {
-  await pgMigrateAndSeed();
-  return orgData.probeCheckoutSnapshot(orgDb(), orgId);
-}
-
-export async function pgDeleteAlertsForActor(
-  orgId: string,
-  reportId: string,
-  actorName: string
-): Promise<number> {
-  await pgMigrateAndSeed();
-  return orgData.deleteAlertsForActor(orgDb(), orgId, reportId, actorName);
-}
-
-export async function pgRecomputeVehicleMileage(orgId: string, vehicleId: string) {
-  await pgMigrateAndSeed();
-  return orgData.recomputeVehicleMileage(orgDb(), orgId, vehicleId);
-}
-
 type AlertRow = {
   id: string;
   type: SharedOfficeAlert["type"];
