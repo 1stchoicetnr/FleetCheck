@@ -8,7 +8,7 @@ import { formatMileage, formatUnitLabel } from "./utils";
 export type CheckoutFetch = (
   url: string,
   init: { method: string; headers: Record<string, string>; body: string }
-) => Promise<{ ok: boolean; text: () => Promise<string> }>;
+) => Promise<{ ok: boolean; status?: number; text: () => Promise<string> }>;
 
 const FUEL_GAUGES = new Set<FuelLevel>([
   "full",
@@ -135,8 +135,8 @@ function threadTs(raw: string): string | undefined {
  */
 export async function postCheckoutSlack(
   report: CheckoutReport,
-  options: { webhookUrl: string; fetchImpl?: CheckoutFetch }
-): Promise<{ text: string; threaded: boolean }> {
+  options: { webhookUrl: string; fetchImpl?: CheckoutFetch; allowThread?: boolean }
+): Promise<{ text: string; threaded: boolean; messages: number }> {
   const fetchImpl = options.fetchImpl ?? fetch;
   const photos = checkoutPhotoLinks(report);
   const text = checkoutSlackText(report, { includePhotoLinks: photos.length > 0 });
@@ -146,8 +146,13 @@ export async function postCheckoutSlack(
     body: JSON.stringify({ text, username: "Inspekt" }),
   });
   const raw = await response.text().catch(() => "");
+  if (!response.ok) {
+    throw new Error(`Slack webhook rejected the checkout (${response.status ?? 0})`);
+  }
   const ts = threadTs(raw);
-  if (!ts || photos.length === 0) return { text, threaded: false };
+  if (options.allowThread === false || !ts || photos.length === 0) {
+    return { text, threaded: false, messages: 1 };
+  }
   for (const photo of photos) {
     await fetchImpl(options.webhookUrl, {
       method: "POST",
@@ -170,5 +175,5 @@ export async function postCheckoutSlack(
       }),
     });
   }
-  return { text, threaded: true };
+  return { text, threaded: true, messages: 1 + photos.length };
 }

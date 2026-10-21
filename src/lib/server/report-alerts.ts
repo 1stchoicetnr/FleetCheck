@@ -1,3 +1,4 @@
+import { isCheckoutProbe } from "@/lib/checkout-probe";
 import { postsRepairSlack } from "@/lib/checkout-slack-route";
 import { RAD_CAB_COMPANY_ID } from "@/lib/companies";
 import {
@@ -64,7 +65,7 @@ async function postRepairSlack(
   report: CheckoutReport,
   alerts: SharedOfficeAlert[]
 ): Promise<void> {
-  if (!alerts.length || !postsRepairSlack(report.companyId)) return;
+  if (!alerts.length || !postsRepairSlack(report.companyId) || isCheckoutProbe(report)) return;
   const route = repairRoute(report.companyId);
   const url = repairWebhook(route);
   if (!url) return;

@@ -102,6 +102,23 @@ test("the webhook mock never leaves the process, and a plain ok keeps photo link
   assert.match(result.text, /Windshield: https:\/\/blob\.example\/windshield\.jpg/);
   assert.match(result.text, /\*Result:\* Conditional/);
   assert.equal(result.threaded, false);
+  assert.equal(result.messages, 1);
+});
+
+test("the probe can post the parent once even when the webhook returns a thread id", async () => {
+  const calls: string[] = [];
+  const result = await postCheckoutSlack(report(), {
+    webhookUrl: "https://hooks.example.test/ashley",
+    allowThread: false,
+    fetchImpl: async (_url, init) => {
+      calls.push(init.body);
+      return { ok: true, text: async () => JSON.stringify({ ts: "171111.0001" }) };
+    },
+  });
+  assert.equal(calls.length, 1);
+  assert.equal(result.threaded, false);
+  assert.equal(result.messages, 1);
+  assert.match(result.text, /LF Fender: scrape/);
 });
 
 test("a webhook that returns a thread id gets a labeled photo reply", async () => {
