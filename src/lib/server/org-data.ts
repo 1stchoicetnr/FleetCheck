@@ -1742,6 +1742,20 @@ export async function rolloutSlateSnapshot(db: OrgDb, orgId: string) {
      ORDER BY u.email`,
     [scoped]
   );
+  const openReportRows = await db.query(
+    `SELECT id, company_id, unit_number, driver_name, review_status, created_at, completed_at, odometer
+     FROM checkout_reports
+     WHERE org_id = $1 AND archived_at IS NULL
+     ORDER BY created_at`,
+    [scoped]
+  );
+  const openAlertRows = await db.query(
+    `SELECT id, type, message, vehicle_plate, actor_name, created_at
+     FROM fleet_alerts
+     WHERE org_id = $1 AND archived_at IS NULL
+     ORDER BY created_at`,
+    [scoped]
+  );
   const mileage = await db.query(
     `SELECT
        COUNT(*) FILTER (WHERE last_mileage IS NULL)::int AS cleared,
@@ -1761,6 +1775,24 @@ export async function rolloutSlateSnapshot(db: OrgDb, orgId: string) {
     archivedAlerts: Number(alerts[0]?.archived_alerts ?? 0),
     mileageCleared: Number(mileage[0]?.cleared ?? 0),
     mileageFromLive: Number(mileage[0]?.with_mileage ?? 0),
+    openReportRows: openReportRows.map((row) => ({
+      id: String(row.id),
+      companyId: String(row.company_id),
+      unitNumber: String(row.unit_number),
+      driverName: String(row.driver_name),
+      reviewStatus: String(row.review_status),
+      createdAt: new Date(String(row.created_at)).toISOString(),
+      completedAt: new Date(String(row.completed_at)).toISOString(),
+      odometer: Number(row.odometer),
+    })),
+    openAlertRows: openAlertRows.map((row) => ({
+      id: String(row.id),
+      type: String(row.type),
+      message: String(row.message),
+      vehiclePlate: String(row.vehicle_plate),
+      actorName: String(row.actor_name),
+      createdAt: new Date(String(row.created_at)).toISOString(),
+    })),
     accounts: users.map((row) => {
       const decision = rolloutUserDecision({
         id: String(row.id),
