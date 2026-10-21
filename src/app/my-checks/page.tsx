@@ -12,6 +12,7 @@ import {
   listCheckoutOutbox,
 } from "@/lib/storage";
 import type { CheckoutReport } from "@/lib/types";
+import { isBeforeRolloutSlate } from "@/lib/rollout-slate";
 import { formatUnitLabel } from "@/lib/utils";
 
 interface CheckRow {
@@ -21,6 +22,7 @@ interface CheckRow {
   createdAt: string;
   sentAt?: string;
   localOnly?: boolean;
+  archivedAt?: string;
 }
 
 export default function MyChecksPage() {
@@ -65,6 +67,7 @@ export default function MyChecksPage() {
           detail: `${report.year} ${report.make} ${report.model}`,
           createdAt: report.createdAt,
           sentAt: report.sentAt || report.completedAt,
+          archivedAt: report.archivedAt,
         });
       }
       for (const report of remote) {
@@ -76,9 +79,14 @@ export default function MyChecksPage() {
           sentAt: report.sentAt,
         });
       }
-      const next = Array.from(byId.values()).sort(
-        (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)
-      );
+      const remoteIds = new Set(remote.map((report) => report.id));
+      const next = Array.from(byId.values())
+        .filter((row) => {
+          if (row.archivedAt) return false;
+          if (remoteIds.has(row.id)) return true;
+          return !isBeforeRolloutSlate(row.createdAt);
+        })
+        .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
       if (!cancelled) {
         setRows(next);
         setReady(true);

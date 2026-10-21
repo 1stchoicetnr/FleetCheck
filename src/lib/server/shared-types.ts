@@ -114,6 +114,8 @@ export interface SharedStore {
   settings?: FleetSettings;
   companySettings?: unknown;
   feedback?: StoredFeedback[];
+  /** Set after the one-time rollout archive. A second boot does not archive again. */
+  rolloutSlateAt?: string;
 }
 
 export type { FleetSettings, CheckoutReport, Company, VehiclePhoto };

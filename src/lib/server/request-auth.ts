@@ -67,6 +67,11 @@ export function sessionGrantsOffice(auth: RequestAuth): boolean {
   return auth.role === "office" || auth.role === "owner";
 }
 
+/** Owner session, or the office PIN, which stands in for an owner. */
+export function canViewArchivedRecords(auth: RequestAuth): boolean {
+  return auth.role === "owner" || auth.source === "pin";
+}
+
 /** Office or owner session, or the office PIN while no owner has a password. */
 export async function assertOfficeAccess(req: Request): Promise<RequestAuth> {
   const auth = await resolveRequestAuth(req);

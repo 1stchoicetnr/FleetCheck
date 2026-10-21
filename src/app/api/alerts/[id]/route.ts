@@ -1,6 +1,6 @@
 import { errorResponse } from "@/lib/server/api-error";
 import { deleteOfficeAlert, setOfficeAlertArchived } from "@/lib/server/checkout-repo";
-import { assertOfficeAccess } from "@/lib/server/request-auth";
+import { assertOfficeAccess, canViewArchivedRecords } from "@/lib/server/request-auth";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -16,6 +16,9 @@ export async function PATCH(
     const body = (await req.json()) as { archived?: boolean };
     if (typeof body.archived !== "boolean") {
       return NextResponse.json({ error: "archived (boolean) is required" }, { status: 400 });
+    }
+    if (body.archived === false && !canViewArchivedRecords(auth)) {
+      return NextResponse.json({ error: "Owner access is required." }, { status: 403 });
     }
     const alert = await setOfficeAlertArchived(auth.orgId, id, body.archived);
     return NextResponse.json({ alert });

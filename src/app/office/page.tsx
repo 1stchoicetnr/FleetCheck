@@ -9,7 +9,7 @@ import { OfficePinGate } from "@/components/office-pin-gate";
 import { ReviewStatusBadge } from "@/components/review-status-badge";
 import { DeliveryBadge } from "@/components/delivery-badge";
 import { useAuth } from "@/hooks/use-auth";
-import { canManageFleet, canReviewCheckout } from "@/lib/fleet-config";
+import { canManageFleet, canReviewCheckout, isOwnerAccount } from "@/lib/fleet-config";
 import { isCheckoutFlagged } from "@/lib/storage";
 import {
   fetchCheckoutReports,
@@ -37,12 +37,13 @@ const STATUS_FILTERS: Array<CheckoutReviewStatus | "all" | "flagged"> = [
   "fail",
 ];
 
-function filterLabel(value: (typeof STATUS_FILTERS)[number]): string {
+function filterLabel(value: (typeof STATUS_FILTERS)[number] | "archived"): string {
   if (value === "all") return "All";
   if (value === "flagged") return "Flag queue";
   if (value === "pending") return "Pending";
   if (value === "pass") return "PASS";
   if (value === "conditional") return "Conditional";
+  if (value === "archived") return "Archived";
   return "FAIL";
 }
 
@@ -62,8 +63,7 @@ function OfficeReportsPage() {
   const [companyId, setCompanyId] = useState("all");
   const [unitId, setUnitId] = useState("all");
   const [showArchivedUnits, setShowArchivedUnits] = useState(false);
-  const [showArchivedReports, setShowArchivedReports] = useState(false);
-  const [status, setStatus] = useState<(typeof STATUS_FILTERS)[number]>("all");
+  const [status, setStatus] = useState<(typeof STATUS_FILTERS)[number] | "archived">("all");
   const [officeReady, setOfficeReady] = useState(false);
   const [listReady, setListReady] = useState(false);
   const markOfficeUnlocked = useCallback(() => setOfficeReady(true), []);
@@ -80,7 +80,7 @@ function OfficeReportsPage() {
       if (offset > 0) setLoadingMore(true);
       Promise.all([
         fetchCheckoutReports({
-          includeArchived: showArchivedReports,
+          includeArchived: status === "archived",
           companyId: companyId === "all" ? undefined : companyId,
           vehicleId: unitId === "all" ? undefined : unitId,
           status,
@@ -112,7 +112,7 @@ function OfficeReportsPage() {
           setLoadingMore(false);
         });
     },
-    [showArchivedReports, companyId, unitId, status]
+    [companyId, unitId, status]
   );
 
   useEffect(() => {
@@ -300,7 +300,7 @@ function OfficeReportsPage() {
               className="rounded-xl border border-gray-200 px-3 py-3 text-sm bg-white min-h-[48px]"
               value={status}
               onChange={(e) =>
-                setStatus(e.target.value as (typeof STATUS_FILTERS)[number])
+                setStatus(e.target.value as (typeof STATUS_FILTERS)[number] | "archived")
               }
             >
               {STATUS_FILTERS.map((s) => (
@@ -308,6 +308,7 @@ function OfficeReportsPage() {
                   {filterLabel(s)}
                 </option>
               ))}
+              {isOwnerAccount(user) && <option value="archived">Archived</option>}
             </select>
           </div>
 
@@ -325,16 +326,6 @@ function OfficeReportsPage() {
             Include archived units in the unit filter. Past reports still show
             under All units.
           </label>
-          <label className="flex items-center gap-2 text-sm text-gray-600">
-            <input
-              type="checkbox"
-              className="h-4 w-4 rounded border-gray-300"
-              checked={showArchivedReports}
-              onChange={(e) => setShowArchivedReports(e.target.checked)}
-            />
-            Show archived reports
-          </label>
-
           {!listReady ? (
             <p className="text-center text-brand-600 font-semibold py-12">Loading reports…</p>
           ) : filtered.length === 0 ? (

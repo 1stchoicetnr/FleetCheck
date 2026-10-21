@@ -1,4 +1,5 @@
 import { openDB, DBSchema, IDBPDatabase } from "idb";
+import { isBeforeRolloutSlate } from "./rollout-slate";
 import {
   AppSettings,
   CheckInDraft,
@@ -952,7 +953,10 @@ export async function deleteCheckInDraft(id: string): Promise<void> {
 export async function getAlerts(includeArchived = false): Promise<FleetAlert[]> {
   const alerts = await (await getDB()).getAll("alerts");
   return alerts
-    .filter((alert) => includeArchived || !alert.archivedAt)
+    .filter(
+      (alert) =>
+        includeArchived || (!alert.archivedAt && !isBeforeRolloutSlate(alert.createdAt))
+    )
     .sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
@@ -1129,7 +1133,12 @@ export async function getPriorCheckoutReports(
   limit = 2
 ): Promise<CheckoutReport[]> {
   const reports = await getCheckoutReportsByVehicle(vehicleId);
-  return reports.filter((r) => r.id !== currentId).slice(0, limit);
+  return reports
+    .filter(
+      (r) =>
+        r.id !== currentId && !r.archivedAt && !isBeforeRolloutSlate(r.createdAt)
+    )
+    .slice(0, limit);
 }
 
 export function checkoutDraftId(

@@ -1,3 +1,8 @@
+import {
+  rolloutSlateCutoffIso,
+  rolloutUserDecision,
+  type RolloutUserDecision,
+} from "../rollout-slate";
 import { FIRST_CHOICE_ORG_ID } from "./org-stamp";
 import { OrgAccessError, requireOrgId } from "./org-scope";
 
@@ -316,9 +321,15 @@ export async function setVehicleServiceRow(
 
 const REPORT_PAGE_FILTER = `
   org_id = $1
-  AND ($2::boolean OR archived_at IS NULL)
   AND ($3::text IS NULL OR company_id = $3::text)
   AND ($4::text IS NULL OR vehicle_id = $4::text)
+  AND (
+    ($5::text = 'archived' AND archived_at IS NOT NULL)
+    OR (
+      COALESCE($5::text, '') <> 'archived'
+      AND ($2::boolean OR archived_at IS NULL)
+    )
+  )
 `;
 
 const STATUS_MATCH = `
@@ -335,8 +346,10 @@ const STATUS_MATCH = `
     OR (
       $5::text IS NOT NULL
       AND $5::text <> 'flagged'
+      AND $5::text <> 'archived'
       AND review_status = $5::text
     )
+    OR $5::text = 'archived'
   )
 `;
 
@@ -1477,6 +1490,220 @@ export async function applyOwnerEmailSwap(db: OrgDb, orgId: string): Promise<num
   changes += jamesInvites.length;
 
   return changes;
+}
+
+export async function recomputeVehicleMileage(
+  db: OrgDb,
+  orgId: string,
+  vehicleId?: string | null
+): Promise<{ cleared: number; fromLive: number }> {
+  const rows = await db.query(
+    `UPDATE vehicles v
+     SET last_mileage = (
+       SELECT r.odometer
+       FROM checkout_reports r
+       WHERE r.org_id = v.org_id
+         AND r.vehicle_id = v.id
+         AND r.archived_at IS NULL
+       ORDER BY r.completed_at DESC, r.created_at DESC
+       LIMIT 1
+     )
+     WHERE v.org_id = $1
+       AND ($2::text IS NULL OR v.id = $2::text)
+     RETURNING last_mileage`,
+    [org(orgId), vehicleId || null]
+  );
+  let cleared = 0;
+  let fromLive = 0;
+  for (const row of rows) {
+    if (row.last_mileage == null) cleared += 1;
+    else fromLive += 1;
+  }
+  return { cleared, fromLive };
+}
+
+export interface RolloutAccountChange {
+  id: string;
+  name: string;
+  email: string;
+  reason: string;
+  alreadyInactive: boolean;
+}
+
+export interface RolloutSlateResult {
+  alreadyApplied: boolean;
+  appliedAt: string | null;
+  before: { openReports: number; pendingReports: number; openAlerts: number };
+  after: { openReports: number; pendingReports: number; openAlerts: number };
+  archivedReports: number;
+  archivedAlerts: number;
+  deactivated: RolloutAccountChange[];
+  kept: Array<{ id: string; name: string; email: string; reason: string }>;
+  ambiguous: Array<{ id: string; name: string; email: string; reason: string }>;
+  mileageCleared: number;
+  mileageFromLive: number;
+}
+
+async function slateCounts(db: OrgDb, orgId: string) {
+  const scoped = org(orgId);
+  const reports = await db.query(
+    `SELECT
+       COUNT(*) FILTER (WHERE archived_at IS NULL)::int AS open_reports,
+       COUNT(*) FILTER (
+         WHERE archived_at IS NULL AND review_status = 'pending'
+       )::int AS pending_reports
+     FROM checkout_reports
+     WHERE org_id = $1`,
+    [scoped]
+  );
+  const alerts = await db.query(
+    `SELECT COUNT(*) FILTER (WHERE archived_at IS NULL)::int AS open_alerts
+     FROM fleet_alerts
+     WHERE org_id = $1`,
+    [scoped]
+  );
+  return {
+    openReports: Number(reports[0]?.open_reports ?? 0),
+    pendingReports: Number(reports[0]?.pending_reports ?? 0),
+    openAlerts: Number(alerts[0]?.open_alerts ?? 0),
+  };
+}
+
+/**
+ * Archive pre-rollout reports and alerts, deactivate demo logins, and
+ * rebuild last mileage from reports that are still visible.
+ * Does not delete rows, Blob photos, PDFs, or Slack messages.
+ * A second run logs the current counts and changes nothing.
+ */
+export async function applyRolloutSlate(
+  db: OrgDb,
+  orgId: string,
+  appliedAt: string
+): Promise<RolloutSlateResult | null> {
+  const scoped = org(orgId);
+  if (scoped !== FIRST_CHOICE_ORG_ID) return null;
+  await db.query(
+    `ALTER TABLE fleet_settings ADD COLUMN IF NOT EXISTS rollout_slate_at TIMESTAMPTZ`
+  );
+  const marker = await db.query(
+    `SELECT rollout_slate_at FROM fleet_settings WHERE org_id = $1 LIMIT 1`,
+    [scoped]
+  );
+  const existing = marker[0]?.rollout_slate_at;
+  if (existing) {
+    const counts = await slateCounts(db, scoped);
+    return {
+      alreadyApplied: true,
+      appliedAt: new Date(String(existing)).toISOString(),
+      before: counts,
+      after: counts,
+      archivedReports: 0,
+      archivedAlerts: 0,
+      deactivated: [],
+      kept: [],
+      ambiguous: [],
+      mileageCleared: 0,
+      mileageFromLive: 0,
+    };
+  }
+
+  const before = await slateCounts(db, scoped);
+  const cutoff = rolloutSlateCutoffIso();
+  const archivedReports = await db.query(
+    `UPDATE checkout_reports
+     SET archived_at = $2
+     WHERE org_id = $1
+       AND archived_at IS NULL
+       AND created_at < $3::timestamptz
+     RETURNING id`,
+    [scoped, appliedAt, cutoff]
+  );
+  const archivedAlerts = await db.query(
+    `UPDATE fleet_alerts
+     SET archived_at = $2
+     WHERE org_id = $1
+       AND archived_at IS NULL
+       AND created_at < $3::timestamptz
+     RETURNING id`,
+    [scoped, appliedAt, cutoff]
+  );
+
+  const users = await db.query(
+    `SELECT u.id, u.name, u.email, u.active, u.created_at,
+            m.created_at AS approved_at
+     FROM app_users u
+     LEFT JOIN org_memberships m
+       ON m.org_id = u.org_id AND m.user_id = u.id
+     WHERE u.org_id = $1
+     ORDER BY u.email`,
+    [scoped]
+  );
+
+  const deactivated: RolloutAccountChange[] = [];
+  const kept: RolloutSlateResult["kept"] = [];
+  const ambiguous: RolloutSlateResult["ambiguous"] = [];
+  for (const row of users) {
+    const id = String(row.id);
+    const name = String(row.name);
+    const email = String(row.email);
+    const decision: RolloutUserDecision = rolloutUserDecision({
+      id,
+      name,
+      email,
+      createdAt: new Date(String(row.created_at)).toISOString(),
+      approvedAt: row.approved_at
+        ? new Date(String(row.approved_at)).toISOString()
+        : null,
+    });
+    if (decision.action === "keep") {
+      kept.push({ id, name, email, reason: decision.reason });
+      continue;
+    }
+    if (decision.action === "ambiguous") {
+      ambiguous.push({ id, name, email, reason: decision.reason });
+      continue;
+    }
+    const updated = await db.query(
+      `UPDATE app_users
+       SET active = FALSE
+       WHERE org_id = $1 AND id = $2 AND active = TRUE
+       RETURNING id`,
+      [scoped, id]
+    );
+    await db.query(
+      `DELETE FROM auth_sessions WHERE org_id = $1 AND user_id = $2`,
+      [scoped, id]
+    );
+    deactivated.push({
+      id,
+      name,
+      email,
+      reason: decision.reason,
+      alreadyInactive: updated.length === 0,
+    });
+  }
+
+  const mileage = await recomputeVehicleMileage(db, scoped, null);
+  const after = await slateCounts(db, scoped);
+  await db.query(
+    `UPDATE fleet_settings
+     SET rollout_slate_at = $2
+     WHERE org_id = $1 AND rollout_slate_at IS NULL`,
+    [scoped, appliedAt]
+  );
+  return {
+    alreadyApplied: false,
+    appliedAt,
+    before,
+    after,
+    archivedReports: archivedReports.length,
+    archivedAlerts: archivedAlerts.length,
+    deactivated,
+    kept,
+    ambiguous,
+    mileageCleared: mileage.cleared,
+    mileageFromLive: mileage.fromLive,
+  };
 }
 
 export async function deleteMemberUser(db: OrgDb, orgId: string, userId: string) {

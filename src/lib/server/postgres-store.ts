@@ -34,6 +34,7 @@ import { SEEDED_APP_USERS } from "./seed-users";
 import * as orgData from "./org-data";
 import { applyOrgStamp } from "./org-stamp";
 import { HISTORICAL_SENT_BEFORE } from "@/lib/delivery-status";
+import { rolloutSlateLogLines } from "@/lib/rollout-slate";
 import { orgFromSession } from "./org-scope";
 import { carryOverMemberships } from "./auth-accounts";
 import type { UserRole } from "@/lib/types";
@@ -383,6 +384,11 @@ export async function pgMigrateAndSeed(): Promise<void> {
   const ownerEmailChanges = await orgData.applyOwnerEmailSwap(db, orgId);
   if (ownerEmailChanges > 0) {
     console.log(`[owner-email] updated ${ownerEmailChanges} account rows`);
+  }
+
+  const slate = await orgData.applyRolloutSlate(db, orgId, new Date().toISOString());
+  if (slate) {
+    for (const line of rolloutSlateLogLines(slate)) console.log(line);
   }
 
   migrated = true;
@@ -777,7 +783,7 @@ async function upsertReportRow(orgId: string, report: CheckoutReport): Promise<v
     idempotencyKey: report.idempotencyKey ?? null,
     sentAt: report.sentAt ?? null,
   });
-  await orgData.setVehicleMileage(db, orgId, report.vehicleId, report.odometer);
+  await orgData.recomputeVehicleMileage(db, orgId, report.vehicleId);
 }
 
 export async function pgPutReport(orgId: string, report: CheckoutReport): Promise<CheckoutReport> {
@@ -815,7 +821,9 @@ export async function pgSetReportArchived(
   await pgMigrateAndSeed();
   const archivedAt = archived ? new Date().toISOString() : null;
   await orgData.setReportArchivedAt(orgDb(), orgId, id, archivedAt);
-  return pgGetReport(orgId, id);
+  const report = await pgGetReport(orgId, id);
+  if (report) await orgData.recomputeVehicleMileage(orgDb(), orgId, report.vehicleId);
+  return report;
 }
 
 export async function pgDeleteReport(orgId: string, id: string): Promise<boolean> {

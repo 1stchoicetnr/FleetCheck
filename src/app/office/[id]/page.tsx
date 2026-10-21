@@ -15,7 +15,7 @@ import {
   PhotoLightbox,
 } from "@/components/photo-lightbox";
 import { useAuth } from "@/hooks/use-auth";
-import { canManageOfficeRecords, canReviewCheckout } from "@/lib/fleet-config";
+import { canManageOfficeRecords, canReviewCheckout, isOwnerAccount } from "@/lib/fleet-config";
 import { getChecklistForCompany } from "@/lib/companies";
 import { photoStepsForCompany, usesClover as cloverEnabled } from "@/lib/company-settings";
 import type { PublicCompanySettings } from "@/lib/company-settings";
@@ -398,6 +398,7 @@ export default function OfficeReportDetailPage() {
               )}
               {user && canManageOfficeRecords(user.role) && (
                 <div className="flex gap-2 pt-1">
+                  {(!report.archivedAt || isOwnerAccount(user)) && (
                   <Button
                     type="button"
                     size="sm"
@@ -405,8 +406,9 @@ export default function OfficeReportDetailPage() {
                     className="flex-1"
                     onClick={() => setRecordAction("archive")}
                   >
-                    {report.archivedAt ? "Unarchive report" : "Archive report"}
+                    {report.archivedAt ? "Restore report" : "Archive report"}
                   </Button>
+                  )}
                   <Button
                     type="button"
                     size="sm"
@@ -694,7 +696,7 @@ export default function OfficeReportDetailPage() {
         open={recordAction !== null}
         title={
           report
-            ? `${recordAction === "delete" ? "Delete" : report.archivedAt ? "Unarchive" : "Archive"} ${formatUnitLabel(report.unitNumber, report.plate)} ${report.type === "check_in" ? "check-in" : "check-out"} from ${formatDate(report.completedAt)}?`
+            ? `${recordAction === "delete" ? "Delete" : report.archivedAt ? "Restore" : "Archive"} ${formatUnitLabel(report.unitNumber, report.plate)} ${report.type === "check_in" ? "check-in" : "check-out"} from ${formatDate(report.completedAt)}?`
             : "Update this report?"
         }
         body={
@@ -704,7 +706,7 @@ export default function OfficeReportDetailPage() {
               ? "That report will show in the default office list again."
               : "That report stays on file and disappears from the default office list. Turn on Show archived reports to see it."
         }
-        confirmLabel={recordAction === "delete" ? "Delete report" : report?.archivedAt ? "Unarchive" : "Archive"}
+        confirmLabel={recordAction === "delete" ? "Delete report" : report?.archivedAt ? "Restore" : "Archive"}
         danger={recordAction === "delete"}
         busy={recordBusy}
         onConfirm={() => void handleRecordAction()}

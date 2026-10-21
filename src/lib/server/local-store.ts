@@ -25,6 +25,12 @@ import {
 } from "./shared-types";
 import { SEEDED_APP_USERS } from "./seed-users";
 import {
+  isBeforeRolloutSlate,
+  liveOdometer,
+  rolloutSlateLogLines,
+  rolloutUserDecision,
+} from "@/lib/rollout-slate";
+import {
   FleetSettings,
   DEFAULT_FLEET_SETTINGS,
 } from "@/lib/fleet-settings";
@@ -143,8 +149,107 @@ async function loadAndSeedUnlocked(): Promise<SharedStore> {
     vehicle.fleetId = matches[0].id;
     changed = true;
   }
+  if (!store.rolloutSlateAt) {
+    const appliedAt = new Date().toISOString();
+    const before = {
+      openReports: store.reports.filter((report) => !report.archivedAt).length,
+      pendingReports: store.reports.filter(
+        (report) => !report.archivedAt && report.reviewStatus === "pending"
+      ).length,
+      openAlerts: (store.alerts ?? []).filter((alert) => !alert.archivedAt).length,
+    };
+    let archivedReports = 0;
+    store.reports = store.reports.map((report) => {
+      if (report.archivedAt || !isBeforeRolloutSlate(report.createdAt)) return report;
+      archivedReports += 1;
+      return { ...report, archivedAt: appliedAt };
+    });
+    let archivedAlerts = 0;
+    store.alerts = (store.alerts ?? []).map((alert) => {
+      if (alert.archivedAt || !isBeforeRolloutSlate(alert.createdAt)) return alert;
+      archivedAlerts += 1;
+      return { ...alert, archivedAt: appliedAt };
+    });
+    const deactivated = [];
+    const kept = [];
+    const ambiguous = [];
+    for (const user of store.users ?? []) {
+      const decision = rolloutUserDecision({
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        createdAt: user.createdAt,
+      });
+      if (decision.action === "keep") {
+        kept.push({ id: user.id, name: user.name, email: user.email, reason: decision.reason });
+        continue;
+      }
+      if (decision.action === "ambiguous") {
+        ambiguous.push({
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          reason: decision.reason,
+        });
+        continue;
+      }
+      const alreadyInactive = user.active === false;
+      user.active = false;
+      deactivated.push({
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        reason: decision.reason,
+        alreadyInactive,
+      });
+    }
+    let mileageCleared = 0;
+    let mileageFromLive = 0;
+    for (const vehicle of store.vehicles) {
+      const odometer = liveOdometer(store.reports, vehicle.id);
+      if (odometer == null) {
+        if (vehicle.lastMileage != null) mileageCleared += 1;
+        delete vehicle.lastMileage;
+      } else {
+        vehicle.lastMileage = odometer;
+        mileageFromLive += 1;
+      }
+    }
+    store.rolloutSlateAt = appliedAt;
+    const after = {
+      openReports: store.reports.filter((report) => !report.archivedAt).length,
+      pendingReports: store.reports.filter(
+        (report) => !report.archivedAt && report.reviewStatus === "pending"
+      ).length,
+      openAlerts: (store.alerts ?? []).filter((alert) => !alert.archivedAt).length,
+    };
+    for (const line of rolloutSlateLogLines({
+      alreadyApplied: false,
+      appliedAt,
+      before,
+      after,
+      archivedReports,
+      archivedAlerts,
+      deactivated,
+      kept,
+      ambiguous,
+      mileageCleared,
+      mileageFromLive,
+    })) {
+      console.log(line);
+    }
+    changed = true;
+  }
   if (changed) await writeStore(store);
   return store;
+}
+
+function applyLiveMileage(store: SharedStore, vehicleId: string) {
+  const vehicle = store.vehicles.find((item) => item.id === vehicleId);
+  if (!vehicle) return;
+  const odometer = liveOdometer(store.reports, vehicleId);
+  if (odometer == null) delete vehicle.lastMileage;
+  else vehicle.lastMileage = odometer;
 }
 
 export async function localListUsers(): Promise<SharedAppUser[]> {
@@ -432,8 +537,7 @@ export async function localPutReport(report: CheckoutReport): Promise<CheckoutRe
     const idx = store.reports.findIndex((r) => r.id === report.id);
     if (idx >= 0) store.reports[idx] = report;
     else store.reports.unshift(report);
-    const vehicle = store.vehicles.find((v) => v.id === report.vehicleId);
-    if (vehicle) vehicle.lastMileage = report.odometer;
+    applyLiveMileage(store, report.vehicleId);
     await writeStore(store);
     return report;
   });
@@ -451,6 +555,7 @@ export async function localSetReportArchived(
     if (archived) next.archivedAt = new Date().toISOString();
     else delete next.archivedAt;
     store.reports[idx] = next;
+    applyLiveMileage(store, next.vehicleId);
     await writeStore(store);
     return next;
   });

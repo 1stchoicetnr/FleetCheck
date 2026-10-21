@@ -17,6 +17,7 @@ export function buildLastCheckMap(
   const map = new Map<string, LastCheckInfo>();
 
   for (const check of sorted) {
+    if (check.archivedAt) continue;
     if (map.has(check.vehicleId)) continue;
     map.set(check.vehicleId, {
       lastCheckAt: check.createdAt,

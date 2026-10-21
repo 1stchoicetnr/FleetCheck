@@ -6,7 +6,7 @@ import {
   reviewReport,
   setReportArchived,
 } from "@/lib/server/checkout-repo";
-import { assertOfficeAccess } from "@/lib/server/request-auth";
+import { assertOfficeAccess, canViewArchivedRecords } from "@/lib/server/request-auth";
 import { CheckoutReviewStatus, PhotoAngle } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -49,6 +49,9 @@ export async function PATCH(
       reviewedBy?: string;
     };
     if (typeof body.archived === "boolean") {
+      if (body.archived === false && !canViewArchivedRecords(auth)) {
+        return NextResponse.json({ error: "Owner access is required." }, { status: 403 });
+      }
       const report = await setReportArchived(orgId, id, body.archived);
       return NextResponse.json({ report });
     }

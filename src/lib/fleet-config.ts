@@ -83,6 +83,11 @@ export function canManageOfficeRecords(role: string): boolean {
   return role === "super_admin" || role === "management";
 }
 
+/** Owners can open the Archived filter and restore hidden reports and alerts. */
+export function isOwnerAccount(user: { role: string; roleTitle?: string }): boolean {
+  return user.role === "super_admin" || user.roleTitle === "Owner";
+}
+
 export function canReviewCheckout(role: string): boolean {
   return (
     role === "super_admin" || role === "management" || role === "tech"

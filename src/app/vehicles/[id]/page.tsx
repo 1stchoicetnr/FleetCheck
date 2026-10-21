@@ -32,6 +32,7 @@ import { MaintenanceLogSection } from "@/components/maintenance-log-section";
 import { PhotoComparison } from "@/components/photo-comparison";
 import { checksToCsv, downloadCsv } from "@/lib/export-checks";
 import { Download } from "lucide-react";
+import { isBeforeRolloutSlate } from "@/lib/rollout-slate";
 
 export default function VehicleDetailPage() {
   const params = useParams();
@@ -71,7 +72,9 @@ export default function VehicleDetailPage() {
         getChecksByVehicleSorted(vehicleId),
         getMaintenanceLogsByVehicle(vehicleId),
       ]);
-      setChecks(c);
+      setChecks(
+        c.filter((check) => !check.archivedAt && !isBeforeRolloutSlate(check.createdAt))
+      );
       setLogs(l);
     }
     load();

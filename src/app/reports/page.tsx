@@ -7,7 +7,8 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
-import { canViewReports, canExportHistory, canManageOfficeRecords } from "@/lib/fleet-config";
+import { canViewReports, canExportHistory, canManageOfficeRecords, isOwnerAccount } from "@/lib/fleet-config";
+import { isBeforeRolloutSlate } from "@/lib/rollout-slate";
 import { isOfficeUnlocked } from "@/lib/office-auth";
 import {
   deleteCheck,
@@ -74,7 +75,11 @@ export default function ReportsPage() {
 
   if (loading || !user) return null;
 
-  const visibleChecks = checks.filter((check) => showArchived || !check.archivedAt);
+  const hiddenFromDefault = (check: CheckRecord) =>
+    Boolean(check.archivedAt) || isBeforeRolloutSlate(check.createdAt);
+  const visibleChecks = checks.filter((check) =>
+    isOwnerAccount(user) && showArchived ? hiddenFromDefault(check) : !hiddenFromDefault(check)
+  );
   const filteredChecks =
     vehicleFilter === "all"
       ? visibleChecks
@@ -129,7 +134,7 @@ export default function ReportsPage() {
                 </option>
               ))}
             </select>
-            {canManageOfficeRecords(user.role) && (
+            {isOwnerAccount(user) && (
               <label className="flex items-center gap-2 text-sm text-gray-600">
                 <input
                   type="checkbox"

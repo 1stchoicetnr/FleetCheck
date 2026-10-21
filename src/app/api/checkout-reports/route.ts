@@ -1,6 +1,10 @@
 import { errorResponse } from "@/lib/server/api-error";
 import { assertDriverMayCheckVehicle } from "@/lib/server/driver-fleets";
-import { assertOfficeAccess, resolveRequestAuth } from "@/lib/server/request-auth";
+import {
+  assertOfficeAccess,
+  canViewArchivedRecords,
+  resolveRequestAuth,
+} from "@/lib/server/request-auth";
 import { NextRequest, NextResponse } from "next/server";
 import {
   createReport,
@@ -20,6 +24,7 @@ const LIST_STATUSES = new Set([
   "pass",
   "conditional",
   "fail",
+  "archived",
 ]);
 
 export async function GET(req: NextRequest) {
@@ -30,9 +35,15 @@ export async function GET(req: NextRequest) {
     if (statusParam && !LIST_STATUSES.has(statusParam)) {
       return NextResponse.json({ error: "Unknown status filter" }, { status: 400 });
     }
+    const ownerArchive = canViewArchivedRecords(auth);
+    if (statusParam === "archived" && !ownerArchive) {
+      return NextResponse.json({ error: "Owner access is required." }, { status: 403 });
+    }
     const started = performance.now();
     const page = await listReportPage(auth.orgId, {
-      includeArchived: params.get("includeArchived") === "1",
+      includeArchived:
+        ownerArchive &&
+        (params.get("includeArchived") === "1" || statusParam === "archived"),
       companyId: params.get("companyId") || undefined,
       vehicleId: params.get("vehicleId") || undefined,
       status: (statusParam as OfficeListStatus | null) || undefined,

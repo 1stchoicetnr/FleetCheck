@@ -8,7 +8,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
-import { canManageOfficeRecords, canViewAlerts } from "@/lib/fleet-config";
+import { canManageOfficeRecords, canViewAlerts, isOwnerAccount } from "@/lib/fleet-config";
 import {
   deleteOfficeAlert,
   fetchOfficeAlerts,
@@ -26,6 +26,7 @@ import {
 } from "@/lib/storage";
 import { AlertEventType, ALERT_TYPE_LABELS } from "@/lib/types";
 import { formatDate } from "@/lib/utils";
+import { isBeforeRolloutSlate } from "@/lib/rollout-slate";
 import { AlertTriangle, Bell, CheckCheck, Settings } from "lucide-react";
 
 type FilterType = AlertEventType | "all" | "check_events";
@@ -130,6 +131,10 @@ export default function AlertsPage() {
   if (loading || !user) return null;
 
   const filtered = alerts.filter((a) => {
+    if (showArchived && user && isOwnerAccount(user)) {
+      return Boolean(a.archivedAt) || isBeforeRolloutSlate(a.createdAt);
+    }
+    if (a.archivedAt || isBeforeRolloutSlate(a.createdAt)) return false;
     if (filter === "all") {
       if (!showCheckEvents && CHECK_EVENT_TYPES.includes(a.type)) return false;
       return true;
@@ -199,15 +204,19 @@ export default function AlertsPage() {
             </Link>
           </p>
         )}
-        <label className="flex items-center gap-2 text-sm text-gray-600">
-          <input
-            type="checkbox"
-            className="h-4 w-4 rounded border-gray-300"
-            checked={showArchived}
-            onChange={(e) => setShowArchived(e.target.checked)}
-          />
-          Show archived alerts
-        </label>
+        {isOwnerAccount(user) && (
+          <button
+            type="button"
+            onClick={() => setShowArchived((current) => !current)}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium ${
+              showArchived
+                ? "bg-accent text-[#052e16]"
+                : "bg-white text-gray-600 border border-gray-200"
+            }`}
+          >
+            Archived
+          </button>
+        )}
 
         {!showCheckEvents && filter === "all" && (
           <p className="text-xs text-gray-400">
@@ -273,7 +282,9 @@ export default function AlertsPage() {
                     Mark as read
                   </Button>
                 )}
-                {user && canManageOfficeRecords(user.role) && (
+                {user &&
+                  canManageOfficeRecords(user.role) &&
+                  (!alert.archivedAt || isOwnerAccount(user)) && (
                   <div className="flex gap-2">
                     <Button
                       size="sm"
@@ -287,7 +298,7 @@ export default function AlertsPage() {
                         setPending({ alert, action: "archive" });
                       }}
                     >
-                      {alert.archivedAt ? "Unarchive" : "Archive"}
+                      {alert.archivedAt ? "Restore" : "Archive"}
                     </Button>
                     <Button
                       size="sm"
@@ -314,7 +325,7 @@ export default function AlertsPage() {
         open={pending !== null}
         title={
           pending
-            ? `${pending.action === "delete" ? "Delete" : pending.alert.archivedAt ? "Unarchive" : "Archive"} ${pending.alert.vehiclePlate} ${ALERT_TYPE_LABELS[pending.alert.type]} from ${formatDate(pending.alert.createdAt)}?`
+            ? `${pending.action === "delete" ? "Delete" : pending.alert.archivedAt ? "Restore" : "Archive"} ${pending.alert.vehiclePlate} ${ALERT_TYPE_LABELS[pending.alert.type]} from ${formatDate(pending.alert.createdAt)}?`
             : "Update this alert?"
         }
         body={
@@ -322,7 +333,7 @@ export default function AlertsPage() {
             ? "This removes the alert. The checkout report, if any, stays unless you delete that separately."
             : "Archived alerts stay out of the default list."
         }
-        confirmLabel={pending?.action === "delete" ? "Delete alert" : pending?.alert.archivedAt ? "Unarchive" : "Archive"}
+        confirmLabel={pending?.action === "delete" ? "Delete alert" : pending?.alert.archivedAt ? "Restore" : "Archive"}
         danger={pending?.action === "delete"}
         busy={busy}
         onConfirm={() => void handlePending()}

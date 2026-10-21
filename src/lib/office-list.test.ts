@@ -75,4 +75,8 @@ test("office list pages summaries without photo bytes or signatures", () => {
   assert.equal(page.reports[0]?.photos[0]?.damageNote, "cracked bumper");
   assert.equal(page.reports[0]?.signatureDataUrl, undefined);
   assert.equal(toOfficeListReport(reports[0]).signatureDataUrl, undefined);
+  const archived = pageOfficeReports(reports, { status: "archived" });
+  assert.equal(archived.total, 1);
+  assert.equal(archived.reports[0]?.id, "c");
+  assert.equal(pageOfficeReports(reports, {}).reports.some((row) => row.id === "c"), false);
 });

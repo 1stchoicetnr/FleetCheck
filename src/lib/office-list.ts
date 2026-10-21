@@ -14,7 +14,7 @@ export function isOfficeReportFlagged(report: CheckoutReport): boolean {
 
 export const OFFICE_REPORT_PAGE_SIZE = 20;
 
-export type OfficeListStatus = "all" | "flagged" | CheckoutReviewStatus;
+export type OfficeListStatus = "all" | "flagged" | "archived" | CheckoutReviewStatus;
 
 export interface OfficeListQuery {
   includeArchived?: boolean;
@@ -66,9 +66,14 @@ export function pageOfficeReports(
   query: OfficeListQuery
 ): OfficeListPage {
   const { limit, offset } = officeReportPage(query);
+  const archivedOnly = query.status === "archived";
   const scoped = reports
     .filter((report) => {
-      if (!query.includeArchived && report.archivedAt) return false;
+      if (archivedOnly) {
+        if (!report.archivedAt) return false;
+      } else if (!query.includeArchived && report.archivedAt) {
+        return false;
+      }
       if (query.companyId && report.companyId !== query.companyId) return false;
       if (query.vehicleId && report.vehicleId !== query.vehicleId) return false;
       return true;
@@ -78,7 +83,10 @@ export function pageOfficeReports(
         new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime()
     );
   const flagged = scoped.filter(isOfficeReportFlagged).length;
-  const status = query.status && query.status !== "all" ? query.status : null;
+  const status =
+    query.status && query.status !== "all" && query.status !== "archived"
+      ? query.status
+      : null;
   const matched = status
     ? scoped.filter((report) =>
         status === "flagged"
