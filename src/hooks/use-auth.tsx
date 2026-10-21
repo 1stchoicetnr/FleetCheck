@@ -8,14 +8,11 @@ import {
   useCallback,
   ReactNode,
 } from "react";
-import { User, UserRole } from "@/lib/types";
-import { getUserById, getUsers, seedDatabase } from "@/lib/storage";
+import { User } from "@/lib/types";
+import { seedDatabase } from "@/lib/storage";
 
 interface AuthContextType {
   user: User | null;
-  login: (userId: string) => void;
-  loginAsRole: (role: UserRole) => Promise<boolean>;
-  loginByEmail: (email: string) => Promise<boolean>;
   adoptUser: (user: User) => void;
   logout: () => void;
   loading: boolean;
@@ -23,9 +20,6 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
-  login: () => {},
-  loginAsRole: async () => false,
-  loginByEmail: async () => false,
   adoptUser: () => {},
   logout: () => {},
   loading: true,
@@ -41,6 +35,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     async function init() {
       await seedDatabase();
+      localStorage.removeItem(SESSION_KEY);
       try {
         const res = await fetch("/api/auth/session", { cache: "no-store" });
         if (res.ok) {
@@ -52,12 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         }
       } catch {
-        // Demo role buttons still work when the session check cannot run.
-      }
-      const sessionId = localStorage.getItem(SESSION_KEY);
-      if (sessionId) {
-        const u = await getUserById(sessionId);
-        if (u && !cancelled) setUser(u);
+        // Stay signed out when the session check cannot run.
       }
       if (!cancelled) setLoading(false);
     }
@@ -65,36 +55,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, []);
-
-  const login = useCallback(async (userId: string) => {
-    const u = await getUserById(userId);
-    if (u) {
-      setUser(u);
-      localStorage.setItem(SESSION_KEY, userId);
-    }
-  }, []);
-
-  const loginAsRole = useCallback(async (role: UserRole) => {
-    await seedDatabase();
-    const users = await getUsers();
-    const match = users.find((u) => u.role === role);
-    if (!match) return false;
-    setUser(match);
-    localStorage.setItem(SESSION_KEY, match.id);
-    return true;
-  }, []);
-
-  const loginByEmail = useCallback(async (email: string) => {
-    await seedDatabase();
-    const users = await getUsers();
-    const match = users.find(
-      (u) => u.email.toLowerCase() === email.toLowerCase()
-    );
-    if (!match) return false;
-    setUser(match);
-    localStorage.setItem(SESSION_KEY, match.id);
-    return true;
   }, []);
 
   const adoptUser = useCallback((next: User) => {
@@ -108,9 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider
-      value={{ user, login, loginAsRole, loginByEmail, adoptUser, logout, loading }}
-    >
+    <AuthContext.Provider value={{ user, adoptUser, logout, loading }}>
       {children}
     </AuthContext.Provider>
   );

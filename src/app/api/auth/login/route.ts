@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { errorResponse } from "@/lib/server/api-error";
-import { checkPassword, openSession, publicProfile } from "@/lib/server/auth-accounts";
+import { classifySignIn, openSession, publicProfile } from "@/lib/server/auth-accounts";
 import { applySessionCookie } from "@/lib/server/auth-http";
 import {
   clearLoginFails,
@@ -30,13 +30,22 @@ export async function POST(req: Request) {
     const email = typeof body.email === "string" ? body.email.trim() : "";
     const password = typeof body.password === "string" ? body.password : "";
     const db = await openAuthDb();
-    const user =
-      email && password ? await checkPassword(db, auth.orgId, email, password) : null;
-    if (!user) {
+    const result =
+      email && password
+        ? await classifySignIn(db, auth.orgId, email, password)
+        : { kind: "invalid" as const };
+    if (result.kind === "pending" || result.kind === "denied") {
+      return NextResponse.json(
+        { status: result.kind },
+        { status: 200, headers: { "Cache-Control": "no-store" } }
+      );
+    }
+    if (result.kind !== "ok") {
       recordLoginFail(ip);
       return NextResponse.json({ error: "Email or password is wrong." }, { status: 401 });
     }
     clearLoginFails(ip);
+    const user = result.user;
     const token = await openSession(db, { id: user.id, orgId: auth.orgId, role: user.role });
     return applySessionCookie(
       NextResponse.json(

@@ -6,6 +6,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { canViewFleetOverview } from "@/lib/fleet-config";
 import {
   canAddVehicle,
+  canReviewAccessRequests,
   canSeeAlerts,
   canStartCheck,
   homeTiles,
@@ -81,6 +82,7 @@ export default function DashboardPage() {
   const router = useRouter();
   const [reviewCount, setReviewCount] = useState<number | null>(null);
   const [alertCount, setAlertCount] = useState<number | null>(null);
+  const [pendingCount, setPendingCount] = useState<number | null>(null);
 
   useEffect(() => {
     if (!loading && !user) router.replace("/");
@@ -118,6 +120,26 @@ export default function DashboardPage() {
     };
   }, [user]);
 
+  useEffect(() => {
+    if (!user || !canReviewAccessRequests(user)) {
+      setPendingCount(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/auth/access-requests", { cache: "no-store" });
+        const data = (await res.json().catch(() => ({}))) as { count?: number };
+        if (!cancelled) setPendingCount(res.ok ? Number(data.count) || 0 : null);
+      } catch {
+        if (!cancelled) setPendingCount(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
   if (loading || !user) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -130,6 +152,7 @@ export default function DashboardPage() {
   const badges: Partial<Record<HomeTileId, number | null>> = {
     office: reviewCount,
     alerts: alertCount,
+    settings: pendingCount,
   };
 
   return (

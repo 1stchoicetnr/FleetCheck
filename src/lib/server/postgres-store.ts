@@ -242,6 +242,16 @@ export async function pgMigrateAndSeed(): Promise<void> {
     )
   `;
   await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS password_hash TEXT`;
+  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS phone TEXT`;
+  await sql`ALTER TABLE app_users ADD COLUMN IF NOT EXISTS access_status TEXT NOT NULL DEFAULT 'active'`;
+  await sql`
+    CREATE TABLE IF NOT EXISTS user_fleets (
+      org_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      fleet_id TEXT NOT NULL,
+      PRIMARY KEY (org_id, user_id, fleet_id)
+    )
+  `;
   await sql`
     CREATE TABLE IF NOT EXISTS org_memberships (
       id TEXT PRIMARY KEY,

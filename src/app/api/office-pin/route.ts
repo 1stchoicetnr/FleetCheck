@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { checkOfficePinGuarded, OfficeAuthError } from "@/lib/server/office-pin";
+import { checkOfficePinGuarded, officePinEnabled, OfficeAuthError } from "@/lib/server/office-pin";
 import { resolveRequestAuth } from "@/lib/server/request-auth";
 import {
   createOfficeToken,
@@ -14,6 +14,9 @@ export async function POST(req: Request) {
   await resolveRequestAuth(req);
   const body = (await req.json().catch(() => ({}))) as { pin?: string };
   try {
+    if (!(await officePinEnabled())) {
+      throw new OfficeAuthError("Sign in with your email. The office PIN is off.", 403);
+    }
     checkOfficePinGuarded(req, body.pin || "");
   } catch (err) {
     const e = err instanceof OfficeAuthError ? err : new OfficeAuthError("Invalid office PIN", 401);

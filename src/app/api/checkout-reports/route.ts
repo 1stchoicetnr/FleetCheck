@@ -1,5 +1,6 @@
 import { errorResponse } from "@/lib/server/api-error";
-import { assertOfficeAccess, orgIdFromRequest } from "@/lib/server/request-auth";
+import { assertDriverMayCheckVehicle } from "@/lib/server/driver-fleets";
+import { assertOfficeAccess, resolveRequestAuth } from "@/lib/server/request-auth";
 import { NextRequest, NextResponse } from "next/server";
 import {
   createReport,
@@ -52,7 +53,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: Request) {
   try {
-    const orgId = await orgIdFromRequest(req);
+    const auth = await resolveRequestAuth(req);
+    const orgId = auth.orgId;
     const body = (await req.json()) as {
       companyId?: string;
       vehicleId?: string;
@@ -93,6 +95,7 @@ export async function POST(req: Request) {
     ) {
       return NextResponse.json({ error: "Signature image is invalid or too large" }, { status: 400 });
     }
+    await assertDriverMayCheckVehicle(auth, body.vehicleId);
     const report = await createReport(orgId, {
       companyId: body.companyId,
       vehicleId: body.vehicleId,

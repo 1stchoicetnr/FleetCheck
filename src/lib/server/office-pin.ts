@@ -5,6 +5,30 @@ import {
   verifyOfficeToken,
 } from "./office-token";
 
+async function defaultPinFallback(): Promise<boolean> {
+  const { pinFallbackOpen } = await import("./pin-fallback");
+  return pinFallbackOpen();
+}
+
+let pinFallbackCheck: () => Promise<boolean> = defaultPinFallback;
+
+export function setPinFallbackCheck(check: () => Promise<boolean>) {
+  pinFallbackCheck = check;
+}
+
+export function resetPinFallbackCheck() {
+  pinFallbackCheck = defaultPinFallback;
+}
+
+export async function officePinEnabled(): Promise<boolean> {
+  try {
+    return await pinFallbackCheck();
+  } catch (err) {
+    console.error("[pin-fallback]", err);
+    return true;
+  }
+}
+
 export class OfficeAuthError extends Error {
   status: number;
   constructor(message: string, status: number) {
@@ -75,6 +99,7 @@ export function pinFromRequest(req: Request): string {
 
 /** True if the request carries a valid office session cookie or PIN header. Never throws. */
 export async function isOfficeRequest(req: Request): Promise<boolean> {
+  if (!(await officePinEnabled())) return false;
   if (!configuredOfficePin()) return false;
   if (await verifyOfficeToken(cookieValue(req, OFFICE_COOKIE))) return true;
   const pin = pinFromRequest(req);
@@ -89,6 +114,9 @@ export async function isOfficeRequest(req: Request): Promise<boolean> {
 
 /** Throws OfficeAuthError (401/429/503) unless the request is from the office. */
 export async function assertOfficePin(req: Request): Promise<void> {
+  if (!(await officePinEnabled())) {
+    throw new OfficeAuthError("Sign in with your email. The office PIN is off.", 403);
+  }
   if (!configuredOfficePin()) throw new OfficeAuthError("Office access is not configured", 503);
   if (await verifyOfficeToken(cookieValue(req, OFFICE_COOKIE))) return;
   checkOfficePinGuarded(req, pinFromRequest(req));

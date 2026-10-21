@@ -57,7 +57,11 @@ function SettingsPage() {
         <FleetManager canEdit={canEditFleets(user)} />
       ) : null}
       {sections.includes("notifications") && <NotificationSettingsPanel />}
-      {sections.includes("people") && <PeopleSettingsPanel />}
+      {sections.includes("people") && user && (
+        <PeopleSettingsPanel
+          owner={user.role === "super_admin" || user.roleTitle === "Owner"}
+        />
+      )}
     </div>
   );
 

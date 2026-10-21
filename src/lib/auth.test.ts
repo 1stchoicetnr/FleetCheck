@@ -28,7 +28,15 @@ const SCHEMA = `
     active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL,
     org_id TEXT NOT NULL,
-    password_hash TEXT
+    password_hash TEXT,
+    phone TEXT,
+    access_status TEXT NOT NULL DEFAULT 'active'
+  );
+  CREATE TABLE user_fleets (
+    org_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    fleet_id TEXT NOT NULL,
+    PRIMARY KEY (org_id, user_id, fleet_id)
   );
   CREATE TABLE org_memberships (
     id TEXT PRIMARY KEY,

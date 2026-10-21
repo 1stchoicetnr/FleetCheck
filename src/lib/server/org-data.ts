@@ -3,7 +3,7 @@ import { OrgAccessError, requireOrgId } from "./org-scope";
 
 /**
  * The only application module that may read or write
- * companies, vehicles, fleets, checkout_reports, fleet_alerts,
+ * companies, vehicles, fleets, user_fleets, checkout_reports, fleet_alerts,
  * app_users, app_feedback, and fleet_settings.
  * Every statement includes org_id. org-stamp.ts is the migration only.
  */
@@ -1060,7 +1060,7 @@ export async function restoreReplacedFrontPhoto(
 
 export async function findUserByEmail(db: OrgDb, orgId: string, email: string) {
   const rows = await db.query(
-    `SELECT id, name, email, role, active, password_hash
+    `SELECT id, name, email, role, active, password_hash, phone, access_status
      FROM app_users
      WHERE org_id = $1 AND lower(email) = lower($2)
      LIMIT 1`,
@@ -1107,9 +1107,147 @@ export async function listPeople(db: OrgDb, orgId: string) {
      LEFT JOIN org_memberships m
        ON m.user_id = u.id AND m.org_id = u.org_id
      WHERE u.org_id = $1
+       AND COALESCE(u.access_status, 'active') = 'active'
      ORDER BY u.name`,
     [org(orgId)]
   );
+}
+
+export async function insertPendingUser(
+  db: OrgDb,
+  orgId: string,
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    phone: string;
+    passwordHash: string;
+    createdAt: string;
+  }
+) {
+  await db.query(
+    `INSERT INTO app_users (
+       id, name, email, role, active, created_at, org_id, password_hash, phone, access_status
+     )
+     VALUES ($1,$2,$3,'driver', FALSE, $4, $5, $6, $7, 'pending')`,
+    [
+      user.id,
+      user.name,
+      storedEmail(user.email),
+      user.createdAt,
+      org(orgId),
+      user.passwordHash,
+      user.phone,
+    ]
+  );
+}
+
+export async function listPendingUsers(db: OrgDb, orgId: string) {
+  return db.query(
+    `SELECT id, name, email, phone, created_at
+     FROM app_users
+     WHERE org_id = $1 AND access_status = 'pending'
+     ORDER BY created_at`,
+    [org(orgId)]
+  );
+}
+
+export async function approvePendingUser(
+  db: OrgDb,
+  orgId: string,
+  userId: string,
+  legacyRole: string
+) {
+  const rows = await db.query(
+    `UPDATE app_users
+     SET active = TRUE, access_status = 'active', role = $1
+     WHERE id = $2 AND org_id = $3 AND access_status = 'pending'
+     RETURNING id`,
+    [legacyRole, userId, org(orgId)]
+  );
+  return Boolean(rows[0]);
+}
+
+export async function denyPendingUser(db: OrgDb, orgId: string, userId: string) {
+  const rows = await db.query(
+    `UPDATE app_users
+     SET active = FALSE, access_status = 'denied'
+     WHERE id = $1 AND org_id = $2 AND access_status = 'pending'
+     RETURNING id`,
+    [userId, org(orgId)]
+  );
+  return Boolean(rows[0]);
+}
+
+export async function setMembershipRole(
+  db: OrgDb,
+  orgId: string,
+  membership: { id: string; userId: string; role: string; createdAt: string }
+) {
+  await db.query(
+    `INSERT INTO org_memberships (id, org_id, user_id, role, created_at)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (org_id, user_id) DO UPDATE SET role = EXCLUDED.role`,
+    [membership.id, org(orgId), membership.userId, membership.role, membership.createdAt]
+  );
+}
+
+export async function replaceUserFleets(
+  db: OrgDb,
+  orgId: string,
+  userId: string,
+  fleetIds: string[]
+) {
+  const scoped = org(orgId);
+  await db.query("DELETE FROM user_fleets WHERE org_id = $1 AND user_id = $2", [
+    scoped,
+    userId,
+  ]);
+  for (const fleetId of fleetIds) {
+    await db.query(
+      `INSERT INTO user_fleets (org_id, user_id, fleet_id)
+       VALUES ($1, $2, $3)`,
+      [scoped, userId, fleetId]
+    );
+  }
+}
+
+export async function listUserFleetIds(db: OrgDb, orgId: string, userId: string) {
+  const rows = await db.query(
+    `SELECT fleet_id FROM user_fleets WHERE org_id = $1 AND user_id = $2 ORDER BY fleet_id`,
+    [org(orgId), userId]
+  );
+  return rows.map((row) => String(row.fleet_id));
+}
+
+export async function anyOwnerHasPassword(db: OrgDb, orgId: string) {
+  const rows = await db.query(
+    `SELECT u.id
+     FROM app_users u
+     JOIN org_memberships m ON m.user_id = u.id AND m.org_id = u.org_id
+     WHERE u.org_id = $1
+       AND m.role = 'owner'
+       AND u.password_hash IS NOT NULL
+     LIMIT 1`,
+    [org(orgId)]
+  );
+  return Boolean(rows[0]);
+}
+
+export async function findOwnerWithoutPassword(db: OrgDb, orgId: string) {
+  const rows = await db.query(
+    `SELECT u.id, u.name, u.email
+     FROM app_users u
+     JOIN org_memberships m ON m.user_id = u.id AND m.org_id = u.org_id
+     WHERE u.org_id = $1
+       AND m.role = 'owner'
+       AND u.active = TRUE
+       AND u.password_hash IS NULL
+     ORDER BY CASE WHEN u.id = 'user-ashley' THEN 0 ELSE 1 END, u.name
+     LIMIT 1`,
+    [org(orgId)]
+  );
+  return rows[0];
 }
 
 export async function insertMemberUser(
@@ -1342,6 +1480,10 @@ export async function applyOwnerEmailSwap(db: OrgDb, orgId: string): Promise<num
 }
 
 export async function deleteMemberUser(db: OrgDb, orgId: string, userId: string) {
+  await db.query("DELETE FROM user_fleets WHERE user_id = $1 AND org_id = $2", [
+    userId,
+    org(orgId),
+  ]);
   await db.query(
     "DELETE FROM org_memberships WHERE user_id = $1 AND org_id = $2",
     [userId, org(orgId)]

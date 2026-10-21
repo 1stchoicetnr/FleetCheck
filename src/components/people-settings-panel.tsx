@@ -16,8 +16,9 @@ import { summarizeUnits, unitCountLine, UnitCounts } from "@/lib/unit-counts";
 import Link from "next/link";
 import { Users, Truck } from "lucide-react";
 import { UnitImportNote } from "@/components/unit-import-note";
+import { AccessRequestsPanel } from "@/components/access-requests-panel";
 
-export function PeopleSettingsPanel() {
+export function PeopleSettingsPanel({ owner }: { owner: boolean }) {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [unitSummary, setUnitSummary] = useState<UnitCounts | null>(null);
   const [serverUserCount, setServerUserCount] = useState<number | null>(null);
@@ -27,6 +28,7 @@ export function PeopleSettingsPanel() {
   const [settingsError, setSettingsError] = useState("");
 
   useEffect(() => {
+    if (!owner) return;
     getCompanies().then((companiesList) => {
       setCompanies((current) => (current.length > 0 ? current : companiesList));
     });
@@ -52,14 +54,13 @@ export function PeopleSettingsPanel() {
       .catch((err: Error) => {
         setSettingsError(err.message || "Could not load Super Admin settings.");
       });
-  }, []);
+  }, [owner]);
 
   return (
     <div id="people" className="space-y-4">
-      <div>
-        <h2 className="text-lg font-bold text-ink">People and invites</h2>
-        <p className="text-sm text-muted mt-1">Users and invites.</p>
-      </div>
+      <AccessRequestsPanel canGrantOwner={owner} canResetPassword={owner} />
+      {owner && (
+      <>
         {/* Stats */}
         <div className="grid grid-cols-3 gap-3">
           {[
@@ -203,7 +204,8 @@ export function PeopleSettingsPanel() {
             </Link>
           </CardContent>
         </Card>
-
+      </>
+      )}
     </div>
   );
 }

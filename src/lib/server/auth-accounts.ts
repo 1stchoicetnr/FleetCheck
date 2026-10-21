@@ -42,27 +42,52 @@ function inviteOpen(invite: InviteRow, now = Date.now()): boolean {
   return new Date(invite.expires_at).getTime() > now;
 }
 
-export async function checkPassword(
+export type SignInResult =
+  | { kind: "ok"; user: { id: string; name: string; email: string; role: MemberRole } }
+  | { kind: "pending" }
+  | { kind: "denied" }
+  | { kind: "invalid" };
+
+export async function classifySignIn(
   db: OrgDb,
   orgId: string,
   email: string,
   password: string
-): Promise<{ id: string; name: string; email: string; role: MemberRole } | null> {
+): Promise<SignInResult> {
   const row = await findUserByEmail(db, orgId, email);
   const stored =
     row && typeof row.password_hash === "string" && row.password_hash
       ? row.password_hash
       : await dummyPasswordHash();
   const match = await verifyPassword(password, stored);
-  if (!row || !row.password_hash || !match || row.active === false) return null;
+  if (!row || typeof row.password_hash !== "string" || !row.password_hash || !match) {
+    return { kind: "invalid" };
+  }
+  const status = String(row.access_status || "");
+  if (status === "pending") return { kind: "pending" };
+  if (status === "denied") return { kind: "denied" };
+  if (row.active === false) return { kind: "invalid" };
   const role = (await memberRoleForUser(db, orgId, String(row.id))) || "";
-  if (!isMemberRole(role)) return null;
+  if (!isMemberRole(role)) return { kind: "invalid" };
   return {
-    id: String(row.id),
-    name: String(row.name),
-    email: String(row.email),
-    role,
+    kind: "ok",
+    user: {
+      id: String(row.id),
+      name: String(row.name),
+      email: String(row.email),
+      role,
+    },
   };
+}
+
+export async function checkPassword(
+  db: OrgDb,
+  orgId: string,
+  email: string,
+  password: string
+): Promise<{ id: string; name: string; email: string; role: MemberRole } | null> {
+  const result = await classifySignIn(db, orgId, email, password);
+  return result.kind === "ok" ? result.user : null;
 }
 
 export async function openSession(

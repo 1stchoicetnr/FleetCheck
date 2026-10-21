@@ -7,6 +7,7 @@ import {
 } from "@/lib/server/checkout-repo";
 import { isOfficeRequest, assertOfficePin } from "@/lib/server/office-pin";
 import { getFleetSettings } from "@/lib/server/checkout-repo";
+import { filterVehiclesForDriver } from "@/lib/server/driver-fleets";
 import { resolveRequestAuth, sessionGrantsOffice } from "@/lib/server/request-auth";
 import { parseIncludeArchived } from "@/lib/vehicle-archive";
 import type { Powertrain } from "@/lib/inspection-form";
@@ -21,9 +22,11 @@ export async function GET(req: NextRequest) {
     const companyId = req.nextUrl.searchParams.get("companyId") || undefined;
     const plate = req.nextUrl.searchParams.get("plate") || undefined;
     if (companyId && plate) {
-      const vehicle = await findVehicleByPlate(orgId, companyId, plate);
+      const found = await findVehicleByPlate(orgId, companyId, plate);
+      const vehicles = await filterVehiclesForDriver(auth, found ? [found] : []);
+      const vehicle = vehicles[0] ?? null;
       return NextResponse.json(
-        { vehicle: vehicle ?? null, vehicles: vehicle ? [vehicle] : [] },
+        { vehicle, vehicles: vehicle ? [vehicle] : [] },
         { headers: { "Cache-Control": "no-store" } }
       );
     }
@@ -32,7 +35,10 @@ export async function GET(req: NextRequest) {
     const includeArchived = parseIncludeArchived(
       req.nextUrl.searchParams.get("includeArchived")
     );
-    const vehicles = await listVehicles(orgId, companyId, { includeArchived });
+    const vehicles = await filterVehiclesForDriver(
+      auth,
+      await listVehicles(orgId, companyId, { includeArchived })
+    );
     return NextResponse.json(
       { vehicles },
       { headers: { "Cache-Control": "no-store" } }

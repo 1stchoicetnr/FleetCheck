@@ -42,6 +42,16 @@ export function canEditPeople(role: string): boolean {
   return role === "super_admin";
 }
 
+/** Owner and Office review access requests. Tech and Driver do not. */
+export function canReviewAccessRequests(user: MenuUser): boolean {
+  return (
+    user.role === "super_admin" ||
+    user.role === "management" ||
+    user.roleTitle === "Owner" ||
+    user.roleTitle === "Office"
+  );
+}
+
 export function canAddVehicle(role: string): boolean {
   return role === "super_admin";
 }
@@ -76,6 +86,6 @@ export function settingsSections(user: MenuUser): SettingsSectionId[] {
   const sections: SettingsSectionId[] = [];
   if (canEditCompany(user)) sections.push("company");
   if (canEditNotifications(user.role)) sections.push("notifications");
-  if (canEditPeople(user.role)) sections.push("people");
+  if (canEditPeople(user.role) || canReviewAccessRequests(user)) sections.push("people");
   return sections;
 }

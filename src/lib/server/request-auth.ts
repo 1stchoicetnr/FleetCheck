@@ -34,7 +34,7 @@ function openAuth(): RequestAuth {
   };
 }
 
-/** Read the session cookie. A missing or expired cookie leaves the request open (demo and PIN still work). */
+/** Read the session cookie. A missing or expired cookie leaves the request open. */
 export async function resolveRequestAuth(req: Request): Promise<RequestAuth> {
   const token = cookieValue(req, SESSION_COOKIE);
   if (!token) return openAuth();
@@ -67,7 +67,7 @@ export function sessionGrantsOffice(auth: RequestAuth): boolean {
   return auth.role === "office" || auth.role === "owner";
 }
 
-/** Office or owner session, or the existing office PIN during this transition. */
+/** Office or owner session, or the office PIN while no owner has a password. */
 export async function assertOfficeAccess(req: Request): Promise<RequestAuth> {
   const auth = await resolveRequestAuth(req);
   if (sessionGrantsOffice(auth)) return auth;
@@ -75,10 +75,7 @@ export async function assertOfficeAccess(req: Request): Promise<RequestAuth> {
   return { ...auth, role: "office", source: "pin" };
 }
 
-/**
- * Owner session, or the office PIN until Ashley turns the PIN off.
- * The PIN does not hide the demo role buttons.
- */
+/** Owner session, or the office PIN while no owner has a password. */
 export async function assertOwnerAccess(req: Request): Promise<RequestAuth> {
   const auth = await resolveRequestAuth(req);
   if (auth.role === "owner") return auth;

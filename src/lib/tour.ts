@@ -39,8 +39,8 @@ const OFFICE_STEPS: TourStep[] = [
     body: "The office list shows Saved, Uploading, or Sent. A check that sits for more than 30 minutes is flagged stuck.",
   },
   {
-    title: "The PIN stays on",
-    body: "Unlock the office list with the PIN. The demo role buttons stay on the home screen.",
+    title: "Sign in",
+    body: "Use the email and password an owner approved. The office PIN stays on the sign-in page until an owner sets a password.",
   },
 ];
 

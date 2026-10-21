@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   canEditFleets,
+  canReviewAccessRequests,
   canStartCheck,
   homeTiles,
   settingsSections,
@@ -15,7 +16,7 @@ test("a driver sees the check, recent checks, and vehicles", () => {
   assert.deepEqual(settingsSections(user), []);
 });
 
-test("office sees review, alerts, vehicles, and settings without people", () => {
+test("office sees review, alerts, vehicles, and people for access requests", () => {
   const user = { role: "management", roleTitle: "Office" };
   assert.equal(canStartCheck(user.role), true);
   assert.deepEqual(homeTiles(user), [
@@ -25,7 +26,7 @@ test("office sees review, alerts, vehicles, and settings without people", () => 
     "vehicles",
     "settings",
   ]);
-  assert.deepEqual(settingsSections(user), ["company", "notifications"]);
+  assert.deepEqual(settingsSections(user), ["company", "notifications", "people"]);
 });
 
 test("an owner sees every daily tile and all three settings sections", () => {
@@ -41,6 +42,17 @@ test("an owner sees every daily tile and all three settings sections", () => {
     "company",
     "notifications",
     "people",
+  ]);
+});
+
+test("office and owner review access requests, and driver and tech do not", () => {
+  assert.equal(canReviewAccessRequests({ role: "management", roleTitle: "Office" }), true);
+  assert.equal(canReviewAccessRequests({ role: "super_admin", roleTitle: "Owner" }), true);
+  assert.equal(canReviewAccessRequests({ role: "driver", roleTitle: "Driver" }), false);
+  assert.equal(canReviewAccessRequests({ role: "tech", roleTitle: "Tech" }), false);
+  assert.deepEqual(settingsSections({ role: "tech", roleTitle: "Tech" }), [
+    "company",
+    "notifications",
   ]);
 });
 

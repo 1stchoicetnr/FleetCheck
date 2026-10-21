@@ -7,7 +7,7 @@ const ROOT = path.join(import.meta.dirname, "../..");
 
 /** Tables that must be read and written only inside the org helper. */
 const SCOPED_TABLES =
-  "companies|vehicles|checkout_reports|fleet_alerts|app_users|app_feedback|fleet_settings|fleets";
+  "companies|vehicles|checkout_reports|fleet_alerts|app_users|app_feedback|fleet_settings|fleets|user_fleets";
 
 export const SCOPED_QUERY =
   new RegExp(

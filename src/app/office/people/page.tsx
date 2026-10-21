@@ -95,7 +95,7 @@ export default function PeoplePage() {
         url: data.url,
         qr: data.qr,
         expiresAt: data.expiresAt,
-        label: `Setup link for ${person.name} (${person.email})`,
+        label: `Password reset for ${person.name} (${person.email})`,
       });
       await load();
     } catch {
@@ -172,9 +172,9 @@ export default function PeoplePage() {
           <div>
             <h2 className="text-xl font-bold text-gray-900">People and invites</h2>
             <p className="mt-1 text-sm text-gray-600">
-              Invite links and setup links expire in 7 days, work once, and can be revoked.
-              A new setup link replaces the previous unused one. The demo role buttons and
-              office PIN still work until you say to turn them off.
+              Invite links and QR codes skip approval. They expire in 7 days, work once,
+              and can be revoked. Reset password sends a one-time setup link. The office
+              PIN stays on the sign-in page until an owner sets a password.
             </p>
           </div>
 
@@ -309,7 +309,7 @@ export default function PeoplePage() {
                     onClick={() => void issueSetup(person)}
                     className="min-h-[44px] rounded-xl border border-gray-300 px-3 text-sm font-semibold text-gray-900 disabled:opacity-60"
                   >
-                    {busy === person.id ? "Creating…" : "Setup link"}
+                    {busy === person.id ? "Creating…" : "Reset password"}
                   </button>
                 </article>
               ))}
