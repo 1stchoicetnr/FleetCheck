@@ -1706,6 +1706,83 @@ export async function applyRolloutSlate(
   };
 }
 
+/** Read-only picture of the slate. Does not select password hashes. */
+export async function rolloutSlateSnapshot(db: OrgDb, orgId: string) {
+  const scoped = org(orgId);
+  const reports = await db.query(
+    `SELECT
+       COUNT(*) FILTER (WHERE archived_at IS NULL)::int AS open_reports,
+       COUNT(*) FILTER (
+         WHERE archived_at IS NULL AND review_status = 'pending'
+       )::int AS pending_reports,
+       COUNT(*) FILTER (WHERE archived_at IS NOT NULL)::int AS archived_reports
+     FROM checkout_reports
+     WHERE org_id = $1`,
+    [scoped]
+  );
+  const alerts = await db.query(
+    `SELECT
+       COUNT(*) FILTER (WHERE archived_at IS NULL)::int AS open_alerts,
+       COUNT(*) FILTER (WHERE archived_at IS NOT NULL)::int AS archived_alerts
+     FROM fleet_alerts
+     WHERE org_id = $1`,
+    [scoped]
+  );
+  const marker = await db.query(
+    `SELECT rollout_slate_at FROM fleet_settings WHERE org_id = $1 LIMIT 1`,
+    [scoped]
+  );
+  const users = await db.query(
+    `SELECT u.id, u.name, u.email, u.active, u.created_at,
+            m.created_at AS approved_at
+     FROM app_users u
+     LEFT JOIN org_memberships m
+       ON m.org_id = u.org_id AND m.user_id = u.id
+     WHERE u.org_id = $1
+     ORDER BY u.email`,
+    [scoped]
+  );
+  const mileage = await db.query(
+    `SELECT
+       COUNT(*) FILTER (WHERE last_mileage IS NULL)::int AS cleared,
+       COUNT(*) FILTER (WHERE last_mileage IS NOT NULL)::int AS with_mileage
+     FROM vehicles
+     WHERE org_id = $1`,
+    [scoped]
+  );
+  return {
+    appliedAt: marker[0]?.rollout_slate_at
+      ? new Date(String(marker[0].rollout_slate_at)).toISOString()
+      : null,
+    openReports: Number(reports[0]?.open_reports ?? 0),
+    pendingReports: Number(reports[0]?.pending_reports ?? 0),
+    archivedReports: Number(reports[0]?.archived_reports ?? 0),
+    openAlerts: Number(alerts[0]?.open_alerts ?? 0),
+    archivedAlerts: Number(alerts[0]?.archived_alerts ?? 0),
+    mileageCleared: Number(mileage[0]?.cleared ?? 0),
+    mileageFromLive: Number(mileage[0]?.with_mileage ?? 0),
+    accounts: users.map((row) => {
+      const decision = rolloutUserDecision({
+        id: String(row.id),
+        name: String(row.name),
+        email: String(row.email),
+        createdAt: new Date(String(row.created_at)).toISOString(),
+        approvedAt: row.approved_at
+          ? new Date(String(row.approved_at)).toISOString()
+          : null,
+      });
+      return {
+        id: String(row.id),
+        name: String(row.name),
+        email: String(row.email),
+        active: row.active === true || row.active === "t" || row.active === "true",
+        action: decision.action,
+        reason: decision.reason,
+      };
+    }),
+  };
+}
+
 export async function deleteMemberUser(db: OrgDb, orgId: string, userId: string) {
   await db.query("DELETE FROM user_fleets WHERE user_id = $1 AND org_id = $2", [
     userId,
