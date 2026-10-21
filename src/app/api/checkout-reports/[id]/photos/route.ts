@@ -28,12 +28,14 @@ export async function POST(
       capturedAt?: string;
       flaggedDamage?: boolean;
       damageNote?: string;
+      qualityNote?: string;
       photos?: Array<{
         angle?: PhotoAngle;
         dataUrl?: string;
         capturedAt?: string;
         flaggedDamage?: boolean;
         damageNote?: string;
+        qualityNote?: string;
       }>;
     };
     const batch = Array.isArray(body.photos) ? body.photos : null;
@@ -69,6 +71,7 @@ export async function POST(
           capturedAt: photo.capturedAt,
           flaggedDamage: photo.flaggedDamage,
           damageNote: photo.damageNote,
+          qualityNote: photo.qualityNote,
         }))
       );
       return NextResponse.json({ report });
@@ -104,6 +107,7 @@ export async function POST(
       {
         flaggedDamage: body.flaggedDamage,
         damageNote: body.damageNote,
+        qualityNote: body.qualityNote,
       }
     );
     return NextResponse.json({ report });

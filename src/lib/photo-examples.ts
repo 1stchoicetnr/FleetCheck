@@ -8,6 +8,7 @@ import { PhotoAngle } from "./types";
 export const PHOTO_EXAMPLE_PATHS: Record<PhotoAngle, string> = {
   odometer_fuel: "/photo-examples/28-odometer-fuel.jpg",
   registration: "/photo-examples/26-registration.jpg",
+  insurance: "/photo-examples/26-registration.jpg",
   windshield: "/photo-examples/29-windshield.jpg",
   radio_climate: "/photo-examples/30-radio-climate.jpg",
   lf_corner: "/photo-examples/01-lf-corner.jpg",

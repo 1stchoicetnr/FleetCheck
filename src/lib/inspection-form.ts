@@ -41,7 +41,8 @@ export type InspectionFieldKey =
   | "interiorClean"
   | "exteriorClean"
   | "trafficLight"
-  | "trafficNote";
+  | "trafficNote"
+  | "fuelGauge";
 
 export type InspectionIssueFlags = {
   safety?: boolean;
@@ -57,6 +58,8 @@ export type InspectionDamage = {
   rear?: string;
   marks?: DamageSide[];
 };
+
+export type FuelGauge = "full" | "three_quarter" | "half" | "quarter" | "empty";
 
 export type CheckoutInspectionForm = {
   inspectedAt?: string;
@@ -80,6 +83,8 @@ export type CheckoutInspectionForm = {
   damage: InspectionDamage;
   additionalComments?: string;
   issueFlags?: InspectionIssueFlags;
+  /** Starting fuel gauge. Separate from the OK / issue fuel check. */
+  fuelGauge?: FuelGauge | "";
 };
 
 export const INSPECTION_CHECK_ITEMS: ReadonlyArray<{
@@ -388,6 +393,16 @@ function asTrafficLight(value: unknown): TrafficLight | "" {
     : "";
 }
 
+function asFuelGauge(value: unknown): FuelGauge | "" {
+  return value === "full" ||
+    value === "three_quarter" ||
+    value === "half" ||
+    value === "quarter" ||
+    value === "empty"
+    ? value
+    : "";
+}
+
 function asDamage(value: unknown): InspectionDamage {
   if (!value || typeof value !== "object") return {};
   const row = value as InspectionDamage;
@@ -464,6 +479,7 @@ export function normalizeInspectionForm(
         ? row.additionalComments
         : undefined,
     issueFlags: asIssueFlags(row.issueFlags),
+    fuelGauge: asFuelGauge(row.fuelGauge),
   };
 }
 
@@ -582,6 +598,9 @@ export function validateInspectionForm(
   ) {
     missing.push("trafficNote");
   }
+  if (powertrain !== "ev" && !asFuelGauge(normalized.fuelGauge)) {
+    missing.push("fuelGauge");
+  }
 
   if (cloverError) {
     return { ok: false, error: cloverError, missing };
@@ -613,6 +632,7 @@ export function inspectionFieldLabel(key: InspectionFieldKey): string {
   if (key === "exteriorClean") return "Exterior clean";
   if (key === "trafficLight") return "Traffic light";
   if (key === "trafficNote") return "Traffic note";
+  if (key === "fuelGauge") return "Fuel";
   if (key.startsWith("tread.")) {
     const id = key.slice(6) as TreadTireId;
     const tire = TREAD_TIRE_ITEMS.find((item) => item.id === id);
@@ -734,6 +754,23 @@ export function inspectionFormSummaryLines(
   lines.push(
     `Powertrain: ${form.powertrain === "ev" ? "EV (oil / fuel N/A)" : "Gas"}`
   );
+  lines.push(
+    `Fuel: ${
+      form.powertrain === "ev"
+        ? "N/A"
+        : form.fuelGauge === "full"
+          ? "Full"
+          : form.fuelGauge === "three_quarter"
+            ? "3/4"
+            : form.fuelGauge === "half"
+              ? "1/2"
+              : form.fuelGauge === "quarter"
+                ? "1/4"
+                : form.fuelGauge === "empty"
+                  ? "Empty"
+                  : "—"
+    }`
+  );
   const tread = asTreadByTire(form.treadByTire, form.treadLevel);
   lines.push(
     `Tread: ${TREAD_TIRE_ITEMS.map(
@@ -758,7 +795,9 @@ export function inspectionFormSummaryLines(
     const note = form.damage[side.id]?.trim();
     if (marked || note) {
       lines.push(
-        `${side.label} damage: ${[marked ? "marked" : null, note].filter(Boolean).join(" — ")}`
+        note
+          ? `${side.label}: ${note}`
+          : `${side.label}: marked`
       );
     }
   }

@@ -9,8 +9,11 @@ import { SignaturePad } from "@/components/signature-pad";
 import { useAuth } from "@/hooks/use-auth";
 import { canStartCheckout } from "@/lib/fleet-config";
 import { canSkipPhotosForTesting } from "@/lib/dev-config";
-import { getChecklistForCompany } from "@/lib/companies";
-import { photoStepsForCompany, usesClover as cloverEnabled } from "@/lib/company-settings";
+import {
+  photoStepsForCompany,
+  publicCompanySettings,
+  usesClover as cloverEnabled,
+} from "@/lib/company-settings";
 import type { PublicCompanySettings } from "@/lib/company-settings";
 import {
   getCachedCompanies,
@@ -27,6 +30,7 @@ import {
   SharedVehicle,
 } from "@/lib/checkout-api";
 import { submitCheckoutFromDraft } from "@/lib/checkout-outbox";
+import { isGenericDriverName } from "@/lib/driver-name";
 import {
   CheckoutDraft,
   CheckoutReport,
@@ -216,9 +220,10 @@ function CheckoutCapturePage() {
     void fetchCompanySettings().then(setCompanySettings).catch(() => {});
   }, []);
 
-  const steps = companySettings
-    ? photoStepsForCompany(companySettings, draft?.companyId || company?.id)
-    : getChecklistForCompany(company);
+  const steps = photoStepsForCompany(
+    companySettings ?? publicCompanySettings(null),
+    draft?.companyId || company?.id
+  );
   const required = steps.filter((s) => s.required);
   const allFilled = required.every((s) => photos[s.angle]);
   const powertrain = inferPowertrain(
@@ -260,6 +265,10 @@ function CheckoutCapturePage() {
 
   const handleSubmit = useCallback(async () => {
     if (!user || !draft || !vehicle) return;
+    if (isGenericDriverName(user.name)) {
+      setSubmitError("Your signed-in name can't be a placeholder like Driver. Ask Office for a real name.");
+      return;
+    }
     if (!signatureDataUrl) {
       setSubmitError("Sign the report before submitting.");
       return;
@@ -296,12 +305,12 @@ function CheckoutCapturePage() {
         make: draft.make || vehicle.make,
         model: draft.model || vehicle.model,
         odometer: Number(draft.odometer),
-        driverName: draft.driverName,
+        driverName: user.name,
         dispatcherName: draft.dispatcherName,
         type: draft.type,
         inspectionForm: {
           ...inspectionValid.form,
-          inspectedAt: inspectionValid.form.inspectedAt || capturedAt,
+          inspectedAt: capturedAt,
         },
         signatureDataUrl,
         signedAt: signedAt || capturedAt,
@@ -468,8 +477,9 @@ function CheckoutCapturePage() {
             {Number(draft.odometer).toLocaleString()} mi
           </p>
           <p className="text-gray-500">
-            Date {formatDateOnly(inspectionForm.inspectedAt || new Date().toISOString())}{" "}
-            · {draft.driverName} · Dispatcher {draft.dispatcherName}
+            Date {formatDateOnly(new Date().toISOString())}{" "}
+            · {user.name}
+            {draft.dispatcherName.trim() ? ` · Dispatcher ${draft.dispatcherName}` : ""}
           </p>
           <p className="text-gray-500">
             {UNIT_NUMBER_LABEL} {vehicle.unitNumber}
@@ -548,10 +558,11 @@ function CheckoutCapturePage() {
               <p>{company?.name ?? "Company"} · {formatUnitLabel(vehicle.unitNumber, vehicle.plate)}</p>
               <p>{draft.year} {draft.make} {draft.model} · {Number(draft.odometer).toLocaleString()} mi</p>
               <p>
-                {draft.type === "check_in" ? "Check in" : "Check out"} · {draft.driverName} · Dispatcher {draft.dispatcherName}
+                {draft.type === "check_in" ? "Check in" : "Check out"} · {user.name}
+                {draft.dispatcherName.trim() ? ` · Dispatcher ${draft.dispatcherName}` : ""}
               </p>
               <p>
-                {formatDateOnly(inspectionForm.inspectedAt || new Date().toISOString())}
+                {formatDateOnly(new Date().toISOString())}
                 {usesClover && cloverSerialOf(inspectionForm) ? ` · ${CLOVER_SERIAL_LABEL} ${cloverSerialOf(inspectionForm)}` : ""}
               </p>
             </section>
@@ -584,11 +595,7 @@ function CheckoutCapturePage() {
                       <p className="text-[11px] text-gray-600 leading-tight">
                         {step.label}
                         {photoFlags[step.angle]?.flaggedDamage
-                          ? ` · DAMAGE${
-                              photoFlags[step.angle]?.damageNote?.trim()
-                                ? ` — ${photoFlags[step.angle]?.damageNote?.trim()}`
-                                : ""
-                            }`
+                          ? `: ${photoFlags[step.angle]?.damageNote?.trim() || "damage"}`
                           : ""}
                       </p>
                     </div>
@@ -609,7 +616,7 @@ function CheckoutCapturePage() {
               </div>
               {signatureDataUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={signatureDataUrl} alt={`Signature of ${draft.driverName}`} className="h-24 w-full object-contain bg-gray-50 rounded-lg border border-gray-200" />
+                <img src={signatureDataUrl} alt={`Signature of ${user.name}`} className="h-24 w-full object-contain bg-gray-50 rounded-lg border border-gray-200" />
               ) : (
                 <p className="text-sm text-red-600">Signature is missing.</p>
               )}
@@ -660,7 +667,7 @@ function CheckoutCapturePage() {
                     Driver signature
                   </h3>
                   <p className="text-xs text-gray-500 mt-1">
-                    Signing as {draft.driverName}
+                    Signing as {user.name}
                   </p>
                 </div>
                 <SignaturePad
@@ -732,7 +739,21 @@ function CheckoutCapturePage() {
           onDamageNote={(angle, damageNote) => {
             setPhotoFlags((prev) => ({
               ...prev,
-              [angle]: { flaggedDamage: true, damageNote },
+              [angle]: {
+                flaggedDamage: true,
+                damageNote,
+                qualityNote: prev[angle]?.qualityNote,
+              },
+            }));
+          }}
+          onQualityNote={(angle, qualityNote) => {
+            setPhotoFlags((prev) => ({
+              ...prev,
+              [angle]: {
+                flaggedDamage: prev[angle]?.flaggedDamage ?? false,
+                damageNote: prev[angle]?.damageNote,
+                qualityNote,
+              },
             }));
           }}
           onAllComplete={() => setPhotosReady(true)}
@@ -768,7 +789,7 @@ function CheckoutCapturePage() {
                 on the report and PDF.
               </p>
               <p className="text-xs text-gray-500 mt-1">
-                Signing as {draft.driverName}
+                Signing as {user.name}
               </p>
             </div>
             <SignaturePad

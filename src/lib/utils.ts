@@ -2,7 +2,7 @@ import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { alreadyUploadReady } from "./checkout-idempotency";
 import { displayPlate, normalizePlate } from "./plate";
-import { Vehicle } from "./types";
+import type { Vehicle } from "./types";
 
 export { displayPlate, normalizePlate };
 

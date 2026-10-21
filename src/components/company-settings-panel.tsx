@@ -148,6 +148,7 @@ export function CompanySettingsPanel() {
                 </label>
                 <p className="text-sm text-gray-600">
                   {selected?.label}: checked photos are required. Unchecked photos stay optional.
+                  Registration and insurance start required for Rad Cab.
                 </p>
                 <div className="max-h-80 overflow-auto space-y-2">
                   {ANGLES.map((step) => (

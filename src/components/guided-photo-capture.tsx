@@ -15,18 +15,25 @@ import { compressImageFile } from "@/lib/utils";
 import { LiveCameraFrame } from "./live-camera-frame";
 import { PHOTO_ANGLES, PhotoAngle, PhotoStep, walkaroundPhotoSteps } from "@/lib/types";
 import { DAMAGE_NOTE_MAX } from "@/lib/photo-flags";
+import {
+  needsSharpPhoto,
+  photoQualityIssue,
+  photoQualityMessage,
+  type PhotoQualityIssue,
+} from "@/lib/photo-quality";
 import { useCheckoutFeedback } from "@/components/checkout-feedback";
 import { primaryButtonClass } from "@/lib/button-styles";
 
 interface GuidedPhotoCaptureProps {
   photos: Partial<Record<PhotoAngle, string>>;
   photoFlags?: Partial<
-    Record<PhotoAngle, { flaggedDamage: boolean; damageNote?: string }>
+    Record<PhotoAngle, { flaggedDamage: boolean; damageNote?: string; qualityNote?: string }>
   >;
   onAccept: (angle: PhotoAngle, dataUrl: string) => void;
   onClear: (angle: PhotoAngle) => void;
   onFlagDamage?: (angle: PhotoAngle, flaggedDamage: boolean) => void;
   onDamageNote?: (angle: PhotoAngle, damageNote: string) => void;
+  onQualityNote?: (angle: PhotoAngle, qualityNote: string) => void;
   onAllComplete: () => void;
   /** Dev: browse all steps without requiring captures */
   testingBrowseMode?: boolean;
@@ -43,6 +50,7 @@ export function GuidedPhotoCapture({
   onClear,
   onFlagDamage,
   onDamageNote,
+  onQualityNote,
   onAllComplete,
   testingBrowseMode = false,
   steps = walkaroundPhotoSteps(PHOTO_ANGLES),
@@ -63,6 +71,11 @@ export function GuidedPhotoCapture({
   const [busy, setBusy] = useState(false);
   const [pickError, setPickError] = useState("");
   const [cameraOff, setCameraOff] = useState(false);
+  const [pending, setPending] = useState<{
+    dataUrl: string;
+    issue: PhotoQualityIssue | null;
+  } | null>(null);
+  const [qualityNote, setQualityNote] = useState("");
 
   const currentIndex = testingBrowseMode
     ? viewIndex
@@ -93,16 +106,37 @@ export function GuidedPhotoCapture({
   };
 
   const handlePickedFile = async (file: File) => {
+    if (!current) return;
     setBusy(true);
     setPickError("");
     try {
       const compressed = await compressImageFile(file);
-      handleAccept(compressed);
+      const issue = needsSharpPhoto(current.angle)
+        ? await readPhotoQuality(compressed)
+        : null;
+      setQualityNote("");
+      setPending({ dataUrl: compressed, issue });
     } catch {
       setPickError("Couldn't use that photo. Try Take photo again.");
     } finally {
       setBusy(false);
     }
+  };
+
+  const usePendingPhoto = () => {
+    if (!current || !pending) return;
+    if (pending.issue && !qualityNote.trim()) return;
+    if (qualityNote.trim()) onQualityNote?.(current.angle, qualityNote.trim());
+    const dataUrl = pending.dataUrl;
+    setPending(null);
+    setQualityNote("");
+    handleAccept(dataUrl);
+  };
+
+  const retakePending = () => {
+    setPending(null);
+    setQualityNote("");
+    setPickError("");
   };
 
   const advanceWithoutPhoto = () => {
@@ -130,6 +164,8 @@ export function GuidedPhotoCapture({
   };
 
   const goToStep = (index: number) => {
+    setPending(null);
+    setQualityNote("");
     setViewIndex(index);
   };
 
@@ -177,7 +213,7 @@ export function GuidedPhotoCapture({
               <span className="inline-block bg-emerald-500/15 text-emerald-300 text-sm font-bold px-3 py-1 rounded-full mb-2">
                 Photo {currentIndex + 1} of {requiredPhotos.length}
               </span>
-              <h2 className="text-xl font-bold text-white">{current.label}</h2>
+              <h2 className="text-4xl font-black tracking-tight text-white">{current.label}</h2>
               <p className="photo-step-instruction text-base text-[#d4d4d8] mt-2 leading-relaxed">
                 {current.instruction}
               </p>
@@ -188,7 +224,58 @@ export function GuidedPhotoCapture({
               )}
             </div>
 
-            {value ? (
+            {pending ? (
+              <div className="p-4 space-y-4">
+                <p className="text-2xl font-bold text-white text-center">
+                  Is this the {current.label.toLowerCase()}?
+                </p>
+                <div className="relative rounded-xl overflow-hidden border-2 border-[#5c5c64] bg-black flex items-center justify-center min-h-[180px] max-h-[min(55vh,360px)]">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={pending.dataUrl}
+                    alt={current.label}
+                    className="w-full h-full max-h-[min(55vh,360px)] object-contain"
+                  />
+                </div>
+                {pending.issue && (
+                  <div className="space-y-2">
+                    <p className="text-sm font-semibold text-amber-200">
+                      {photoQualityMessage(pending.issue)}
+                    </p>
+                    <label className="block space-y-1.5">
+                      <span className="text-sm font-semibold text-[#e4e4e7]">
+                        Note to use this photo
+                      </span>
+                      <textarea
+                        value={qualityNote}
+                        maxLength={DAMAGE_NOTE_MAX}
+                        rows={2}
+                        onChange={(event) => setQualityNote(event.target.value)}
+                        placeholder="For example, flash was on and the card still reads."
+                        className="w-full rounded-xl border border-[#5c5c64] bg-[#1c1c1e] px-3 py-2 text-sm text-white placeholder:text-[#8b8b93]"
+                      />
+                    </label>
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    className="border-red-400/50 text-red-300 bg-red-950/30 hover:bg-red-950/50"
+                    onClick={retakePending}
+                  >
+                    Retake
+                  </Button>
+                  <Button
+                    size="lg"
+                    onClick={usePendingPhoto}
+                    disabled={Boolean(pending.issue && !qualityNote.trim())}
+                  >
+                    Use photo
+                  </Button>
+                </div>
+              </div>
+            ) : value ? (
               <div className="p-4 space-y-4">
                 <div className="photo-accepted-frame relative rounded-xl overflow-hidden border-2 border-emerald-500/60 bg-black flex items-center justify-center min-h-[180px] max-h-[min(55vh,360px)]">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -418,4 +505,27 @@ export function GuidedPhotoCapture({
       />
     </div>
   );
+}
+
+async function readPhotoQuality(dataUrl: string): Promise<PhotoQualityIssue | null> {
+  if (typeof document === "undefined") return null;
+  const image = new Image();
+  await new Promise<void>((resolve, reject) => {
+    image.onload = () => resolve();
+    image.onerror = () => reject(new Error("photo"));
+    image.src = dataUrl;
+  });
+  const width = 64;
+  const height = Math.max(
+    1,
+    Math.round((image.height || 1) * (width / Math.max(image.width, 1)))
+  );
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) return null;
+  context.drawImage(image, 0, 0, width, height);
+  const data = context.getImageData(0, 0, width, height);
+  return photoQualityIssue(data.data, width, height);
 }

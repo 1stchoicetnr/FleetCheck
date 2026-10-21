@@ -11,6 +11,7 @@ import {
   DamageSide,
   evSkipsCheck,
   INSPECTION_CHECK_ITEMS,
+  FuelGauge,
   InspectionFieldKey,
   ISSUE_FLAG_ITEMS,
   Powertrain,
@@ -26,6 +27,7 @@ import {
   UNIT_NUMBER_LABEL,
   validateInspectionForm,
 } from "@/lib/inspection-form";
+import { FUEL_LEVEL_LABELS } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { choiceErrorClass, choiceIssueClass, choiceOkClass } from "@/lib/button-styles";
 import { VehicleSilhouette } from "./vehicle-silhouette";
@@ -152,6 +154,30 @@ export function InspectionFormFields({
                 ? "Vehicle number for this vehicle — not the Clover."
                 : "Vehicle number for this vehicle."}
             </p>
+          </div>
+        ) : null}
+        {powertrain !== "ev" ? (
+          <div data-precheck-field="fuelGauge">
+            <p className="block text-base font-semibold text-gray-900 mb-1.5">Fuel</p>
+            <div className="grid grid-cols-5 gap-1.5">
+              {(Object.keys(FUEL_LEVEL_LABELS) as FuelGauge[]).map((level) => (
+                <button
+                  key={level}
+                  type="button"
+                  onClick={() => update({ ...synced, fuelGauge: level })}
+                  className={cn(
+                    "min-h-[48px] rounded-xl border-2 text-sm font-semibold",
+                    synced.fuelGauge === level
+                      ? choiceOkClass
+                      : fieldError("fuelGauge")
+                        ? "border-red-500 bg-red-50 text-red-900"
+                        : "border-gray-300 bg-white text-gray-800"
+                  )}
+                >
+                  {FUEL_LEVEL_LABELS[level]}
+                </button>
+              ))}
+            </div>
           </div>
         ) : null}
         {showClover ? (

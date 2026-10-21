@@ -89,11 +89,13 @@ function defaultRequired(angle: string): boolean {
 export function defaultPhotoMap(): Record<FleetType, Record<string, boolean>> {
   const angles = walkaroundPhotoSteps(PHOTO_ANGLES);
   const one = Object.fromEntries(angles.map((step) => [step.angle, step.required]));
+  const withoutDocs = { ...one, registration: false, insurance: false };
+  const withDocs = { ...withoutDocs, registration: true, insurance: true };
   return {
-    taxi: { ...one },
-    tow: { ...one },
-    turo: { ...one },
-    service_vehicle: { ...one },
+    taxi: withDocs,
+    tow: { ...withoutDocs },
+    turo: { ...withoutDocs },
+    service_vehicle: { ...withoutDocs },
   };
 }
 

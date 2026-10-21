@@ -33,6 +33,7 @@ export interface OutboxPhoto {
   capturedAt: string;
   flaggedDamage?: boolean;
   damageNote?: string;
+  qualityNote?: string;
 }
 
 /** One in-progress submit. The id is the idempotency key. */

@@ -1,7 +1,5 @@
-import { companyUsesClover } from "@/lib/companies";
-import { activeIssueFlagLabels, formatCloverSerial, trafficLightLabel } from "@/lib/inspection-form";
+import { postCheckoutSlack } from "@/lib/checkout-slack";
 import { CheckoutReport } from "@/lib/types";
-import { formatMileage, formatUnitLabel } from "@/lib/utils";
 
 function checkoutSlackWebhook(): string | undefined {
   return (
@@ -17,41 +15,8 @@ export async function notifyCheckoutReport(
 ): Promise<void> {
   const url = options?.webhookUrl === undefined ? checkoutSlackWebhook() : options.webhookUrl || undefined;
   if (!url) return;
-  const usesClover = options?.usesClover ?? companyUsesClover(report.companyId);
-  const unit = formatUnitLabel(report.unitNumber, report.plate);
-  const text = [
-    "*Checkout Report saved to Office*",
-    `*Unit:* ${unit}`,
-    usesClover && report.inspectionForm
-      ? `*Clover serial:* ${formatCloverSerial(report.inspectionForm)}`
-      : "",
-    `*Vehicle:* ${report.year} ${report.make} ${report.model}`,
-    `*Type:* ${report.type === "check_in" ? "Check in" : "Check out"}`,
-    `*Driver:* ${report.driverName} · *Dispatcher:* ${report.dispatcherName}`,
-    `*Odometer:* ${formatMileage(report.odometer)}`,
-    report.inspectionForm?.trafficLight
-      ? `*Precheck:* ${trafficLightLabel(report.inspectionForm.trafficLight)}`
-      : "",
-    report.inspectionForm
-      ? `*Clean:* Interior ${report.inspectionForm.interiorClean === "yes" ? "Yes" : "No"} · Exterior ${report.inspectionForm.exteriorClean === "yes" ? "Yes" : "No"}`
-      : "",
-    report.inspectionForm && activeIssueFlagLabels(report.inspectionForm).length
-      ? `*Flags:* ${activeIssueFlagLabels(report.inspectionForm).join(", ")}`
-      : "",
-    report.inspectionForm?.additionalComments?.trim()
-      ? `*Comments:* ${report.inspectionForm.additionalComments.trim()}`
-      : "",
-    `*Office id:* \`${report.id}\``,
-    "_Slack is not the record. This row is in /office._",
-  ]
-    .filter(Boolean)
-    .join("\n");
   try {
-    await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, username: "Inspekt" }),
-    });
+    await postCheckoutSlack(report, { webhookUrl: url });
   } catch {
     // Office already has the row.
   }

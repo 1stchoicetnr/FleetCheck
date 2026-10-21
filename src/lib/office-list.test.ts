@@ -42,7 +42,7 @@ test("damage notes are trimmed and capped", () => {
   assert.equal(cleanDamageNote("x".repeat(600))?.length, 500);
   assert.equal(
     damageFlagText({ angle: "front", damageNote: " cracked bumper " }),
-    "Front — cracked bumper"
+    "Front: cracked bumper"
   );
   assert.equal(resolveDamageNote(false, "keep me", "old"), undefined);
   assert.equal(resolveDamageNote(true, "", "old"), undefined);

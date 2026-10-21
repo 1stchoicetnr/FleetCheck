@@ -22,7 +22,6 @@ import {
   getImageDimensions,
 } from "./utils";
 import {
-  cleanDamageNote,
   damageFlagText,
   isPhotoDamageFlagged,
 } from "./photo-flags";
@@ -517,16 +516,10 @@ export async function generateCheckoutReportPDF(
 
   section("Photo index");
   listed.forEach((item, i) => {
-    const note = isPhotoDamageFlagged(item.photo)
-      ? cleanDamageNote(item.photo?.damageNote)
-      : undefined;
-    const damage = isPhotoDamageFlagged(item.photo)
-      ? note
-        ? ` · DAMAGE — ${note}`
-        : " · DAMAGE"
-      : "";
+    const flagged = item.photo && isPhotoDamageFlagged(item.photo);
+    const title = flagged && item.photo ? damageFlagText(item.photo) : item.label;
     addWrapped(
-      `${i + 1}. ${item.label}${damage} — ${item.photo?.dataUrl ? "included" : "missing"}`
+      `${i + 1}. ${title}${flagged ? " · DAMAGE" : ""} — ${item.photo?.dataUrl ? "included" : "missing"}`
     );
   });
   y += 4;
@@ -543,15 +536,11 @@ export async function generateCheckoutReportPDF(
       const top = 14 + index * slotHeight;
       doc.setFontSize(11);
       doc.setFont("helvetica", "bold");
-      const captionNote = isPhotoDamageFlagged(item.photo)
-        ? cleanDamageNote(item.photo?.damageNote)
-        : undefined;
-      const caption = `${photoNumber}. ${item.label}${
-        isPhotoDamageFlagged(item.photo)
-          ? captionNote
-            ? ` · DAMAGE — ${captionNote}`
-            : " · DAMAGE"
-          : ""
+      const flagged = item.photo && isPhotoDamageFlagged(item.photo);
+      const caption = `${photoNumber}. ${
+        flagged && item.photo ? damageFlagText(item.photo) : item.label
+      }${flagged ? " · DAMAGE" : ""}${
+        item.photo?.qualityNote ? ` · ${item.photo.qualityNote}` : ""
       }`;
       const captionLine = String(doc.splitTextToSize(caption, pageWidth - 28)[0] ?? caption);
       doc.text(captionLine, 14, top);

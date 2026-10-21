@@ -31,9 +31,15 @@ test("an empty settings record matches today's fleets, photos, and Clover", () =
     assert.equal(usesClover(view, companyId), companyUsesClover(companyId));
     assert.equal(isCompanyEnabled(view, companyId), true);
     const actual = photoStepsForCompany(view, companyId);
+    const docsOn = companyId === "company-rad-cab";
     assert.deepEqual(
       actual.map((step) => [step.angle, step.required]),
-      expected.map((step) => [step.angle, step.required])
+      expected.map((step) => [
+        step.angle,
+        step.angle === "registration" || step.angle === "insurance"
+          ? docsOn
+          : step.required,
+      ])
     );
   }
   assert.equal(/\bvan\b/i.test(JSON.stringify(view.fleetTypes)), false);

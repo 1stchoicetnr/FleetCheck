@@ -69,6 +69,7 @@ export type PhotoAngle =
   | "passenger_rear_in"
   | "passenger_front_in"
   | "registration"
+  | "insurance"
   | "engine_oil"
   | "odometer_fuel"
   | "windshield"
@@ -172,7 +173,7 @@ export interface CheckoutDraft {
   model: string;
   photos: Partial<Record<PhotoAngle, string>>;
   photoFlags?: Partial<
-    Record<PhotoAngle, { flaggedDamage: boolean; damageNote?: string }>
+    Record<PhotoAngle, { flaggedDamage: boolean; damageNote?: string; qualityNote?: string }>
   >;
   inspectionForm?: CheckoutInspectionForm;
   signatureDataUrl?: string;
@@ -245,6 +246,8 @@ export interface VehiclePhoto {
   /** Driver or office marked this angle as new damage. */
   flaggedDamage?: boolean;
   damageNote?: string;
+  /** Driver kept a blurry or glaring document / odometer photo and said why. */
+  qualityNote?: string;
 }
 
 export type FuelLevel =
@@ -498,11 +501,20 @@ export const PHOTO_ANGLES: PhotoStep[] = [
   },
   {
     angle: "registration",
-    label: "Registration & Insurance",
-    instruction: "Docs from the driver seat / visor / glove — date and VIN readable.",
+    label: "Registration",
+    instruction: "Registration card, flat, with the date and VIN readable.",
     icon: "📄",
     category: "interior",
-    required: true,
+    required: false,
+    helper: REGISTRATION_HELPER,
+  },
+  {
+    angle: "insurance",
+    label: "Insurance",
+    instruction: "Insurance card, flat, with the dates readable.",
+    icon: "📄",
+    category: "interior",
+    required: false,
     helper: REGISTRATION_HELPER,
   },
   {

@@ -102,7 +102,7 @@ export async function submitCheckoutFromDraft(input: {
   signedAt?: string;
   photos: Partial<Record<PhotoAngle, string>>;
   photoFlags?: Partial<
-    Record<PhotoAngle, { flaggedDamage: boolean; damageNote?: string }>
+    Record<PhotoAngle, { flaggedDamage: boolean; damageNote?: string; qualityNote?: string }>
   >;
   onProgress?: (message: string, percent: number) => void;
 }): Promise<
@@ -128,6 +128,7 @@ export async function submitCheckoutFromDraft(input: {
       capturedAt,
       flaggedDamage: flags?.flaggedDamage,
       damageNote: flags?.damageNote,
+      qualityNote: flags?.qualityNote,
     });
     input.onProgress?.(
       `Preparing photos ${index + 1}/${entries.length}`,

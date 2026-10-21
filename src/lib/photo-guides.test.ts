@@ -8,6 +8,7 @@ const CORNER_ANGLES = [
   "windshield",
   "radio_climate",
   "registration",
+  "insurance",
   "driver_door_in",
   "trunk_interior",
   "engine_oil",

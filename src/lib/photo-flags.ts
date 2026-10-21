@@ -31,7 +31,7 @@ export function damageFlagText(
 ): string {
   const label = photoAngleLabel(photo.angle);
   const note = cleanDamageNote(photo.damageNote);
-  return note ? `${label} — ${note}` : label;
+  return note ? `${label}: ${note}` : label;
 }
 
 /** Empty string clears a note. Omitted keeps the previous note. Unflagging always clears it. */

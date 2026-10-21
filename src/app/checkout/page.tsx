@@ -25,7 +25,7 @@ import {
   SharedVehicle,
   upsertSharedVehicle,
 } from "@/lib/checkout-api";
-import { Company, CheckoutType } from "@/lib/types";
+import { Company, CheckoutType, FUEL_LEVEL_LABELS, type FuelLevel } from "@/lib/types";
 import { defaultCompanyId } from "@/lib/companies";
 import { isCompanyEnabled, usesClover as cloverEnabled } from "@/lib/company-settings";
 import type { PublicCompanySettings } from "@/lib/company-settings";
@@ -39,12 +39,11 @@ import {
   UNIT_NUMBER_LABEL,
 } from "@/lib/inspection-form";
 import {
-  getLastDispatcherName,
   getLastVehicleId,
-  saveLastDispatcherName,
   saveLastVehicleId,
 } from "@/lib/checkout-prefs";
-import { odometerPrefill } from "@/lib/odometer-prefill";
+import { odometerWarning } from "@/lib/odometer-prefill";
+import { isGenericDriverName } from "@/lib/driver-name";
 import { unitsForCompany } from "@/lib/unit-counts";
 import { formatDateOnly, formatUnitLabel, normalizePlate } from "@/lib/utils";
 import { ClipboardCheck } from "lucide-react";
@@ -56,6 +55,7 @@ function CheckoutStartPage() {
   const searchParams = useSearchParams();
   const draftOdometer = useRef<string | null>(null);
   const draftVehicleId = useRef("");
+  const odometerVehicleId = useRef("");
   const [editingDraftId, setEditingDraftId] = useState("");
   const [unitsLoading, setUnitsLoading] = useState(false);
 
@@ -75,6 +75,7 @@ function CheckoutStartPage() {
   const [odometer, setOdometer] = useState("");
   const [driverName, setDriverName] = useState("");
   const [dispatcherName, setDispatcherName] = useState("");
+  const [fuelGauge, setFuelGauge] = useState<FuelLevel | "">("");
   const [cloverSerial, setCloverSerial] = useState("");
   const [error, setError] = useState("");
   const [starting, setStarting] = useState(false);
@@ -83,11 +84,6 @@ function CheckoutStartPage() {
   const [companySettings, setCompanySettings] = useState<PublicCompanySettings | null>(null);
   const [showErrors, setShowErrors] = useState(false);
   const inspectionDate = formatDateOnly(new Date().toISOString());
-
-  useEffect(() => {
-    const saved = getLastDispatcherName();
-    if (saved) setDispatcherName(saved);
-  }, []);
 
   useEffect(() => {
     if (!loading && !user) router.replace("/");
@@ -143,8 +139,8 @@ function CheckoutStartPage() {
       setYear(draft.year);
       setMake(draft.make);
       setModel(draft.model);
-      setDriverName(draft.driverName);
       setDispatcherName(draft.dispatcherName);
+      setFuelGauge(draft.inspectionForm?.fuelGauge || "");
       setCloverSerial(draft.inspectionForm?.cloverSerial ?? "");
       draftVehicleId.current = draft.vehicleId;
       draftOdometer.current = draft.odometer;
@@ -245,13 +241,15 @@ function CheckoutStartPage() {
     setMake(selected.make);
     setModel(selected.model);
     setPowertrainOverride(selected.powertrain || "");
-    if (draftOdometer.current != null) {
-      if (selected.id !== draftVehicleId.current) return;
+    if (draftOdometer.current != null && selected.id === draftVehicleId.current) {
       setOdometer(draftOdometer.current);
       draftOdometer.current = null;
+      odometerVehicleId.current = selected.id;
       return;
     }
-    setOdometer(odometerPrefill(selected.lastMileage));
+    if (odometerVehicleId.current === selected.id) return;
+    odometerVehicleId.current = selected.id;
+    setOdometer("");
   }, [addingUnit, selected, editingDraftId]);
 
   const handleStart = async (e: FormEvent) => {
@@ -259,8 +257,8 @@ function CheckoutStartPage() {
     if (!user) return;
     const fieldErrors: string[] = [];
     if (!odometer.trim() || isNaN(Number(odometer))) fieldErrors.push("odometer");
-    if (!driverName.trim()) fieldErrors.push("driverName");
-    if (!dispatcherName.trim()) fieldErrors.push("dispatcherName");
+    if (isGenericDriverName(user.name)) fieldErrors.push("driverName");
+    if (inferredPowertrain !== "ev" && !fuelGauge) fieldErrors.push("fuelGauge");
     if (!year.trim() || !make.trim() || !model.trim()) {
       fieldErrors.push("year", "make", "model");
     }
@@ -338,6 +336,8 @@ function CheckoutStartPage() {
           ...(usesClover && cloverSerial.trim()
             ? { cloverSerial: cloverSerial.trim() }
             : {}),
+          fuelGauge: inferredPowertrain === "ev" ? "" : fuelGauge,
+          inspectedAt: new Date().toISOString(),
         },
         powertrain
       );
@@ -352,7 +352,7 @@ function CheckoutStartPage() {
         vehicleId: vehicle.id,
         type,
         driverId: user.id,
-        driverName: driverName.trim(),
+        driverName: user.name.trim(),
         dispatcherName: dispatcherName.trim(),
         odometer: odometer.trim(),
         year: year.trim(),
@@ -369,7 +369,6 @@ function CheckoutStartPage() {
         checklistId: company?.checklistId,
         updatedAt: new Date().toISOString(),
       });
-      saveLastDispatcherName(dispatcherName.trim());
       saveLastVehicleId(companyId, vehicle.id);
       router.push(editingDraftId ? `/checkout/${id}?phase=review` : `/checkout/${id}`);
     } catch (err) {
@@ -587,8 +586,37 @@ function CheckoutStartPage() {
                     ? "Enter the odometer reading."
                     : undefined
                 }
-                hint="Mileage on the dash — must be readable in the odometer photo"
+                hint="Type the mileage on the dash. It is not copied from the last check."
               />
+              {odometer.trim() && !isNaN(Number(odometer)) && odometerWarning(Number(odometer), selected?.lastMileage) && (
+                <p className="text-sm font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                  {odometerWarning(Number(odometer), selected?.lastMileage)}
+                </p>
+              )}
+              {inferredPowertrain !== "ev" && (
+                <div>
+                  <p className="block text-base font-semibold text-gray-900 mb-1.5">Fuel</p>
+                  <div className="grid grid-cols-5 gap-1.5">
+                    {(Object.keys(FUEL_LEVEL_LABELS) as FuelLevel[]).map((level) => (
+                      <button
+                        key={level}
+                        type="button"
+                        onClick={() => setFuelGauge(level)}
+                        className={`min-h-[48px] rounded-xl border-2 text-sm font-semibold ${
+                          fuelGauge === level
+                            ? "border-brand-600 bg-brand-50 text-brand-800"
+                            : "border-gray-200 bg-white text-gray-700"
+                        }`}
+                      >
+                        {FUEL_LEVEL_LABELS[level]}
+                      </button>
+                    ))}
+                  </div>
+                  {showErrors && !fuelGauge && (
+                    <p className="text-sm text-red-600 mt-1">Choose the fuel level.</p>
+                  )}
+                </div>
+              )}
               {cloverEnabled(companySettings, companyId) ? (
               <Input
                 label={`${CLOVER_SERIAL_LABEL} (optional)`}
@@ -603,16 +631,18 @@ function CheckoutStartPage() {
                 hint={CLOVER_SERIAL_HINT}
               />
               ) : null}
-              <Input
-                label="Name (driver)"
-                value={driverName}
-                onChange={(e) => setDriverName(e.target.value)}
-                error={
-                  showErrors && !driverName.trim()
-                    ? "Enter the driver name."
-                    : undefined
-                }
-              />
+              <div className="rounded-xl border border-gray-200 px-4 py-3">
+                <p className="text-sm font-semibold text-gray-900">Driver</p>
+                <p className="text-lg font-bold text-gray-900 mt-0.5">{user?.name || "—"}</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Taken from the signed-in person. It is not copied from the last check.
+                </p>
+                {showErrors && isGenericDriverName(user?.name) && (
+                  <p className="text-sm text-red-600 mt-1">
+                    A placeholder name like Driver is blocked. Ask Office for your real name.
+                  </p>
+                )}
+              </div>
               {!addingUnit && (
                 <div>
                   <p className="block text-base font-semibold text-gray-900 mb-1.5">
@@ -652,15 +682,10 @@ function CheckoutStartPage() {
                 </p>
               </div>
               <Input
-                label="Dispatcher"
+                label="Dispatcher (optional)"
                 value={dispatcherName}
                 onChange={(e) => setDispatcherName(e.target.value)}
-                placeholder="Who is taking this vehicle in?"
-                error={
-                  showErrors && !dispatcherName.trim()
-                    ? "Enter the dispatcher name."
-                    : undefined
-                }
+                placeholder="Who sent this unit out?"
               />
 
               <div>

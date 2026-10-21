@@ -66,6 +66,7 @@ import {
 } from "./local-store";
 import { deleteStoredPhoto, persistCheckoutPhoto } from "./photo-store";
 import { recordCheckoutAlerts } from "./report-alerts";
+import { isGenericDriverName } from "@/lib/driver-name";
 import { notifyCheckoutReport } from "./slack-notify";
 import { assertIdempotencyKey, isUniqueViolation } from "@/lib/checkout-idempotency";
 import { isStuckUpload, STUCK_UPLOAD_AFTER_MS } from "@/lib/delivery-status";
@@ -430,11 +431,14 @@ export async function confirmReportSent(orgId: string, id: string): Promise<Chec
   if (!existing) throw new SharedBackendError("Checkout report not found", 404);
   if (existing.sentAt) return existing;
   const sentAt = new Date().toISOString();
-  if (mode === "postgres") {
-    const stored = await pgMarkReportSent(orgId, id, sentAt);
-    return { ...existing, sentAt: stored || sentAt };
-  }
-  const saved = await localPutReport({ ...existing, sentAt });
+  const saved =
+    mode === "postgres"
+      ? { ...existing, sentAt: (await pgMarkReportSent(orgId, id, sentAt)) || sentAt }
+      : await localPutReport({ ...existing, sentAt });
+  const settingsDoc = await readStoredCompanySettings(orgId);
+  void notifyCheckoutReport(saved, {
+    webhookUrl: slackWebhookOverride(settingsDoc),
+  });
   return saved;
 }
 
@@ -502,6 +506,9 @@ export async function createReport(
   if (!input.signatureDataUrl?.trim()) {
     throw new SharedBackendError("Driver signature is required", 400);
   }
+  if (isGenericDriverName(input.driverName)) {
+    throw new SharedBackendError("Enter the signed-in driver's real name.", 400);
+  }
   const powertrain = inferPowertrain(
     input.make,
     input.model,
@@ -560,10 +567,6 @@ export async function createReport(
     throw err;
   }
   if (saved.id !== report.id) return saved;
-  void notifyCheckoutReport(saved, {
-    webhookUrl: slackWebhookOverride(settingsDoc),
-    usesClover: usesClover(published, saved.companyId),
-  });
   void recordCheckoutAlerts(orgId, saved).catch((err) => {
     console.error("[alerts] checkout report alerts failed:", err);
   });
@@ -576,7 +579,7 @@ export async function addReportPhoto(
   angle: PhotoAngle,
   dataUrl: string,
   capturedAt?: string,
-  flags?: { flaggedDamage?: boolean; damageNote?: string }
+  flags?: { flaggedDamage?: boolean; damageNote?: string; qualityNote?: string }
 ): Promise<CheckoutReport> {
   const mode = assertConfigured();
   const existing =
@@ -591,6 +594,7 @@ export async function addReportPhoto(
     capturedAt: capturedAt || new Date().toISOString(),
     flaggedDamage: flags?.flaggedDamage || undefined,
     damageNote: cleanDamageNote(flags?.damageNote),
+    qualityNote: cleanDamageNote(flags?.qualityNote),
   };
   const photos = existing.photos.filter((p) => p.angle !== angle);
   photos.push(photo);
@@ -620,6 +624,7 @@ export async function addReportPhotos(
     capturedAt?: string;
     flaggedDamage?: boolean;
     damageNote?: string;
+    qualityNote?: string;
   }>
 ): Promise<CheckoutReport> {
   const mode = assertConfigured();
@@ -635,6 +640,7 @@ export async function addReportPhotos(
         capturedAt: item.capturedAt || new Date().toISOString(),
         flaggedDamage: item.flaggedDamage || undefined,
         damageNote: cleanDamageNote(item.damageNote),
+        qualityNote: cleanDamageNote(item.qualityNote),
       };
       return photo;
     })

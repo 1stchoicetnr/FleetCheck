@@ -345,6 +345,7 @@ export async function uploadCheckoutPhotos(
     capturedAt?: string;
     flaggedDamage?: boolean;
     damageNote?: string;
+    qualityNote?: string;
   }>
 ): Promise<CheckoutReport> {
   const data = await api<{ report: CheckoutReport }>(
