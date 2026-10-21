@@ -19,6 +19,7 @@ export async function notifyCheckoutReport(
     route?: CheckoutSlackRoute;
     webhooks?: CheckoutSlackWebhooks;
     fetchImpl?: Parameters<typeof postCheckoutSlack>[1]["fetchImpl"];
+    appOrigin?: string | null;
   }
 ): Promise<void> {
   const route = options?.route ?? defaultCheckoutSlackRoute(report.companyId);
@@ -26,7 +27,11 @@ export async function notifyCheckoutReport(
   const url = checkoutSlackUrl(report, route, webhooks);
   if (!url) return;
   try {
-    await postCheckoutSlack(report, { webhookUrl: url, fetchImpl: options?.fetchImpl });
+    await postCheckoutSlack(report, {
+      webhookUrl: url,
+      fetchImpl: options?.fetchImpl,
+      appOrigin: options?.appOrigin,
+    });
   } catch {
     // Office already has the row.
   }

@@ -1,14 +1,19 @@
 import type { CheckoutInspectionForm } from "./inspection-form";
 import { DAMAGE_SIDES } from "./inspection-form";
-import { cleanDamageNote, damageFlagText, photoAngleLabel } from "./photo-flags";
-import type { CheckoutReport, FuelLevel, PhotoAngle } from "./types";
-import { FUEL_LEVEL_LABELS, PHOTO_ANGLES } from "./types";
+import { cleanDamageNote, damageFlagText } from "./photo-flags";
+import type { CheckoutReport, FuelLevel } from "./types";
+import { FUEL_LEVEL_LABELS } from "./types";
 import { formatMileage, formatUnitLabel } from "./utils";
 
 export type CheckoutFetch = (
   url: string,
   init: { method: string; headers: Record<string, string>; body: string }
 ) => Promise<{ ok: boolean; text: () => Promise<string> }>;
+
+/** Slack splits a single webhook body once the text gets long. Stay under that. */
+export const CHECKOUT_SLACK_MAX = 2500;
+
+const FALLBACK_ORIGIN = "https://fleet-check-eight.vercel.app";
 
 const FUEL_GAUGES = new Set<FuelLevel>([
   "full",
@@ -69,33 +74,67 @@ export function checkoutDamageLines(
   return lines;
 }
 
-function publicPhotoUrl(value: string): boolean {
-  return value.startsWith("https://") || value.startsWith("http://");
+export function checkoutAppOrigin(value?: string | null): string {
+  const raw = (value || "").trim().replace(/\/$/, "");
+  if (/^https?:\/\//.test(raw)) return raw;
+  return FALLBACK_ORIGIN;
 }
 
-export function checkoutPhotoLinks(
-  report: Pick<CheckoutReport, "photos">
-): Array<{ label: string; url: string; angle: PhotoAngle }> {
-  const order = new Map(PHOTO_ANGLES.map((step, index) => [step.angle, index]));
-  return [...report.photos]
-    .filter((photo) => publicPhotoUrl(photo.dataUrl))
-    .sort((a, b) => (order.get(a.angle) ?? 99) - (order.get(b.angle) ?? 99))
-    .map((photo) => ({
-      angle: photo.angle,
-      label: photoAngleLabel(photo.angle),
-      url: photo.dataUrl,
-    }));
+export function checkoutReportLinks(
+  reportId: string,
+  appOrigin?: string | null
+): { pdf: string; photos: string } {
+  const origin = checkoutAppOrigin(appOrigin);
+  const id = encodeURIComponent(reportId);
+  return {
+    pdf: `${origin}/api/checkout-reports/${id}/pdf`,
+    photos: `${origin}/office/${id}/photos`,
+  };
 }
 
-/** Parent Slack text. Always names the check. Photo links are included when the webhook cannot thread. */
+function composeSlack(head: string[], damage: string[], tail: string): string {
+  const parts = [...head];
+  if (damage.length) parts.push("*Damage:*", ...damage);
+  return `${parts.join("\n")}\n${tail}`;
+}
+
+/** Shrink damage first. The PDF and gallery links stay intact unless the cap forces a hard cut. */
+function fitCheckoutSlack(head: string[], damage: string[], tail: string): string {
+  if (composeSlack(head, damage, tail).length <= CHECKOUT_SLACK_MAX) {
+    return composeSlack(head, damage, tail);
+  }
+  let lines = [...damage];
+  while (lines.length > 1 && composeSlack(head, lines, tail).length > CHECKOUT_SLACK_MAX) {
+    lines.pop();
+  }
+  if (lines.length && composeSlack(head, lines, tail).length > CHECKOUT_SLACK_MAX) {
+    const bare = composeSlack(head, [], tail).length;
+    const overhead = composeSlack(head, ["x"], tail).length - bare - 1;
+    const budget = CHECKOUT_SLACK_MAX - bare - overhead;
+    lines = budget > 1 ? [`${lines[0].slice(0, budget - 1).trimEnd()}…`] : [];
+  } else if (lines.length < damage.length && lines.length) {
+    const marked = [...lines.slice(0, -1), `${lines[lines.length - 1]} …`];
+    lines = composeSlack(head, marked, tail).length <= CHECKOUT_SLACK_MAX ? marked : lines.slice(0, -1);
+  }
+  let text = composeSlack(head, lines, tail);
+  if (text.length <= CHECKOUT_SLACK_MAX) return text;
+  text = composeSlack(head, [], tail);
+  if (text.length <= CHECKOUT_SLACK_MAX) return text;
+  const room = CHECKOUT_SLACK_MAX - tail.length - 1;
+  const clipped = room > 1 ? `${head.join("\n").slice(0, room - 1).trimEnd()}…` : "";
+  text = clipped ? `${clipped}\n${tail}` : tail;
+  return text.length <= CHECKOUT_SLACK_MAX ? text : text.slice(0, CHECKOUT_SLACK_MAX);
+}
+
+/** One short checkout post: the check, damage, and two links. No per-photo list. */
 export function checkoutSlackText(
   report: CheckoutReport,
-  options?: { includePhotoLinks?: boolean }
+  options?: { appOrigin?: string | null }
 ): string {
   const unit = formatUnitLabel(report.unitNumber, report.plate);
   const dispatcher = report.dispatcherName.trim() || "—";
-  const damage = checkoutDamageLines(report);
-  const lines = [
+  const links = checkoutReportLinks(report.id, options?.appOrigin);
+  const head = [
     "*Checkout*",
     `*Unit #:* ${unit}`,
     `*Driver:* ${report.driverName.trim() || "—"}`,
@@ -104,71 +143,25 @@ export function checkoutSlackText(
     `*Fuel:* ${fuelGaugeLabel(report.inspectionForm)}`,
     `*Result:* ${checkoutResultLabel(report)}`,
     `*Time:* ${formatCheckoutTime(report.completedAt)}`,
-    damage.length ? `*Damage:* ${damage.join("; ")}` : "",
   ];
-  if (options?.includePhotoLinks) {
-    const links = checkoutPhotoLinks(report);
-    if (links.length) {
-      lines.push("*Photos:*");
-      for (const photo of links) lines.push(`${photo.label}: ${photo.url}`);
-    }
-  }
-  lines.push(`*Office id:* \`${report.id}\``);
-  return lines.filter(Boolean).join("\n");
-}
-
-function threadTs(raw: string): string | undefined {
-  try {
-    const json = JSON.parse(raw) as { ts?: unknown; message?: { ts?: unknown } };
-    if (typeof json.ts === "string" && json.ts) return json.ts;
-    if (typeof json.message?.ts === "string" && json.message.ts) return json.message.ts;
-  } catch {
-    return undefined;
-  }
-  return undefined;
+  const tail = `*PDF:* ${links.pdf}\n*Photos:* ${links.photos}`;
+  return fitCheckoutSlack(head, checkoutDamageLines(report), tail);
 }
 
 /**
- * Post the checkout. The parent always names the check.
- * Incoming webhooks usually cannot thread, so the parent also carries the
- * labeled Blob links. When a thread id comes back, each photo is also a labeled reply.
+ * Send exactly one checkout message. A long body is shortened here so Slack
+ * does not split it, and a thread id in the response is ignored.
  */
 export async function postCheckoutSlack(
   report: CheckoutReport,
-  options: { webhookUrl: string; fetchImpl?: CheckoutFetch }
-): Promise<{ text: string; threaded: boolean }> {
+  options: { webhookUrl: string; fetchImpl?: CheckoutFetch; appOrigin?: string | null }
+): Promise<{ text: string }> {
   const fetchImpl = options.fetchImpl ?? fetch;
-  const photos = checkoutPhotoLinks(report);
-  const text = checkoutSlackText(report, { includePhotoLinks: photos.length > 0 });
-  const response = await fetchImpl(options.webhookUrl, {
+  const text = checkoutSlackText(report, { appOrigin: options.appOrigin });
+  await fetchImpl(options.webhookUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text, username: "Inspekt" }),
   });
-  const raw = await response.text().catch(() => "");
-  const ts = threadTs(raw);
-  if (!ts || photos.length === 0) return { text, threaded: false };
-  for (const photo of photos) {
-    await fetchImpl(options.webhookUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        text: `${photo.label}\n${photo.url}`,
-        username: "Inspekt",
-        thread_ts: ts,
-        blocks: [
-          {
-            type: "section",
-            text: { type: "mrkdwn", text: `*${photo.label}*\n${photo.url}` },
-          },
-          {
-            type: "image",
-            image_url: photo.url,
-            alt_text: photo.label,
-          },
-        ],
-      }),
-    });
-  }
-  return { text, threaded: true };
+  return { text };
 }

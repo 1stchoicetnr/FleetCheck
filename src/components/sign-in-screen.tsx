@@ -19,6 +19,14 @@ function homeFor(user: User): string {
   return "/dashboard";
 }
 
+const GALLERY_RETURN = /^\/office\/[A-Za-z0-9_-]+\/photos$/;
+
+function afterSignIn(user: User): string {
+  if (typeof window === "undefined") return homeFor(user);
+  const next = new URLSearchParams(window.location.search).get("next");
+  return next && GALLERY_RETURN.test(next) ? next : homeFor(user);
+}
+
 export function SignInScreen() {
   const router = useRouter();
   const { user, loading, adoptUser } = useAuth();
@@ -34,7 +42,7 @@ export function SignInScreen() {
   const [pin, setPin] = useState("");
 
   useEffect(() => {
-    if (!loading && user) router.replace(homeFor(user));
+    if (!loading && user) router.replace(afterSignIn(user));
   }, [loading, user, router]);
 
   useEffect(() => {
@@ -78,7 +86,7 @@ export function SignInScreen() {
         return;
       }
       adoptUser(data.user);
-      router.replace(homeFor(data.user));
+      router.replace(afterSignIn(data.user));
     } catch {
       setError("Could not sign in. Check the connection and try again.");
     } finally {

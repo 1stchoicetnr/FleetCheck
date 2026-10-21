@@ -1,0 +1,73 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { imageSizeFromDataUrl } from "@/lib/image-size";
+import type { CheckoutPdfOptions } from "@/lib/pdf";
+import type { CheckoutReport } from "@/lib/types";
+
+class ServerFileReader {
+  result: string | ArrayBuffer | null = null;
+  onload: (() => void) | null = null;
+  onerror: ((error: unknown) => void) | null = null;
+
+  readAsDataURL(blob: Blob): void {
+    blob
+      .arrayBuffer()
+      .then((buffer) => {
+        const type = blob.type || "application/octet-stream";
+        this.result = `data:${type};base64,${Buffer.from(buffer).toString("base64")}`;
+        this.onload?.();
+      })
+      .catch((error) => this.onerror?.(error));
+  }
+}
+
+class ServerImage {
+  naturalWidth = 0;
+  naturalHeight = 0;
+  onload: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+
+  set src(value: string) {
+    const size = imageSizeFromDataUrl(value);
+    if (!size || size.width < 1 || size.height < 1) {
+      queueMicrotask(() => this.onerror?.());
+      return;
+    }
+    this.naturalWidth = size.width;
+    this.naturalHeight = size.height;
+    queueMicrotask(() => this.onload?.());
+  }
+}
+
+function installPdfPolyfills(): void {
+  const globals = globalThis as { FileReader?: unknown; Image?: unknown };
+  if (typeof globals.FileReader === "undefined") {
+    globals.FileReader = ServerFileReader;
+  }
+  if (typeof globals.Image === "undefined") {
+    globals.Image = ServerImage;
+  }
+}
+
+async function defaultLogoDataUrl(): Promise<string | undefined> {
+  try {
+    const file = await readFile(path.join(process.cwd(), "public/icons/icon-192.png"));
+    return `data:image/png;base64,${file.toString("base64")}`;
+  } catch {
+    return undefined;
+  }
+}
+
+export async function checkoutReportPdfBytes(
+  report: CheckoutReport,
+  options: CheckoutPdfOptions = {}
+): Promise<Uint8Array> {
+  installPdfPolyfills();
+  const logo = options.logoDataUrl || (await defaultLogoDataUrl());
+  const { generateCheckoutReportPDF } = await import("@/lib/pdf");
+  const blob = await generateCheckoutReportPDF(report, {
+    ...options,
+    logoDataUrl: logo,
+  });
+  return new Uint8Array(await blob.arrayBuffer());
+}

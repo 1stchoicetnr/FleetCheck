@@ -1,4 +1,5 @@
 import { errorResponse, RequestError } from "@/lib/server/api-error";
+import { slackLinkOrigin } from "@/lib/server/auth-http";
 import { confirmReportSent, getReport } from "@/lib/server/checkout-repo";
 import { isOfficeRequest } from "@/lib/server/office-pin";
 import { resolveRequestAuth, sessionGrantsOffice } from "@/lib/server/request-auth";
@@ -23,7 +24,9 @@ export async function POST(
     if (!office && (!Number.isFinite(created) || Date.now() - created > DRIVER_WINDOW_MS)) {
       throw new RequestError("This checkout is closed. Ask the office.", 403);
     }
-    const report = await confirmReportSent(auth.orgId, id);
+    const report = await confirmReportSent(auth.orgId, id, {
+      appOrigin: slackLinkOrigin(req),
+    });
     return NextResponse.json({ report });
   } catch (err) {
     return errorResponse(err, "Failed to mark the check sent");

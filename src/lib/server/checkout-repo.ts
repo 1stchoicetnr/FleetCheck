@@ -426,7 +426,11 @@ export async function listMyReports(orgId: string, driverName: string): Promise<
     .slice(0, 30);
 }
 
-export async function confirmReportSent(orgId: string, id: string): Promise<CheckoutReport> {
+export async function confirmReportSent(
+  orgId: string,
+  id: string,
+  options?: { appOrigin?: string }
+): Promise<CheckoutReport> {
   const mode = assertConfigured();
   const existing = await getReport(orgId, id);
   if (!existing) throw new SharedBackendError("Checkout report not found", 404);
@@ -440,6 +444,7 @@ export async function confirmReportSent(orgId: string, id: string): Promise<Chec
   const routes = effectiveCheckoutSlack(settingsDoc);
   void notifyCheckoutReport(saved, {
     route: routes[saved.companyId],
+    appOrigin: options?.appOrigin,
     webhooks: {
       radcabOverride: slackWebhookOverride(settingsDoc) || undefined,
     },

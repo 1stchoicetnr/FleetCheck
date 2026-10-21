@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { checkoutSlackText, postCheckoutSlack } from "./checkout-slack.ts";
-import type { CheckoutReport } from "./types.ts";
+import {
+  CHECKOUT_SLACK_MAX,
+  checkoutSlackText,
+  postCheckoutSlack,
+} from "./checkout-slack.ts";
+import type { CheckoutReport, PhotoAngle } from "./types.ts";
+
+const ORIGIN = "https://fleet.example.test";
 
 function report(): CheckoutReport {
   return {
@@ -62,8 +68,8 @@ function report(): CheckoutReport {
   };
 }
 
-test("checkout slack text names the unit, people, odometer, fuel, result, time, and damage", () => {
-  const text = checkoutSlackText(report(), { includePhotoLinks: true });
+test("checkout slack text names the check and links the PDF and photo gallery", () => {
+  const text = checkoutSlackText(report(), { appOrigin: ORIGIN });
   assert.match(text, /\*Unit #:\* Unit 12 · RAD12/);
   assert.match(text, /\*Driver:\* Ada Lovelace/);
   assert.match(text, /\*Dispatcher:\* Pat/);
@@ -73,49 +79,69 @@ test("checkout slack text names the unit, people, odometer, fuel, result, time, 
   assert.match(text, /\*Time:\* Oct 21, 2026, 2:40 PM/);
   assert.match(text, /LF Fender: scrape/);
   assert.match(text, /Left: scrape/);
-  assert.match(text, /Windshield: https:\/\/blob\.example\/windshield\.jpg/);
+  assert.match(text, /\*PDF:\* https:\/\/fleet\.example\.test\/api\/checkout-reports\/cr-sample\/pdf/);
+  assert.match(text, /\*Photos:\* https:\/\/fleet\.example\.test\/office\/cr-sample\/photos/);
+  assert.equal(text.includes("blob.example"), false);
   assert.equal(text.includes("data:image"), false);
-  assert.equal(text.trim().length > 0, true);
+  assert.equal(text.length <= CHECKOUT_SLACK_MAX, true);
 });
 
 test("a missing dispatcher still leaves the line in the message", () => {
-  const text = checkoutSlackText({ ...report(), dispatcherName: "  " });
+  const text = checkoutSlackText({ ...report(), dispatcherName: "  " }, { appOrigin: ORIGIN });
   assert.match(text, /\*Dispatcher:\* —/);
 });
 
 test("an office PASS overrides the traffic light", () => {
-  const text = checkoutSlackText({ ...report(), reviewStatus: "pass" });
+  const text = checkoutSlackText({ ...report(), reviewStatus: "pass" }, { appOrigin: ORIGIN });
   assert.match(text, /\*Result:\* PASS/);
 });
 
-test("the webhook mock never leaves the process, and a plain ok keeps photo links in the message", async () => {
+test("a long damage list stays one message and keeps both links", () => {
+  const angles: PhotoAngle[] = [
+    "windshield",
+    "front",
+    "rear",
+    "lf_fender",
+    "rf_fender",
+    "driver_doors",
+    "passenger_doors",
+    "lr_quarter_panel",
+  ];
+  const text = checkoutSlackText(
+    {
+      ...report(),
+      photos: angles.map((angle) => ({
+        angle,
+        dataUrl: `https://blob.example/${angle}.jpg`,
+        capturedAt: "2026-10-21T19:30:00.000Z",
+        flaggedDamage: true,
+        damageNote: "x".repeat(500),
+      })),
+    },
+    { appOrigin: ORIGIN }
+  );
+  assert.equal(text.length <= CHECKOUT_SLACK_MAX, true);
+  assert.match(text, /\/api\/checkout-reports\/cr-sample\/pdf/);
+  assert.match(text, /\/office\/cr-sample\/photos/);
+  assert.equal(text.includes("blob.example"), false);
+  assert.match(text, /…/);
+});
+
+test("the webhook mock sends exactly one message, even when Slack returns a thread id", async () => {
   const calls: Array<{ url: string; body: { text?: string; thread_ts?: string } }> = [];
   const result = await postCheckoutSlack(report(), {
     webhookUrl: "https://hooks.example.test/radcab",
+    appOrigin: ORIGIN,
     fetchImpl: async (url, init) => {
       calls.push({ url, body: JSON.parse(init.body) });
-      return { ok: true, text: async () => "ok" };
+      return { ok: true, text: async () => JSON.stringify({ ts: "171111.0001", message: { ts: "171111.0001" } }) };
     },
   });
   assert.equal(calls.length, 1);
   assert.equal(calls[0].url, "https://hooks.example.test/radcab");
-  assert.match(result.text, /Windshield: https:\/\/blob\.example\/windshield\.jpg/);
+  assert.equal(calls[0].body.thread_ts, undefined);
   assert.match(result.text, /\*Result:\* Conditional/);
-  assert.equal(result.threaded, false);
-});
-
-test("a webhook that returns a thread id gets a labeled photo reply", async () => {
-  const calls: Array<{ text?: string; thread_ts?: string; blocks?: unknown[] }> = [];
-  const result = await postCheckoutSlack(report(), {
-    webhookUrl: "https://hooks.example.test/radcab",
-    fetchImpl: async (_url, init) => {
-      calls.push(JSON.parse(init.body));
-      return { ok: true, text: async () => JSON.stringify({ ts: "171111.0001" }) };
-    },
-  });
-  assert.equal(result.threaded, true);
-  assert.equal(calls[1].thread_ts, "171111.0001");
-  assert.match(calls[1].text || "", /Windshield/);
-  assert.match(calls[2].text || "", /LF Fender/);
-  assert.equal(calls.length, 3);
+  assert.match(result.text, /\/office\/cr-sample\/photos/);
+  assert.equal(result.text.includes("blob.example"), false);
+  assert.equal(result.text.length <= CHECKOUT_SLACK_MAX, true);
 });

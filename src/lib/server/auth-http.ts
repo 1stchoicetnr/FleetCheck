@@ -11,6 +11,13 @@ export function publicOrigin(req: Request): string {
   return new URL(req.url).origin;
 }
 
+/** Public app URL for links in Slack. A configured origin wins over the request host. */
+export function slackLinkOrigin(req: Request): string {
+  const configured = (process.env.APP_ORIGIN || process.env.NEXT_PUBLIC_APP_URL || "").trim();
+  if (/^https?:\/\//.test(configured)) return configured.replace(/\/$/, "");
+  return publicOrigin(req);
+}
+
 export function applySessionCookie(res: NextResponse, token: string | null): NextResponse {
   res.cookies.set(
     SESSION_COOKIE,
