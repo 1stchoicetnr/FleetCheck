@@ -179,9 +179,8 @@ export function CompanySettingsPanel() {
               <section className="bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
                 <h3 className="font-semibold text-gray-900">Slack webhook</h3>
                 <p className="text-sm text-gray-600">
-                  {settings.slackWebhookSet
-                    ? "A webhook is saved for this company."
-                    : "Checkout notices use the server webhook until you paste a different one."}
+                  Checkout posts are chosen under Notifications. A webhook saved here
+                  replaces #radcabcr for fleets that use that destination.
                   {" "}Saving does not send a message.
                 </p>
                 <input

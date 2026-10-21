@@ -66,6 +66,7 @@ import {
 } from "./local-store";
 import { deleteStoredPhoto, persistCheckoutPhoto } from "./photo-store";
 import { recordCheckoutAlerts } from "./report-alerts";
+import { effectiveCheckoutSlack } from "@/lib/company-settings";
 import { isGenericDriverName } from "@/lib/driver-name";
 import { notifyCheckoutReport } from "./slack-notify";
 import { assertIdempotencyKey, isUniqueViolation } from "@/lib/checkout-idempotency";
@@ -436,8 +437,12 @@ export async function confirmReportSent(orgId: string, id: string): Promise<Chec
       ? { ...existing, sentAt: (await pgMarkReportSent(orgId, id, sentAt)) || sentAt }
       : await localPutReport({ ...existing, sentAt });
   const settingsDoc = await readStoredCompanySettings(orgId);
+  const routes = effectiveCheckoutSlack(settingsDoc);
   void notifyCheckoutReport(saved, {
-    webhookUrl: slackWebhookOverride(settingsDoc),
+    route: routes[saved.companyId],
+    webhooks: {
+      radcabOverride: slackWebhookOverride(settingsDoc) || undefined,
+    },
   });
   return saved;
 }

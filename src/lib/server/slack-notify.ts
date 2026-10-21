@@ -1,22 +1,32 @@
+import { checkoutSlackUrl, defaultCheckoutSlackRoute, type CheckoutSlackRoute, type CheckoutSlackWebhooks } from "@/lib/checkout-slack-route";
 import { postCheckoutSlack } from "@/lib/checkout-slack";
 import { CheckoutReport } from "@/lib/types";
 
-function checkoutSlackWebhook(): string | undefined {
-  return (
-    process.env.SLACK_WEBHOOK_RADCABCR ||
-    process.env.SLACK_WEBHOOK_RAD_CAB_REPAIRS
-  );
+function envWebhooks(override?: string | null): CheckoutSlackWebhooks {
+  return {
+    radcabcr:
+      process.env.SLACK_WEBHOOK_RADCABCR ||
+      process.env.SLACK_WEBHOOK_RAD_CAB_REPAIRS,
+    ashleyDm: process.env.SLACK_WEBHOOK_FEEDBACK,
+    radcabOverride: override,
+  };
 }
 
 /** Slack is a notification, not the Office record. Never throw — Neon already saved. */
 export async function notifyCheckoutReport(
   report: CheckoutReport,
-  options?: { webhookUrl?: string | null; usesClover?: boolean }
+  options?: {
+    route?: CheckoutSlackRoute;
+    webhooks?: CheckoutSlackWebhooks;
+    fetchImpl?: Parameters<typeof postCheckoutSlack>[1]["fetchImpl"];
+  }
 ): Promise<void> {
-  const url = options?.webhookUrl === undefined ? checkoutSlackWebhook() : options.webhookUrl || undefined;
+  const route = options?.route ?? defaultCheckoutSlackRoute(report.companyId);
+  const webhooks = { ...envWebhooks(), ...options?.webhooks };
+  const url = checkoutSlackUrl(report, route, webhooks);
   if (!url) return;
   try {
-    await postCheckoutSlack(report, { webhookUrl: url });
+    await postCheckoutSlack(report, { webhookUrl: url, fetchImpl: options?.fetchImpl });
   } catch {
     // Office already has the row.
   }

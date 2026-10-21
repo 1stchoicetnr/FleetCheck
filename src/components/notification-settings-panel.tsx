@@ -4,6 +4,14 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { fetchCompanies, fetchCompanySettings, saveCompanySettings } from "@/lib/checkout-api";
+import {
+  CHECKOUT_SLACK_FLEETS,
+  defaultCheckoutSlackRoute,
+  type CheckoutSlackDestination,
+  type CheckoutSlackMode,
+  type CheckoutSlackRoute,
+} from "@/lib/checkout-slack-route";
 import { getSettings, saveSettings } from "@/lib/storage";
 import { AppSettings } from "@/lib/types";
 import { SLACK_TEST_FOOTER, sendTestSlackAlert } from "@/lib/alerts";
@@ -44,14 +52,50 @@ export function NotificationSettingsPanel() {
   const [saved, setSaved] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
   const [testing, setTesting] = useState<"rad_cab" | "equipment" | null>(null);
+  const [routes, setRoutes] = useState<Record<string, CheckoutSlackRoute> | null>(null);
+  const [routesReady, setRoutesReady] = useState(false);
+  const [fleetNames, setFleetNames] = useState<Record<string, string>>({});
+  const [routeError, setRouteError] = useState("");
 
   useEffect(() => {
     getSettings().then(setSettings);
+    void fetchCompanySettings()
+      .then((next) => {
+        setRoutes(next.checkoutSlack);
+        setRoutesReady(true);
+      })
+      .catch(() => {
+        const fallback: Record<string, CheckoutSlackRoute> = {};
+        for (const fleet of CHECKOUT_SLACK_FLEETS) {
+          fallback[fleet.id] = defaultCheckoutSlackRoute(fleet.id);
+        }
+        setRoutes(fallback);
+        setRoutesReady(false);
+        setRouteError("Checkout routes could not be loaded, so they will not be saved.");
+      });
+    void fetchCompanies()
+      .then((list) => {
+        const names: Record<string, string> = {};
+        for (const company of list) names[company.id] = company.name;
+        setFleetNames(names);
+      })
+      .catch(() => {});
   }, []);
 
   const handleSave = async () => {
     if (!settings) return;
     await saveSettings(settings);
+    if (routes && routesReady) {
+      try {
+        const next = await saveCompanySettings({ checkoutSlack: routes });
+        setRoutes(next.checkoutSlack);
+        setRouteError("");
+      } catch (err) {
+        setRouteError(err instanceof Error ? err.message : "Could not save checkout posts.");
+        setSaved(false);
+        return;
+      }
+    }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -91,6 +135,64 @@ export function NotificationSettingsPanel() {
             <strong>Send test</strong>.
           </p>
         )}
+        <Card>
+          <CardContent className="py-5 space-y-4">
+            <CardTitle>Checkout posts</CardTitle>
+            <p className="text-sm text-gray-600">
+              Rad Cab sends every checkout to #radcabcr. Other fleets stay quiet
+              unless the check has new damage or a FAIL. Those go to Ashley as a
+              direct message. Saving does not send a message.
+            </p>
+            {routes &&
+              CHECKOUT_SLACK_FLEETS.map((fleet) => {
+                const route = routes[fleet.id] ?? defaultCheckoutSlackRoute(fleet.id);
+                return (
+                  <div key={fleet.id} className="space-y-2 rounded-xl border border-[#3a3a40] p-3">
+                    <p className="text-sm font-semibold text-ink">
+                      {fleetNames[fleet.id] || fleet.name}
+                    </p>
+                    <label className="block text-xs font-medium text-muted">
+                      When
+                      <select
+                        value={route.mode}
+                        onChange={(event) => {
+                          const mode = event.target.value as CheckoutSlackMode;
+                          setRoutes({
+                            ...routes,
+                            [fleet.id]: { ...route, mode },
+                          });
+                        }}
+                        className="mt-1 w-full rounded-lg border border-[#5c5c64] bg-[#1c1c1e] px-3 py-2 text-sm text-[#f7f7f8]"
+                      >
+                        <option value="every">Every check</option>
+                        <option value="damage_or_fail">Only damage or FAIL</option>
+                        <option value="off">Off</option>
+                      </select>
+                    </label>
+                    <label className="block text-xs font-medium text-muted">
+                      Destination
+                      <select
+                        value={route.destination}
+                        onChange={(event) => {
+                          const destination = event.target.value as CheckoutSlackDestination;
+                          setRoutes({
+                            ...routes,
+                            [fleet.id]: { ...route, destination },
+                          });
+                        }}
+                        className="mt-1 w-full rounded-lg border border-[#5c5c64] bg-[#1c1c1e] px-3 py-2 text-sm text-[#f7f7f8]"
+                      >
+                        <option value="radcabcr">#radcabcr</option>
+                        <option value="ashley_dm">Ashley DM</option>
+                      </select>
+                    </label>
+                  </div>
+                );
+              })}
+            {routeError && <p className="text-sm font-medium text-red-700">{routeError}</p>}
+          </CardContent>
+        </Card>
+
         <Card>
           <CardContent className="py-5 space-y-3">
             <div className="flex items-center gap-2">

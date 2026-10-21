@@ -26,6 +26,17 @@ test("an empty settings record matches today's fleets, photos, and Clover", () =
   assert.equal(view.pdfLogoDataUrl, null);
   assert.deepEqual(view.cloverCompanyIds, ["company-rad-cab"]);
   assert.equal(JSON.stringify(view).includes("hooks.slack.com"), false);
+  assert.deepEqual(view.checkoutSlack["company-rad-cab"], {
+    mode: "every",
+    destination: "radcabcr",
+  });
+  assert.deepEqual(view.checkoutSlack["company-1st-choice"], {
+    mode: "damage_or_fail",
+    destination: "ashley_dm",
+  });
+  assert.deepEqual(view.checkoutSlack["company-turo"], view.checkoutSlack["company-1st-choice"]);
+  assert.deepEqual(view.checkoutSlack["company-pinkie-tow"], view.checkoutSlack["company-turo"]);
+  assert.deepEqual(view.checkoutSlack["company-other-fleets"], view.checkoutSlack["company-turo"]);
   const expected = walkaroundPhotoSteps(PHOTO_ANGLES);
   for (const companyId of COMPANIES) {
     assert.equal(usesClover(view, companyId), companyUsesClover(companyId));
@@ -84,5 +95,21 @@ test("photo, Clover, and Slack changes are stored, and a matching edit clears th
   assert.throws(
     () => mergeCompanySettings(null, { slackWebhook: "https://example.com/hook" }),
     CompanySettingsError
+  );
+});
+
+test("checkout Slack routes store only fleets that differ from the default", () => {
+  const changed = mergeCompanySettings(null, {
+    checkoutSlack: { "company-turo": { mode: "off", destination: "radcabcr" } },
+  });
+  assert.equal(changed?.checkoutSlack?.["company-turo"]?.mode, "off");
+  assert.equal(changed?.checkoutSlack?.["company-rad-cab"], undefined);
+  assert.equal(publicCompanySettings(changed).checkoutSlack["company-turo"].destination, "radcabcr");
+  assert.equal(publicCompanySettings(changed).usingDefaults, false);
+  assert.equal(
+    mergeCompanySettings(changed, {
+      checkoutSlack: { "company-turo": { mode: "damage_or_fail", destination: "ashley_dm" } },
+    }),
+    null
   );
 });

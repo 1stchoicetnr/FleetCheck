@@ -1,4 +1,11 @@
 import {
+  CHECKOUT_SLACK_FLEETS,
+  defaultCheckoutSlackRoute,
+  isCheckoutSlackDestination,
+  isCheckoutSlackMode,
+  type CheckoutSlackRoute,
+} from "./checkout-slack-route";
+import {
   companyUsesClover,
   OTHER_FLEETS_COMPANY_ID,
   RAD_CAB_COMPANY_ID,
@@ -28,6 +35,8 @@ export interface CompanySettingsDoc {
   slackWebhook?: string;
   cloverCompanyIds?: string[];
   pdfLogoDataUrl?: string;
+  /** Only the fleets that differ from the default checkout Slack route. */
+  checkoutSlack?: Partial<Record<string, CheckoutSlackRoute>>;
 }
 
 export interface PublicCompanySettings {
@@ -37,6 +46,7 @@ export interface PublicCompanySettings {
   pdfLogoDataUrl: string | null;
   slackWebhookSet: boolean;
   usingDefaults: boolean;
+  checkoutSlack: Record<string, CheckoutSlackRoute>;
 }
 
 export interface CompanySettingsPatch {
@@ -47,6 +57,7 @@ export interface CompanySettingsPatch {
   cloverCompanyIds?: string[];
   pdfLogoDataUrl?: string;
   clearPdfLogo?: boolean;
+  checkoutSlack?: Partial<Record<string, Partial<CheckoutSlackRoute>>>;
 }
 
 const FLEET_TYPES = Object.keys(FLEET_TYPE_LABELS) as FleetType[];
@@ -136,6 +147,22 @@ export function effectivePhotos(
   return photos;
 }
 
+export function effectiveCheckoutSlack(
+  doc: CompanySettingsDoc | null | undefined
+): Record<string, CheckoutSlackRoute> {
+  const saved = doc?.checkoutSlack ?? {};
+  const routes: Record<string, CheckoutSlackRoute> = {};
+  for (const fleet of CHECKOUT_SLACK_FLEETS) {
+    const row = saved[fleet.id];
+    const base = defaultCheckoutSlackRoute(fleet.id);
+    routes[fleet.id] = {
+      mode: isCheckoutSlackMode(row?.mode) ? row.mode : base.mode,
+      destination: isCheckoutSlackDestination(row?.destination) ? row.destination : base.destination,
+    };
+  }
+  return routes;
+}
+
 export function effectiveCloverIds(doc: CompanySettingsDoc | null | undefined): string[] {
   if (!doc || !Array.isArray(doc.cloverCompanyIds)) return [RAD_CAB_COMPANY_ID];
   return doc.cloverCompanyIds.filter((id) => KNOWN_COMPANIES.has(id));
@@ -174,6 +201,7 @@ export function publicCompanySettings(
     pdfLogoDataUrl: logo,
     slackWebhookSet: hook !== undefined,
     usingDefaults,
+    checkoutSlack: effectiveCheckoutSlack(doc),
   };
 }
 
@@ -249,6 +277,16 @@ function minimalDoc(doc: CompanySettingsDoc): CompanySettingsDoc {
   }
   const logo = pdfLogoDataUrl(doc);
   if (logo) next.pdfLogoDataUrl = logo;
+  const slack = effectiveCheckoutSlack(doc);
+  const checkoutSlack: NonNullable<CompanySettingsDoc["checkoutSlack"]> = {};
+  for (const fleet of CHECKOUT_SLACK_FLEETS) {
+    const route = slack[fleet.id];
+    const base = defaultCheckoutSlackRoute(fleet.id);
+    if (route.mode !== base.mode || route.destination !== base.destination) {
+      checkoutSlack[fleet.id] = route;
+    }
+  }
+  if (Object.keys(checkoutSlack).length) next.checkoutSlack = checkoutSlack;
   return next;
 }
 
@@ -258,7 +296,8 @@ function settingsDocIsEmpty(doc: CompanySettingsDoc): boolean {
     !doc.photoRequired &&
     doc.slackWebhook === undefined &&
     !doc.cloverCompanyIds &&
-    !doc.pdfLogoDataUrl
+    !doc.pdfLogoDataUrl &&
+    !doc.checkoutSlack
   );
 }
 
@@ -291,6 +330,20 @@ export function mergeCompanySettings(
   }
   if (patch.cloverCompanyIds) {
     base.cloverCompanyIds = patch.cloverCompanyIds.filter((id) => KNOWN_COMPANIES.has(id));
+  }
+  if (patch.checkoutSlack) {
+    const current = effectiveCheckoutSlack(base);
+    for (const [companyId, row] of Object.entries(patch.checkoutSlack)) {
+      if (!KNOWN_COMPANIES.has(companyId) || !row) continue;
+      const previous = current[companyId] ?? defaultCheckoutSlackRoute(companyId);
+      current[companyId] = {
+        mode: isCheckoutSlackMode(row.mode) ? row.mode : previous.mode,
+        destination: isCheckoutSlackDestination(row.destination)
+          ? row.destination
+          : previous.destination,
+      };
+    }
+    base.checkoutSlack = current;
   }
   if (patch.clearPdfLogo) delete base.pdfLogoDataUrl;
   if (typeof patch.pdfLogoDataUrl === "string" && patch.pdfLogoDataUrl) {
