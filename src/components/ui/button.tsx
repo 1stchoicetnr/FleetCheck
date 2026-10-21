@@ -1,4 +1,11 @@
 import { cn } from "@/lib/utils";
+import {
+  dangerButtonClass,
+  ghostButtonClass,
+  outlineButtonClass,
+  primaryButtonClass,
+  secondaryButtonClass,
+} from "@/lib/button-styles";
 import { ButtonHTMLAttributes, forwardRef } from "react";
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -7,12 +14,11 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variants = {
-  primary: "bg-accent text-[#052e16] hover:bg-emerald-400 active:bg-emerald-600 shadow-sm",
-  secondary: "bg-raised text-ink hover:bg-line active:bg-line",
-  danger: "bg-red-600 text-white hover:bg-red-700 active:bg-red-800",
-  ghost: "bg-transparent text-ink hover:bg-raised",
-  outline:
-    "border-2 border-accent text-accent hover:bg-brand-50 bg-surface",
+  primary: primaryButtonClass,
+  secondary: secondaryButtonClass,
+  danger: dangerButtonClass,
+  ghost: ghostButtonClass,
+  outline: outlineButtonClass,
 };
 
 const sizes = {
@@ -29,12 +35,12 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       disabled={disabled}
       className={cn(
         "inline-flex items-center justify-center rounded-xl font-semibold tracking-tight transition-colors",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas",
-        "disabled:opacity-50 disabled:pointer-events-none",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4ade80] focus-visible:ring-offset-2 focus-visible:ring-offset-[#101012]",
         "touch-manipulation select-none",
         variants[variant],
         sizes[size],
-        className
+        className,
+        "disabled:opacity-100 disabled:pointer-events-none"
       )}
       {...props}
     />

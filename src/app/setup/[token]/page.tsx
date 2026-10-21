@@ -7,6 +7,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { INSPEKT_ICON, INSPEKT_NAVY } from "@/lib/brand-mark";
 import type { User } from "@/lib/types";
+import { primaryButtonClass } from "@/lib/button-styles";
 
 type Preview = {
   kind: string;
@@ -168,7 +169,7 @@ export default function SetupPage() {
             <button
               type="submit"
               disabled={submitting}
-              className="min-h-[52px] w-full rounded-xl bg-[#22c55e] text-base font-bold text-[#052e16] disabled:opacity-60"
+              className={`min-h-[52px] w-full rounded-xl text-base font-bold ${primaryButtonClass}`}
             >
               {submitting ? "Saving…" : "Save password and sign in"}
             </button>

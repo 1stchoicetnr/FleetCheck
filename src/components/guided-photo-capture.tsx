@@ -16,6 +16,7 @@ import { LiveCameraFrame } from "./live-camera-frame";
 import { PHOTO_ANGLES, PhotoAngle, PhotoStep, walkaroundPhotoSteps } from "@/lib/types";
 import { DAMAGE_NOTE_MAX } from "@/lib/photo-flags";
 import { useCheckoutFeedback } from "@/components/checkout-feedback";
+import { primaryButtonClass } from "@/lib/button-styles";
 
 interface GuidedPhotoCaptureProps {
   photos: Partial<Record<PhotoAngle, string>>;
@@ -196,12 +197,12 @@ export function GuidedPhotoCapture({
                     alt={current.label}
                     className="w-full h-full max-h-[min(55vh,360px)] object-contain"
                   />
-                  <div className="absolute top-3 left-3 bg-emerald-600 text-white rounded-full px-3 py-1.5 text-sm font-semibold flex items-center gap-1.5 shadow">
+                  <div className="absolute top-3 left-3 bg-[#22c55e] text-[#052e16] rounded-full px-3 py-1.5 text-sm font-semibold flex items-center gap-1.5 shadow">
                     <Check className="h-4 w-4" />
                     Accepted
                   </div>
                   {photoFlags?.[current.angle]?.flaggedDamage && (
-                    <div className="absolute top-3 right-3 bg-red-600 text-white rounded-full px-3 py-1.5 text-sm font-semibold shadow">
+                    <div className="absolute top-3 right-3 bg-[#b91c1c] text-white rounded-full px-3 py-1.5 text-sm font-semibold shadow">
                       DAMAGE
                     </div>
                   )}
@@ -305,7 +306,7 @@ export function GuidedPhotoCapture({
                       type="button"
                       onClick={openNativeCamera}
                       disabled={busy}
-                      className="photo-take-btn w-full h-16 rounded-2xl bg-accent hover:bg-emerald-400 active:scale-[0.98] transition-all shadow-card flex items-center justify-center gap-3 text-[#052e16] font-bold text-lg disabled:opacity-60"
+                      className={`photo-take-btn w-full h-16 rounded-2xl active:scale-[0.98] transition-all shadow-card flex items-center justify-center gap-3 font-bold text-lg ${primaryButtonClass}`}
                     >
                       <Camera className="h-7 w-7" />
                       {busy ? "Saving photo…" : "Take photo"}
@@ -356,17 +357,17 @@ export function GuidedPhotoCapture({
                 disabled={!canView}
                 onClick={() => canView && goToStep(i)}
                 title={p.label}
-                className={`flex-shrink-0 min-w-[44px] h-11 px-1.5 rounded-lg text-xs font-bold transition-colors ${
-                  damaged
-                    ? "bg-red-600 text-white"
+                className={`flex-shrink-0 min-w-[44px] h-11 px-1.5 rounded-lg text-xs font-bold transition-colors disabled:opacity-100 ${
+                  !canView
+                    ? "bg-[#2a2a2e] text-[#d4d4d8] cursor-not-allowed"
+                    : damaged
+                    ? "bg-[#b91c1c] text-white"
                     : done
-                    ? "bg-emerald-600 text-white"
+                    ? "bg-[#22c55e] text-[#052e16]"
                     : isCurrent
-                    ? "bg-accent text-[#052e16] ring-2 ring-emerald-300"
-                    : testingBrowseMode
-                    ? "bg-gray-300 text-gray-700"
-                    : "bg-gray-200 text-gray-400"
-                } ${!canView ? "opacity-40 cursor-not-allowed" : ""}`}
+                    ? "bg-[#22c55e] text-[#052e16] ring-2 ring-[#86efac]"
+                    : "bg-[#3a3a40] text-[#e4e4e7]"
+                }`}
               >
                 {done ? "✓" : i + 1}
               </button>

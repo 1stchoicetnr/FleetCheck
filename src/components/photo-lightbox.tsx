@@ -316,7 +316,7 @@ export function PhotoLightbox({
           ref={closeRef}
           type="button"
           onClick={onClose}
-          className="flex-shrink-0 p-2.5 rounded-full bg-black/40 text-white backdrop-blur-sm"
+          className="flex-shrink-0 p-2.5 rounded-full bg-[#101012] text-[#f7f7f8]"
           aria-label="Close"
         >
           <X className="h-6 w-6" />
@@ -349,7 +349,7 @@ export function PhotoLightbox({
             type="button"
             data-lightbox-chrome=""
             onClick={() => go(-1)}
-            className="absolute left-1 sm:left-3 top-1/2 -translate-y-1/2 z-20 p-2.5 rounded-full bg-black/40 text-white backdrop-blur-sm min-w-[44px] min-h-[44px] flex items-center justify-center"
+            className="absolute left-1 sm:left-3 top-1/2 -translate-y-1/2 z-20 p-2.5 rounded-full bg-[#101012] text-[#f7f7f8] min-w-[44px] min-h-[44px] flex items-center justify-center"
             aria-label="Previous photo"
           >
             <ChevronLeft className="h-7 w-7" />
@@ -358,7 +358,7 @@ export function PhotoLightbox({
             type="button"
             data-lightbox-chrome=""
             onClick={() => go(1)}
-            className="absolute right-1 sm:right-3 top-1/2 -translate-y-1/2 z-20 p-2.5 rounded-full bg-black/40 text-white backdrop-blur-sm min-w-[44px] min-h-[44px] flex items-center justify-center"
+            className="absolute right-1 sm:right-3 top-1/2 -translate-y-1/2 z-20 p-2.5 rounded-full bg-[#101012] text-[#f7f7f8] min-w-[44px] min-h-[44px] flex items-center justify-center"
             aria-label="Next photo"
           >
             <ChevronRight className="h-7 w-7" />

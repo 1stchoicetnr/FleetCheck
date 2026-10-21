@@ -402,7 +402,7 @@ function FeedbackDialog({
                   />
                   <button
                     type="button"
-                    className="text-sm font-semibold text-red-700 underline"
+                    className="text-sm font-semibold text-[#fca5a5] underline"
                     onClick={() => setScreenshot("")}
                   >
                     Remove
@@ -414,7 +414,7 @@ function FeedbackDialog({
                     type="button"
                     onClick={() => fileRef.current?.click()}
                     disabled={busy}
-                    className="inline-flex items-center gap-1.5 min-h-[44px] px-3 rounded-xl border border-gray-300 text-sm font-semibold text-gray-800"
+                    className="inline-flex items-center gap-1.5 min-h-[44px] px-3 rounded-xl border border-[#6e6e76] bg-[#1c1c1e] text-sm font-semibold text-[#f7f7f8] disabled:bg-[#1c1c1e] disabled:text-[#d4d4d8] disabled:opacity-100"
                   >
                     <ImageIcon className="h-4 w-4" />
                     Camera roll
@@ -424,7 +424,7 @@ function FeedbackDialog({
                       type="button"
                       onClick={() => void captureScreen()}
                       disabled={busy}
-                      className="inline-flex items-center min-h-[44px] px-3 rounded-xl border border-gray-300 text-sm font-semibold text-gray-800"
+                      className="inline-flex items-center min-h-[44px] px-3 rounded-xl border border-[#6e6e76] bg-[#1c1c1e] text-sm font-semibold text-[#f7f7f8] disabled:bg-[#1c1c1e] disabled:text-[#d4d4d8] disabled:opacity-100"
                     >
                       Capture this screen
                     </button>

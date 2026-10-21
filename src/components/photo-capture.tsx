@@ -31,7 +31,7 @@ export function PhotoCapture({ label, hint, value, onCapture }: PhotoCaptureProp
         <div className="relative rounded-xl overflow-hidden border-2 border-green-400">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={value} alt={label} className="w-full aspect-[4/3] object-cover" />
-          <div className="absolute top-2 right-2 bg-green-500 text-white rounded-full p-1">
+          <div className="absolute top-2 right-2 bg-[#22c55e] text-[#052e16] rounded-full p-1">
             <Check className="h-4 w-4" />
           </div>
           <button

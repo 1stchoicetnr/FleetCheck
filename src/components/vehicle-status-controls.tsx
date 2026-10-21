@@ -13,16 +13,22 @@ interface VehicleStatusControlsProps {
 
 const BUTTON_STYLES: Record<(typeof MANUAL_VEHICLE_STATUSES)[number], { active: string; idle: string }> = {
   ready: {
-    active: "border-green-600 bg-green-50 text-green-900 ring-2 ring-green-600/20",
-    idle: "border-green-200 bg-white text-green-800 hover:bg-green-50",
+    active:
+      "border-[#166534] bg-[#22c55e] text-[#052e16] disabled:bg-[#22c55e] disabled:text-[#052e16] disabled:opacity-100",
+    idle:
+      "border-[#22c55e] bg-[#1c1c1e] text-[#4ade80] hover:bg-[#052e16] disabled:bg-[#1c1c1e] disabled:text-[#4ade80] disabled:opacity-100",
   },
   needs_work: {
-    active: "border-amber-500 bg-amber-50 text-amber-950 ring-2 ring-amber-500/20",
-    idle: "border-amber-200 bg-white text-amber-900 hover:bg-amber-50",
+    active:
+      "border-[#b45309] bg-[#f59e0b] text-[#1c1917] disabled:bg-[#f59e0b] disabled:text-[#1c1917] disabled:opacity-100",
+    idle:
+      "border-[#fbbf24] bg-[#1c1c1e] text-[#fbbf24] hover:bg-[#451a03] hover:text-[#fde68a] disabled:bg-[#1c1c1e] disabled:text-[#fbbf24] disabled:opacity-100",
   },
   out_of_service: {
-    active: "border-red-600 bg-red-50 text-red-900 ring-2 ring-red-600/20",
-    idle: "border-red-200 bg-white text-red-800 hover:bg-red-50",
+    active:
+      "border-[#991b1b] bg-[#b91c1c] text-white disabled:bg-[#b91c1c] disabled:text-white disabled:opacity-100",
+    idle:
+      "border-[#fca5a5] bg-[#1c1c1e] text-[#fca5a5] hover:bg-[#7f1d1d] hover:text-[#fee2e2] disabled:bg-[#1c1c1e] disabled:text-[#fca5a5] disabled:opacity-100",
   },
 };
 
@@ -47,7 +53,7 @@ export function VehicleStatusControls({
               className={cn(
                 "flex flex-col items-center justify-center gap-1 rounded-xl border-2 px-2 py-3 text-center text-xs font-bold leading-tight transition-colors min-h-[64px]",
                 selected ? styles.active : styles.idle,
-                disabled && "opacity-60 cursor-not-allowed"
+                disabled && "cursor-not-allowed"
               )}
             >
               {selected && <Check className="h-4 w-4 flex-shrink-0" aria-hidden />}

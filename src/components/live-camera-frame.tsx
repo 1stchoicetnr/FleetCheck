@@ -5,6 +5,7 @@ import { Camera } from "lucide-react";
 import { framingForAngle } from "@/lib/photo-guides";
 import type { PhotoAngle } from "@/lib/types";
 import { FramingOutline } from "./framing-outline";
+import { primaryButtonClass } from "@/lib/button-styles";
 
 export function LiveCameraFrame({
   angle,
@@ -95,7 +96,7 @@ export function LiveCameraFrame({
         type="button"
         onClick={capture}
         disabled={!ready || busy}
-        className="photo-take-btn w-full h-16 rounded-2xl bg-accent hover:bg-emerald-400 active:scale-[0.98] transition-all shadow-card flex items-center justify-center gap-3 text-[#052e16] font-bold text-lg disabled:opacity-60"
+        className={`photo-take-btn w-full h-16 rounded-2xl active:scale-[0.98] transition-all shadow-card flex items-center justify-center gap-3 font-bold text-lg ${primaryButtonClass}`}
       >
         <Camera className="h-7 w-7" />
         {busy ? "Saving photo…" : ready ? "Capture" : "Starting camera…"}

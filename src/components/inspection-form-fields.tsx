@@ -27,6 +27,7 @@ import {
   validateInspectionForm,
 } from "@/lib/inspection-form";
 import { cn } from "@/lib/utils";
+import { choiceErrorClass, choiceIssueClass, choiceOkClass } from "@/lib/button-styles";
 import { VehicleSilhouette } from "./vehicle-silhouette";
 
 function YesNoButtons({
@@ -255,10 +256,10 @@ export function InspectionFormFields({
                       className={cn(
                         "min-h-[44px] min-w-[72px] rounded-xl border-2 text-sm font-semibold px-3",
                         state.result === "ok"
-                          ? "border-green-600 bg-green-600 text-white"
+                          ? choiceOkClass
                           : error
-                            ? "border-red-400 bg-white text-red-800"
-                            : "border-gray-300 bg-white text-gray-700"
+                            ? choiceErrorClass
+                            : "border-[#3a3a40] bg-[#1c1c1e] text-[#e4e4e7]"
                       )}
                     >
                       {okLabel}
@@ -277,10 +278,10 @@ export function InspectionFormFields({
                       className={cn(
                         "min-h-[44px] min-w-[72px] rounded-xl border-2 text-sm font-semibold px-3",
                         state.result === "not_ok"
-                          ? "border-amber-600 bg-amber-500 text-white"
+                          ? choiceIssueClass
                           : error
-                            ? "border-red-400 bg-white text-red-800"
-                            : "border-gray-300 bg-white text-gray-700"
+                            ? choiceErrorClass
+                            : "border-[#3a3a40] bg-[#1c1c1e] text-[#e4e4e7]"
                       )}
                     >
                       {issueLabel}
@@ -356,8 +357,8 @@ export function InspectionFormFields({
                                 ? "border-amber-500 bg-amber-50 text-amber-900"
                                 : "border-red-600 bg-red-50 text-red-800"
                           : error
-                            ? "border-red-300 bg-white text-red-800"
-                            : "border-gray-200 bg-white text-gray-800"
+                            ? choiceErrorClass
+                            : "border-[#3a3a40] bg-[#1c1c1e] text-[#e4e4e7]"
                       )}
                     >
                       {item.label}
@@ -499,12 +500,12 @@ export function InspectionFormFields({
                   "min-h-[72px] rounded-xl border-2 px-2 py-2",
                   selected
                     ? item.id === "green"
-                      ? "border-green-600 bg-green-600 text-white"
+                      ? choiceOkClass
                       : item.id === "yellow"
-                        ? "border-amber-500 bg-amber-400 text-amber-950"
-                        : "border-red-600 bg-red-600 text-white"
+                        ? "border-[#b45309] bg-[#fbbf24] text-[#451a03]"
+                        : "border-[#991b1b] bg-[#b91c1c] text-white"
                     : fieldError("trafficLight")
-                      ? "border-red-500 bg-red-50 text-red-800"
+                      ? "border-[#f87171] bg-[#1c1c1e] text-[#fecaca]"
                     : item.id === "green"
                       ? "border-green-200 bg-green-50 text-green-800"
                       : item.id === "yellow"
@@ -513,7 +514,7 @@ export function InspectionFormFields({
                 )}
               >
                 <span className="block text-lg font-black">{item.label}</span>
-                <span className="block text-[11px] leading-tight font-semibold opacity-90">
+                <span className="block text-[11px] leading-tight font-semibold">
                   {item.action}
                 </span>
               </button>

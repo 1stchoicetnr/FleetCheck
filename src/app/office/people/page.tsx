@@ -6,6 +6,11 @@ import { AppHeader } from "@/components/app-header";
 import { OfficePinGate } from "@/components/office-pin-gate";
 import { useAuth } from "@/hooks/use-auth";
 import { canManageFleet, canReviewCheckout } from "@/lib/fleet-config";
+import {
+  dangerOutlineButtonClass,
+  primaryButtonClass,
+  secondaryOutlineButtonClass,
+} from "@/lib/button-styles";
 
 type Person = {
   id: string;
@@ -207,7 +212,7 @@ export default function PeoplePage() {
               />
               <button
                 type="button"
-                className="min-h-[44px] rounded-xl bg-gray-900 px-4 text-sm font-semibold text-white"
+                className={`min-h-[44px] rounded-xl px-4 text-sm font-semibold ${primaryButtonClass}`}
                 onClick={() => {
                   void navigator.clipboard?.writeText(issued.url);
                 }}
@@ -275,7 +280,7 @@ export default function PeoplePage() {
                 <button
                   type="submit"
                   disabled={busy === "invite"}
-                  className="min-h-[48px] rounded-xl bg-gray-900 px-4 font-semibold text-white disabled:opacity-60"
+                  className={`min-h-[48px] rounded-xl px-4 font-semibold ${primaryButtonClass}`}
                 >
                   {busy === "invite" ? "Creating…" : "Create invite link"}
                 </button>
@@ -307,7 +312,7 @@ export default function PeoplePage() {
                     type="button"
                     disabled={!person.active || busy === person.id}
                     onClick={() => void issueSetup(person)}
-                    className="min-h-[44px] rounded-xl border border-gray-300 px-3 text-sm font-semibold text-gray-900 disabled:opacity-60"
+                    className={`min-h-[44px] rounded-xl px-3 text-sm font-semibold ${secondaryOutlineButtonClass}`}
                   >
                     {busy === person.id ? "Creating…" : "Reset password"}
                   </button>
@@ -340,7 +345,7 @@ export default function PeoplePage() {
                     type="button"
                     disabled={busy === inviteRow.id}
                     onClick={() => void revoke(inviteRow.id)}
-                    className="min-h-[44px] rounded-xl border border-red-200 px-3 text-sm font-semibold text-red-700 disabled:opacity-60"
+                    className={`min-h-[44px] rounded-xl px-3 text-sm font-semibold ${dangerOutlineButtonClass}`}
                   >
                     Revoke
                   </button>

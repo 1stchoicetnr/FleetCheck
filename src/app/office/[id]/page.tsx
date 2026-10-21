@@ -540,10 +540,10 @@ export default function OfficeReportDetailPage() {
                               damaged ? "" : photo.damageNote
                             )
                           }
-                          className={`w-full min-h-[36px] rounded-lg text-[11px] font-semibold ${
+                          className={`w-full min-h-[36px] rounded-lg text-[11px] font-semibold disabled:opacity-100 ${
                             damaged
-                              ? "bg-red-100 text-red-800"
-                              : "bg-gray-100 text-gray-700"
+                              ? "bg-[#fee2e2] text-[#7f1d1d] disabled:bg-[#fee2e2] disabled:text-[#7f1d1d]"
+                              : "bg-[#2a2a2e] text-[#e4e4e7] disabled:bg-[#2a2a2e] disabled:text-[#d4d4d8]"
                           }`}
                         >
                           {flaggingAngle === step.angle
@@ -626,8 +626,8 @@ export default function OfficeReportDetailPage() {
                           onClick={() => toggleRetake(step.angle)}
                           className={`px-3 py-2 rounded-full text-xs font-semibold min-h-[40px] ${
                             on
-                              ? "bg-orange-600 text-white"
-                              : "bg-gray-100 text-gray-700"
+                              ? "bg-[#f97316] text-[#1c1917]"
+                              : "bg-[#2a2a2e] text-[#e4e4e7]"
                           }`}
                         >
                           {step.label}
@@ -748,7 +748,7 @@ function DamageNoteEditor({
           type="button"
           disabled={saving}
           onClick={() => onSave(value)}
-          className="w-full min-h-[32px] rounded-lg bg-brand-700 text-white text-[11px] font-semibold"
+          className="w-full min-h-[32px] rounded-lg bg-[#22c55e] text-[#052e16] text-[11px] font-semibold disabled:bg-[#14532d] disabled:text-[#ecfdf5] disabled:opacity-100"
         >
           {saving ? "Saving…" : "Save note"}
         </button>

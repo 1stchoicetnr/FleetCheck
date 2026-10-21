@@ -315,10 +315,10 @@ function VehicleCard({
                 type="button"
                 disabled={saving}
                 onClick={() => onPowertrain("gas")}
-                className={`min-h-[40px] rounded-xl border text-sm font-semibold ${
+                className={`min-h-[40px] rounded-xl border text-sm font-semibold disabled:opacity-100 ${
                   vehicle.powertrain !== "ev"
-                    ? "border-amber-600 bg-amber-50 text-amber-900"
-                    : "border-gray-200 bg-white text-gray-700"
+                    ? "border-[#b45309] bg-[#f59e0b] text-[#1c1917] disabled:bg-[#f59e0b] disabled:text-[#1c1917]"
+                    : "border-[#3a3a40] bg-[#1c1c1e] text-[#e4e4e7] disabled:bg-[#1c1c1e] disabled:text-[#d4d4d8]"
                 }`}
               >
                 Gas
@@ -327,10 +327,10 @@ function VehicleCard({
                 type="button"
                 disabled={saving}
                 onClick={() => onPowertrain("ev")}
-                className={`min-h-[40px] rounded-xl border text-sm font-semibold ${
+                className={`min-h-[40px] rounded-xl border text-sm font-semibold disabled:opacity-100 ${
                   vehicle.powertrain === "ev"
-                    ? "border-sky-600 bg-sky-50 text-sky-800"
-                    : "border-gray-200 bg-white text-gray-700"
+                    ? "border-[#075985] bg-[#e0f2fe] text-[#0c4a6e] disabled:bg-[#e0f2fe] disabled:text-[#0c4a6e]"
+                    : "border-[#3a3a40] bg-[#1c1c1e] text-[#e4e4e7] disabled:bg-[#1c1c1e] disabled:text-[#d4d4d8]"
                 }`}
               >
                 EV

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { INSPEKT_ICON, INSPEKT_NAVY } from "@/lib/brand-mark";
 import type { User } from "@/lib/types";
+import { primaryButtonClass, secondaryOutlineButtonClass } from "@/lib/button-styles";
 
 type Screen = "sign-in" | "request" | "waiting" | "denied";
 
@@ -239,7 +240,7 @@ export function SignInScreen() {
             <button
               type="submit"
               disabled={submitting}
-              className="min-h-[52px] w-full rounded-xl bg-[#22c55e] text-base font-bold text-[#052e16] disabled:opacity-60"
+              className={`min-h-[52px] w-full rounded-xl text-base font-bold ${primaryButtonClass}`}
             >
               {submitting ? "Sending…" : "Request access"}
             </button>
@@ -281,7 +282,7 @@ export function SignInScreen() {
             <button
               type="submit"
               disabled={submitting}
-              className="min-h-[52px] w-full rounded-xl bg-[#22c55e] text-base font-bold text-[#052e16] disabled:opacity-60"
+              className={`min-h-[52px] w-full rounded-xl text-base font-bold ${primaryButtonClass}`}
             >
               {submitting ? "Signing in…" : "Sign in"}
             </button>
@@ -330,7 +331,7 @@ export function SignInScreen() {
                     <button
                       type="submit"
                       disabled={submitting}
-                      className="min-h-[48px] w-full rounded-xl border border-[#3a3a40] text-sm font-semibold text-[#f7f7f8] disabled:opacity-60"
+                      className={`min-h-[48px] w-full rounded-xl text-sm font-semibold ${secondaryOutlineButtonClass}`}
                     >
                       {submitting ? "Checking…" : "Continue"}
                     </button>

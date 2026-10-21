@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { fetchFleets, type SharedFleet } from "@/lib/checkout-api";
+import { primaryButtonClass, secondaryOutlineButtonClass } from "@/lib/button-styles";
 
 type AccessRequest = {
   id: string;
@@ -201,7 +202,7 @@ export function AccessRequestsPanel({
                   type="button"
                   disabled={busy === request.id + "approve"}
                   onClick={() => void decide(request, "approve")}
-                  className="min-h-[48px] flex-1 rounded-xl bg-[#22c55e] font-bold text-[#052e16] disabled:opacity-60"
+                  className={`min-h-[48px] flex-1 rounded-xl font-bold ${primaryButtonClass}`}
                 >
                   {busy === request.id + "approve" ? "Saving…" : "Approve"}
                 </button>
@@ -209,7 +210,7 @@ export function AccessRequestsPanel({
                   type="button"
                   disabled={busy === request.id + "deny"}
                   onClick={() => void decide(request, "deny")}
-                  className="min-h-[48px] flex-1 rounded-xl border border-line font-semibold text-ink disabled:opacity-60"
+                  className={`min-h-[48px] flex-1 rounded-xl font-semibold ${secondaryOutlineButtonClass}`}
                 >
                   {busy === request.id + "deny" ? "Saving…" : "Deny"}
                 </button>
@@ -263,7 +264,7 @@ export function AccessRequestsPanel({
                 type="button"
                 disabled={!person.active || busy === person.id}
                 onClick={() => void resetPassword(person)}
-                className="min-h-[44px] rounded-xl border border-line px-3 text-sm font-semibold text-ink disabled:opacity-60"
+                className={`min-h-[44px] rounded-xl px-3 text-sm font-semibold ${secondaryOutlineButtonClass}`}
               >
                 {busy === person.id ? "Creating…" : "Reset password"}
               </button>
