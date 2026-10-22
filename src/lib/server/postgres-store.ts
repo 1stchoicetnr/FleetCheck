@@ -391,6 +391,17 @@ export async function pgMigrateAndSeed(): Promise<void> {
     for (const line of rolloutSlateLogLines(slate)) console.log(line);
   }
 
+  const managerRole = await orgData.applyManagerRoleMigration(
+    db,
+    orgId,
+    new Date().toISOString()
+  );
+  if (!managerRole.alreadyApplied) {
+    console.log(
+      `[manager-role] office memberships left as office: ${managerRole.officeCount}`
+    );
+  }
+
   migrated = true;
 }
 
@@ -676,6 +687,7 @@ export async function pgListReportPage(
     status?: string | null;
     limit: number;
     offset: number;
+    vehicleIds?: string[] | null;
   }
 ): Promise<{ reports: CheckoutReport[]; total: number; flagged: number }> {
   await pgMigrateAndSeed();
@@ -686,6 +698,7 @@ export async function pgListReportPage(
     status: query.status && query.status !== "all" ? query.status : null,
     limit: query.limit,
     offset: query.offset,
+    vehicleIds: query.vehicleIds,
   });
   const rows = page.rows as ReportRow[];
   const count = page.counts;

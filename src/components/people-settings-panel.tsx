@@ -58,7 +58,7 @@ export function PeopleSettingsPanel({ owner }: { owner: boolean }) {
 
   return (
     <div id="people" className="space-y-4">
-      <AccessRequestsPanel canGrantOwner={owner} canResetPassword={owner} />
+      <AccessRequestsPanel canGrantOwner={owner} canResetPassword />
       {owner && (
       <>
         {/* Stats */}

@@ -45,7 +45,13 @@ const OFFICE_STEPS: TourStep[] = [
 ];
 
 export function tourAudience(user: { role: UserRole | string; roleTitle?: string }): TourAudience {
-  if (user.roleTitle === "Owner" || user.roleTitle === "Office") return "office";
+  if (
+    user.roleTitle === "Owner" ||
+    user.roleTitle === "Manager" ||
+    user.roleTitle === "Office"
+  ) {
+    return "office";
+  }
   if (user.role === "management" || user.role === "super_admin" || user.role === "tech") {
     return "office";
   }

@@ -66,7 +66,8 @@ const SCHEMA = `
     expires_at TIMESTAMPTZ NOT NULL,
     revoked_at TIMESTAMPTZ,
     used_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL
+    created_at TIMESTAMPTZ NOT NULL,
+    fleet_ids TEXT
   );
 `;
 

@@ -363,16 +363,29 @@ export async function listReportPage(
     status: string | null;
     limit: number;
     offset: number;
+    /** When set, only these units. An empty list matches nothing. Omit for every unit. */
+    vehicleIds?: string[] | null;
   }
 ) {
   if (query.companyId) await assertFleetInOrg(db, orgId, query.companyId);
+  const scopedVehicles = query.vehicleIds ?? null;
+  const vehicleParams = scopedVehicles ?? [];
+  const vehicleSql =
+    scopedVehicles === null
+      ? ""
+      : scopedVehicles.length === 0
+        ? "AND FALSE"
+        : `AND vehicle_id IN (${vehicleParams.map((_, index) => `$${6 + index}`).join(", ")})`;
   const params = [
     org(orgId),
     query.includeArchived,
     query.companyId,
     query.vehicleId,
     query.status,
+    ...vehicleParams,
   ];
+  const limitSlot = 6 + vehicleParams.length;
+  const offsetSlot = limitSlot + 1;
   const counts = await db.query(
     `SELECT
       (COUNT(*) FILTER (WHERE ${STATUS_MATCH}))::int AS total,
@@ -382,7 +395,8 @@ export async function listReportPage(
           OR btrim(COALESCE(new_damage_notes, '')) <> ''
       ))::int AS flagged
     FROM checkout_reports
-    WHERE ${REPORT_PAGE_FILTER}`,
+    WHERE ${REPORT_PAGE_FILTER}
+      ${vehicleSql}`,
     params
   );
   const rows = await db.query(
@@ -408,9 +422,10 @@ export async function listReportPage(
     FROM checkout_reports
     WHERE ${REPORT_PAGE_FILTER}
       AND ${STATUS_MATCH}
+      ${vehicleSql}
     ORDER BY completed_at DESC
-    LIMIT $6
-    OFFSET $7`,
+    LIMIT $${limitSlot}
+    OFFSET $${offsetSlot}`,
     [...params, query.limit, query.offset]
   );
   return { counts: counts[0] ?? {}, rows };
@@ -1225,6 +1240,48 @@ export async function replaceUserFleets(
   }
 }
 
+export async function listFleetCompanies(db: OrgDb, orgId: string, fleetIds: string[]) {
+  if (fleetIds.length === 0) return [];
+  const slots = fleetIds.map((_, index) => `$${index + 2}`).join(", ");
+  return db.query(
+    `SELECT id, company_id FROM fleets WHERE org_id = $1 AND id IN (${slots})`,
+    [org(orgId), ...fleetIds]
+  );
+}
+
+export async function listVehicleIdsForFleets(db: OrgDb, orgId: string, fleetIds: string[]) {
+  if (fleetIds.length === 0) return [];
+  const slots = fleetIds.map((_, index) => `$${index + 2}`).join(", ");
+  const rows = await db.query(
+    `SELECT id FROM vehicles WHERE org_id = $1 AND fleet_id IN (${slots})`,
+    [org(orgId), ...fleetIds]
+  );
+  return rows.map((row) => String(row.id));
+}
+
+export async function listUserFleetRows(db: OrgDb, orgId: string) {
+  return db.query(
+    `SELECT user_id, fleet_id FROM user_fleets WHERE org_id = $1 ORDER BY user_id, fleet_id`,
+    [org(orgId)]
+  );
+}
+
+export async function setUserActive(db: OrgDb, orgId: string, userId: string, active: boolean) {
+  const rows = await db.query(
+    `UPDATE app_users SET active = $1 WHERE id = $2 AND org_id = $3 RETURNING id`,
+    [active, userId, org(orgId)]
+  );
+  return Boolean(rows[0]);
+}
+
+export async function setUserLegacyRole(db: OrgDb, orgId: string, userId: string, role: string) {
+  const rows = await db.query(
+    `UPDATE app_users SET role = $1 WHERE id = $2 AND org_id = $3 RETURNING id`,
+    [role, userId, org(orgId)]
+  );
+  return Boolean(rows[0]);
+}
+
 export async function listUserFleetIds(db: OrgDb, orgId: string, userId: string) {
   const rows = await db.query(
     `SELECT fleet_id FROM user_fleets WHERE org_id = $1 AND user_id = $2 ORDER BY fleet_id`,
@@ -1704,6 +1761,43 @@ export async function applyRolloutSlate(
     mileageCleared: mileage.cleared,
     mileageFromLive: mileage.fromLive,
   };
+}
+
+/**
+ * Record that Manager exists. Existing Office memberships stay Office.
+ * A second run does not change any person.
+ */
+export async function applyManagerRoleMigration(
+  db: OrgDb,
+  orgId: string,
+  appliedAt: string
+): Promise<{ alreadyApplied: boolean; officeCount: number }> {
+  const scoped = org(orgId);
+  await db.query(
+    `ALTER TABLE fleet_settings ADD COLUMN IF NOT EXISTS manager_role_at TIMESTAMPTZ`
+  );
+  await db.query(`ALTER TABLE auth_invites ADD COLUMN IF NOT EXISTS fleet_ids TEXT`);
+  const office = await db.query(
+    `SELECT COUNT(*)::int AS office_count
+     FROM org_memberships
+     WHERE org_id = $1 AND role = 'office'`,
+    [scoped]
+  );
+  const officeCount = Number(office[0]?.office_count ?? 0);
+  const marker = await db.query(
+    `SELECT manager_role_at FROM fleet_settings WHERE org_id = $1 LIMIT 1`,
+    [scoped]
+  );
+  if (marker[0]?.manager_role_at) {
+    return { alreadyApplied: true, officeCount };
+  }
+  await db.query(
+    `UPDATE fleet_settings
+     SET manager_role_at = $2
+     WHERE org_id = $1 AND manager_role_at IS NULL`,
+    [scoped, appliedAt]
+  );
+  return { alreadyApplied: false, officeCount };
 }
 
 export async function deleteMemberUser(db: OrgDb, orgId: string, userId: string) {

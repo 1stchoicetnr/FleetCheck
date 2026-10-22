@@ -19,7 +19,13 @@ import { Company, FLEET_TYPE_LABELS, Fleet, FleetType } from "@/lib/types";
 
 const TYPE_OPTIONS: FleetType[] = ["taxi", "tow", "turo", "service_vehicle"];
 
-export function FleetManager({ canEdit }: { canEdit: boolean }) {
+export function FleetManager({
+  canEdit,
+  canCreate = canEdit,
+}: {
+  canEdit: boolean;
+  canCreate?: boolean;
+}) {
   const [ready, setReady] = useState(false);
   const [fleets, setFleets] = useState<SharedFleet[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -124,7 +130,7 @@ export function FleetManager({ canEdit }: { canEdit: boolean }) {
           <p className="text-sm text-gray-600">Showing the fleets saved on this phone.</p>
         ) : null}
         {error ? <p className="text-sm text-red-700">{error}</p> : null}
-        {canEdit ? (
+        {canCreate ? (
           <form onSubmit={onAdd} className="space-y-3 border-b border-gray-100 pb-4">
             <Input
               id="fleet-name"

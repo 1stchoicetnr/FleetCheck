@@ -188,7 +188,7 @@ export default function DashboardPage() {
             const Icon = tile.icon;
             const badge = visibleMenuBadge(badges[id]);
             const vehicleDesc =
-              id === "vehicles" && canAddVehicle(user.role)
+              id === "vehicles" && canAddVehicle(user)
                 ? "Fleet list, add, and archived units"
                 : id === "vehicles" && user.role === "driver"
                   ? "Units you can check out"

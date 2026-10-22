@@ -1,6 +1,6 @@
 import { errorResponse } from "@/lib/server/api-error";
 import { createAppUser, listAppUsers } from "@/lib/server/checkout-repo";
-import { assertOfficeAccess } from "@/lib/server/request-auth";
+import { assertOwnerAccess } from "@/lib/server/request-auth";
 import { NextResponse } from "next/server";
 import type { UserRole } from "@/lib/types";
 
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   try {
-    const auth = await assertOfficeAccess(req);
+    const auth = await assertOwnerAccess(req);
     const users = await listAppUsers(auth.orgId);
     return NextResponse.json({ users }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
@@ -19,7 +19,7 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const auth = await assertOfficeAccess(req);
+    const auth = await assertOwnerAccess(req);
     const body = (await req.json()) as { name?: string; email?: string; role?: UserRole };
     if (!body.name || !body.email || !body.role) {
       return NextResponse.json({ error: "Name, email, and role are required" }, { status: 400 });

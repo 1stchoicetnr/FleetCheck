@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { errorResponse } from "@/lib/server/api-error";
 import { acceptLink, openSession, previewLink, publicProfile } from "@/lib/server/auth-accounts";
+import { fleetProfileForMember } from "@/lib/server/fleet-scope";
 import { applySessionCookie } from "@/lib/server/auth-http";
 import { openAuthDb, resolveRequestAuth } from "@/lib/server/request-auth";
 
@@ -42,7 +43,12 @@ export async function POST(
     const session = await openSession(db, { id: user.id, orgId: user.orgId, role: user.role });
     return applySessionCookie(
       NextResponse.json(
-        { user: publicProfile(user) },
+        {
+          user: {
+            ...publicProfile(user),
+            ...(await fleetProfileForMember(user.orgId, user.id, user.role)),
+          },
+        },
         { headers: { "Cache-Control": "no-store" } }
       ),
       session

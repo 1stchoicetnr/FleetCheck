@@ -1,6 +1,6 @@
 import { errorResponse } from "@/lib/server/api-error";
 import { updateAppUser } from "@/lib/server/checkout-repo";
-import { assertOfficeAccess } from "@/lib/server/request-auth";
+import { assertOwnerAccess } from "@/lib/server/request-auth";
 import { NextResponse } from "next/server";
 import type { UserRole } from "@/lib/types";
 
@@ -12,7 +12,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await assertOfficeAccess(req);
+    const auth = await assertOwnerAccess(req);
     const { id } = await params;
     const body = (await req.json()) as {
       name?: string;

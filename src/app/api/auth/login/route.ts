@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { errorResponse } from "@/lib/server/api-error";
 import { classifySignIn, openSession, publicProfile } from "@/lib/server/auth-accounts";
+import { fleetProfileForMember } from "@/lib/server/fleet-scope";
 import { applySessionCookie } from "@/lib/server/auth-http";
 import {
   clearLoginFails,
@@ -49,7 +50,12 @@ export async function POST(req: Request) {
     const token = await openSession(db, { id: user.id, orgId: auth.orgId, role: user.role });
     return applySessionCookie(
       NextResponse.json(
-        { user: publicProfile(user) },
+        {
+          user: {
+            ...publicProfile(user),
+            ...(await fleetProfileForMember(auth.orgId, user.id, user.role)),
+          },
+        },
         { headers: { "Cache-Control": "no-store" } }
       ),
       token

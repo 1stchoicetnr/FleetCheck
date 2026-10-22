@@ -6,12 +6,11 @@ import { AppHeader } from "@/components/app-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
-import { canManageFleet } from "@/lib/fleet-config";
-import { getCompanies, getFleets } from "@/lib/storage";
-import { upsertSharedVehicle } from "@/lib/checkout-api";
+import { fetchCompanies, fetchFleets, upsertSharedVehicle, type SharedFleet } from "@/lib/checkout-api";
+import { canEditVehicles } from "@/lib/role-access";
 import { inferPowertrain, Powertrain } from "@/lib/inspection-form";
 import { fleetSubtitle, fleetTitle } from "@/lib/fleet-rows";
-import { Company, Fleet } from "@/lib/types";
+import { Company } from "@/lib/types";
 import { defaultCompanyId } from "@/lib/companies";
 import { cn } from "@/lib/utils";
 
@@ -20,7 +19,7 @@ type FieldKey = "companyId" | "plate" | "make" | "model" | "year" | "fleetId";
 export default function NewVehiclePage() {
   const { user, loading } = useAuth();
   const router = useRouter();
-  const [fleets, setFleets] = useState<Fleet[]>([]);
+  const [fleets, setFleets] = useState<SharedFleet[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [form, setForm] = useState({
     plate: "",
@@ -39,17 +38,19 @@ export default function NewVehiclePage() {
 
   useEffect(() => {
     if (!loading && !user) router.replace("/");
-    if (user && !canManageFleet(user.role)) router.replace("/dashboard");
+    if (user && !canEditVehicles(user)) router.replace("/dashboard");
   }, [user, loading, router]);
 
   useEffect(() => {
-    Promise.all([getFleets(), getCompanies()]).then(([f, c]) => {
-      setFleets(f);
+    Promise.all([fetchFleets(), fetchCompanies()]).then(([f, c]) => {
+      const active = f.filter((fleet) => !fleet.archivedAt);
+      setFleets(active);
       setCompanies(c);
+      const first = active[0];
       setForm((prev) => ({
         ...prev,
-        fleetId: prev.fleetId || f[0]?.id || "",
-        companyId: prev.companyId || defaultCompanyId(c),
+        fleetId: prev.fleetId || first?.id || "",
+        companyId: prev.companyId || first?.companyId || defaultCompanyId(c),
       }));
     });
   }, []);
@@ -61,6 +62,7 @@ export default function NewVehiclePage() {
     if (!form.make.trim()) keys.push("make");
     if (!form.model.trim()) keys.push("model");
     if (!form.year.trim() || Number.isNaN(Number(form.year))) keys.push("year");
+    if (!form.fleetId) keys.push("fleetId");
     return keys;
   };
 
@@ -118,7 +120,7 @@ export default function NewVehiclePage() {
       <AppHeader title="Add Vehicle" backHref="/vehicles" />
       <div className="max-w-lg mx-auto px-4 py-6 space-y-4">
         <p className="text-sm text-gray-600">
-          Super Admin add writes to the same shared unit list Checkout uses.
+          This adds a unit to the shared checkout list.
           After save, the vehicle appears under active Unit # on Checkout.
         </p>
         <div>
@@ -127,7 +129,11 @@ export default function NewVehiclePage() {
           </label>
           <select
             value={form.companyId}
-            onChange={(e) => setForm({ ...form, companyId: e.target.value })}
+            onChange={(e) => {
+              const companyId = e.target.value;
+              const fleet = fleets.find((item) => item.companyId === companyId);
+              setForm({ ...form, companyId, fleetId: fleet?.id || form.fleetId });
+            }}
             className={cn(
               "w-full rounded-xl border px-4 py-3 text-base min-h-[48px] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none",
               fieldError("companyId")
@@ -135,7 +141,9 @@ export default function NewVehiclePage() {
                 : "border-gray-300"
             )}
           >
-            {companies.map((c) => (
+            {companies
+              .filter((company) => fleets.some((fleet) => fleet.companyId === company.id))
+              .map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
               </option>
@@ -217,11 +225,19 @@ export default function NewVehiclePage() {
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1.5">
-            Fleet (local overview)
+            Fleet
           </label>
           <select
             value={form.fleetId}
-            onChange={(e) => setForm({ ...form, fleetId: e.target.value })}
+            onChange={(e) => {
+              const fleetId = e.target.value;
+              const fleet = fleets.find((item) => item.id === fleetId);
+              setForm({
+                ...form,
+                fleetId,
+                companyId: fleet?.companyId || form.companyId,
+              });
+            }}
             className="w-full rounded-xl border border-gray-300 px-4 py-3 text-base min-h-[48px] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 focus:outline-none"
           >
             {fleets.map((f) => {

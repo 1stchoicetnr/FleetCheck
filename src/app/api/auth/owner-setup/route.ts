@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { errorResponse } from "@/lib/server/api-error";
 import { AuthError, openSession, publicProfile } from "@/lib/server/auth-accounts";
+import { fleetProfileForMember } from "@/lib/server/fleet-scope";
 import { applySessionCookie } from "@/lib/server/auth-http";
 import { findOwnerWithoutPassword } from "@/lib/server/org-data";
 import { orgFromSession } from "@/lib/server/org-scope";
@@ -53,12 +54,15 @@ export async function POST(req: Request) {
     return applySessionCookie(
       NextResponse.json(
         {
-          user: publicProfile({
-            id: String(owner.id),
-            name: String(owner.name),
-            email: String(owner.email),
-            role: "owner",
-          }),
+          user: {
+            ...publicProfile({
+              id: String(owner.id),
+              name: String(owner.name),
+              email: String(owner.email),
+              role: "owner",
+            }),
+            ...(await fleetProfileForMember(orgId, String(owner.id), "owner")),
+          },
         },
         { headers: { "Cache-Control": "no-store" } }
       ),

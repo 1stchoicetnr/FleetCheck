@@ -12,7 +12,13 @@ type Screen = "sign-in" | "request" | "waiting" | "denied";
 
 function homeFor(user: User): string {
   if (user.roleTitle === "Driver" || user.role === "driver") return "/checkout";
-  if (user.roleTitle === "Owner" || user.roleTitle === "Office") return "/dashboard";
+  if (
+    user.roleTitle === "Owner" ||
+    user.roleTitle === "Manager" ||
+    user.roleTitle === "Office"
+  ) {
+    return "/dashboard";
+  }
   if (user.role === "super_admin" || user.role === "management" || user.role === "tech") {
     return "/dashboard";
   }

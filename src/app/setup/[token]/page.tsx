@@ -18,7 +18,13 @@ type Preview = {
 
 function homeFor(user: User): string {
   if (user.roleTitle === "Driver" || user.role === "driver") return "/checkout";
-  if (user.roleTitle === "Owner" || user.roleTitle === "Office") return "/office";
+  if (
+    user.roleTitle === "Owner" ||
+    user.roleTitle === "Manager" ||
+    user.roleTitle === "Office"
+  ) {
+    return "/office";
+  }
   return "/dashboard";
 }
 

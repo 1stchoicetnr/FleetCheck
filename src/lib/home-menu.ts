@@ -1,3 +1,12 @@
+import {
+  accessRank,
+  canEditCompanySettings,
+  canEditFleetNotifications,
+  canEditVehicles,
+  canManagePeople,
+  canReviewOfficeWork,
+} from "./role-access";
+
 export interface MenuUser {
   role: string;
   roleTitle?: string;
@@ -18,52 +27,38 @@ export function canStartCheck(role: string): boolean {
 }
 
 export function canReviewOffice(role: string): boolean {
-  return role === "super_admin" || role === "management" || role === "tech";
+  return canReviewOfficeWork({ role });
 }
 
 export function canSeeAlerts(role: string): boolean {
-  return role === "super_admin" || role === "management" || role === "tech";
+  return canReviewOffice(role);
 }
 
-export function canEditNotifications(role: string): boolean {
-  return canSeeAlerts(role);
+export function canEditNotifications(user: MenuUser): boolean {
+  return canEditFleetNotifications(user);
 }
 
 export function canEditCompany(user: MenuUser): boolean {
-  return (
-    user.role === "super_admin" ||
-    user.role === "management" ||
-    user.roleTitle === "Owner" ||
-    canReviewOffice(user.role)
-  );
+  return canEditCompanySettings(user);
 }
 
-export function canEditPeople(role: string): boolean {
-  return role === "super_admin";
+export function canEditPeople(user: MenuUser): boolean {
+  return accessRank(user) === "owner";
 }
 
-/** Owner and Office review access requests. Tech and Driver do not. */
+/** Owner and Manager approve access requests. Office, Tech, and Driver do not. */
 export function canReviewAccessRequests(user: MenuUser): boolean {
-  return (
-    user.role === "super_admin" ||
-    user.role === "management" ||
-    user.roleTitle === "Owner" ||
-    user.roleTitle === "Office"
-  );
+  return canManagePeople(user);
 }
 
-export function canAddVehicle(role: string): boolean {
-  return role === "super_admin";
+export function canAddVehicle(user: MenuUser): boolean {
+  return canEditVehicles(user);
 }
 
-/** Office and Owner edit fleets. Tech can open Settings and only sees the list. */
+/** Owner edits every fleet. Manager edits assigned fleets. Office views only. */
 export function canEditFleets(user: MenuUser): boolean {
-  return (
-    user.role === "super_admin" ||
-    user.role === "management" ||
-    user.roleTitle === "Owner" ||
-    user.roleTitle === "Office"
-  );
+  const rank = accessRank(user);
+  return rank === "owner" || rank === "manager";
 }
 
 /** A menu count is shown only when there is something to do. */
@@ -75,7 +70,7 @@ export function visibleMenuBadge(count: number | null | undefined): number | nul
 /** Daily actions first, then the combined vehicles and settings tiles. */
 export function homeTiles(user: MenuUser): HomeTileId[] {
   const tiles: HomeTileId[] = ["my-checks"];
-  if (canReviewOffice(user.role)) tiles.push("office", "alerts");
+  if (canReviewOfficeWork(user)) tiles.push("office", "alerts");
   tiles.push("vehicles");
   if (settingsSections(user).length > 0) tiles.push("settings");
   if (user.role === "tech") tiles.push("reports");
@@ -85,7 +80,7 @@ export function homeTiles(user: MenuUser): HomeTileId[] {
 export function settingsSections(user: MenuUser): SettingsSectionId[] {
   const sections: SettingsSectionId[] = [];
   if (canEditCompany(user)) sections.push("company");
-  if (canEditNotifications(user.role)) sections.push("notifications");
-  if (canEditPeople(user.role) || canReviewAccessRequests(user)) sections.push("people");
+  if (canEditNotifications(user)) sections.push("notifications");
+  if (canReviewAccessRequests(user)) sections.push("people");
   return sections;
 }

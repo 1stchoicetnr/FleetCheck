@@ -195,6 +195,8 @@ export interface User {
   companyIds: string[];
   /** Membership title when signed in with email. Demo role buttons leave this empty. */
   roleTitle?: string;
+  /** "all" sees every fleet. "assigned" is limited to fleetIds. */
+  fleetScope?: "all" | "assigned";
 }
 
 export interface Fleet {

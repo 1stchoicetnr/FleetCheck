@@ -1,7 +1,8 @@
 import { errorResponse } from "@/lib/server/api-error";
 import { NextResponse } from "next/server";
 import { deleteFleet, updateFleet } from "@/lib/server/checkout-repo";
-import { assertOfficeAccess } from "@/lib/server/request-auth";
+import { assertFleetInScope } from "@/lib/server/fleet-scope";
+import { assertOwnerAccess, assertPeopleAccess } from "@/lib/server/request-auth";
 import { parseFleetName } from "@/lib/fleet-catalog";
 
 export const runtime = "nodejs";
@@ -12,8 +13,9 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await assertOfficeAccess(req);
+    const auth = await assertPeopleAccess(req);
     const { id } = await params;
+    await assertFleetInScope(auth, id);
     const body = (await req.json()) as { name?: unknown; archived?: unknown };
     const patch: { name?: string; archived?: boolean } = {};
     if (body.name !== undefined) {
@@ -44,7 +46,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await assertOfficeAccess(req);
+    const auth = await assertOwnerAccess(req);
     const { id } = await params;
     await deleteFleet(auth.orgId, id);
     return NextResponse.json({ ok: true });

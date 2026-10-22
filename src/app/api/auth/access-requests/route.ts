@@ -4,14 +4,14 @@ import { accessRequestLimited, recordAccessRequest } from "@/lib/server/access-l
 import { pendingAccessRequests, submitAccessRequest } from "@/lib/server/access-requests";
 import { postAccessRequestToSlack } from "@/lib/server/access-slack";
 import { clientIp } from "@/lib/server/office-pin";
-import { assertOfficeAccess, openAuthDb, resolveRequestAuth } from "@/lib/server/request-auth";
+import { assertPeopleAccess, openAuthDb, resolveRequestAuth } from "@/lib/server/request-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   try {
-    const auth = await assertOfficeAccess(req);
+    const auth = await assertPeopleAccess(req);
     const db = await openAuthDb();
     const requests = await pendingAccessRequests(db, auth.orgId);
     return NextResponse.json(

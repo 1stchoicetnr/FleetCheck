@@ -5,7 +5,9 @@ import {
   setVehiclePowertrain,
   setVehicleService,
 } from "@/lib/server/checkout-repo";
-import { assertOfficeAccess } from "@/lib/server/request-auth";
+import { assertVehicleInScope } from "@/lib/server/fleet-scope";
+import { isOfficeRequest } from "@/lib/server/office-pin";
+import { resolveRequestAuth, sessionGrantsUnitEdit } from "@/lib/server/request-auth";
 import type { Powertrain } from "@/lib/inspection-form";
 import type { VehicleKnownIssue } from "@/lib/types";
 
@@ -17,8 +19,16 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await assertOfficeAccess(req);
+    let auth = await resolveRequestAuth(req);
+    if (!sessionGrantsUnitEdit(auth)) {
+      if (await isOfficeRequest(req)) {
+        auth = { ...auth, role: "owner", source: "pin" };
+      } else {
+        return NextResponse.json({ error: "Manager access is required." }, { status: 403 });
+      }
+    }
     const { id } = await params;
+    await assertVehicleInScope(auth, id);
     const orgId = auth.orgId;
     const body = (await req.json()) as {
       archived?: boolean;

@@ -64,7 +64,15 @@ export async function openAuthDb() {
 }
 
 export function sessionGrantsOffice(auth: RequestAuth): boolean {
-  return auth.role === "office" || auth.role === "owner";
+  return auth.role === "office" || auth.role === "manager" || auth.role === "owner";
+}
+
+export function sessionGrantsPeople(auth: RequestAuth): boolean {
+  return auth.role === "manager" || auth.role === "owner";
+}
+
+export function sessionGrantsUnitEdit(auth: RequestAuth): boolean {
+  return auth.role === "manager" || auth.role === "owner";
 }
 
 /** Owner session, or the office PIN, which stands in for an owner. */
@@ -86,4 +94,12 @@ export async function assertOwnerAccess(req: Request): Promise<RequestAuth> {
   if (auth.role === "owner") return auth;
   if (await isOfficeRequest(req)) return { ...auth, role: "owner", source: "pin" };
   throw new AuthError("Owner access is required.", 401);
+}
+
+/** Manager or owner. The office PIN still stands in for an owner while it is open. */
+export async function assertPeopleAccess(req: Request): Promise<RequestAuth> {
+  const auth = await resolveRequestAuth(req);
+  if (sessionGrantsPeople(auth)) return auth;
+  if (await isOfficeRequest(req)) return { ...auth, role: "owner", source: "pin" };
+  throw new AuthError("Manager access is required.", 401);
 }

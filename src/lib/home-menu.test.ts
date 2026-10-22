@@ -16,9 +16,15 @@ test("a driver sees the check, recent checks, and vehicles", () => {
   assert.deepEqual(settingsSections(user), []);
 });
 
-test("office sees review, alerts, vehicles, and people for access requests", () => {
+test("office sees review, alerts, and vehicles, and not people or settings", () => {
   const user = { role: "management", roleTitle: "Office" };
   assert.equal(canStartCheck(user.role), true);
+  assert.deepEqual(homeTiles(user), ["my-checks", "office", "alerts", "vehicles"]);
+  assert.deepEqual(settingsSections(user), []);
+});
+
+test("a manager sees office work plus notifications and people, not company settings", () => {
+  const user = { role: "management", roleTitle: "Manager" };
   assert.deepEqual(homeTiles(user), [
     "my-checks",
     "office",
@@ -26,7 +32,7 @@ test("office sees review, alerts, vehicles, and people for access requests", () 
     "vehicles",
     "settings",
   ]);
-  assert.deepEqual(settingsSections(user), ["company", "notifications", "people"]);
+  assert.deepEqual(settingsSections(user), ["notifications", "people"]);
 });
 
 test("an owner sees every daily tile and all three settings sections", () => {
@@ -45,8 +51,9 @@ test("an owner sees every daily tile and all three settings sections", () => {
   ]);
 });
 
-test("office and owner review access requests, and driver and tech do not", () => {
-  assert.equal(canReviewAccessRequests({ role: "management", roleTitle: "Office" }), true);
+test("manager and owner review access requests, and office, driver, and tech do not", () => {
+  assert.equal(canReviewAccessRequests({ role: "management", roleTitle: "Office" }), false);
+  assert.equal(canReviewAccessRequests({ role: "management", roleTitle: "Manager" }), true);
   assert.equal(canReviewAccessRequests({ role: "super_admin", roleTitle: "Owner" }), true);
   assert.equal(canReviewAccessRequests({ role: "driver", roleTitle: "Driver" }), false);
   assert.equal(canReviewAccessRequests({ role: "tech", roleTitle: "Tech" }), false);
@@ -56,8 +63,9 @@ test("office and owner review access requests, and driver and tech do not", () =
   ]);
 });
 
-test("office and owner can edit fleets, and driver and tech cannot", () => {
-  assert.equal(canEditFleets({ role: "management", roleTitle: "Office" }), true);
+test("manager and owner can edit fleets, and office, driver, and tech cannot", () => {
+  assert.equal(canEditFleets({ role: "management", roleTitle: "Office" }), false);
+  assert.equal(canEditFleets({ role: "management", roleTitle: "Manager" }), true);
   assert.equal(canEditFleets({ role: "super_admin", roleTitle: "Owner" }), true);
   assert.equal(canEditFleets({ role: "driver", roleTitle: "Driver" }), false);
   assert.equal(canEditFleets({ role: "tech", roleTitle: "Tech" }), false);

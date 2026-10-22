@@ -8,12 +8,34 @@ import {
 import { isOfficeRequest, assertOfficePin } from "@/lib/server/office-pin";
 import { getFleetSettings } from "@/lib/server/checkout-repo";
 import { filterVehiclesForDriver } from "@/lib/server/driver-fleets";
-import { resolveRequestAuth, sessionGrantsOffice } from "@/lib/server/request-auth";
+import {
+  assertFleetInScope,
+  assertVehicleInScope,
+  companyIdsInScope,
+  fleetScopeFor,
+} from "@/lib/server/fleet-scope";
+import {
+  resolveRequestAuth,
+  sessionGrantsOffice,
+  sessionGrantsUnitEdit,
+  type RequestAuth,
+} from "@/lib/server/request-auth";
 import { parseIncludeArchived } from "@/lib/vehicle-archive";
 import type { Powertrain } from "@/lib/inspection-form";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+async function limitOfficeVehicles<T extends { fleetId?: string }>(
+  auth: RequestAuth,
+  vehicles: T[]
+): Promise<T[]> {
+  if (auth.role !== "office" && auth.role !== "manager") return vehicles;
+  const scope = await fleetScopeFor(auth);
+  if (scope.all) return vehicles;
+  const allowed = new Set(scope.fleetIds);
+  return vehicles.filter((vehicle) => Boolean(vehicle.fleetId && allowed.has(vehicle.fleetId)));
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -23,7 +45,10 @@ export async function GET(req: NextRequest) {
     const plate = req.nextUrl.searchParams.get("plate") || undefined;
     if (companyId && plate) {
       const found = await findVehicleByPlate(orgId, companyId, plate);
-      const vehicles = await filterVehiclesForDriver(auth, found ? [found] : []);
+      const vehicles = await limitOfficeVehicles(
+        auth,
+        await filterVehiclesForDriver(auth, found ? [found] : [])
+      );
       const vehicle = vehicles[0] ?? null;
       return NextResponse.json(
         { vehicle, vehicles: vehicle ? [vehicle] : [] },
@@ -35,9 +60,12 @@ export async function GET(req: NextRequest) {
     const includeArchived = parseIncludeArchived(
       req.nextUrl.searchParams.get("includeArchived")
     );
-    const vehicles = await filterVehiclesForDriver(
+    const vehicles = await limitOfficeVehicles(
       auth,
-      await listVehicles(orgId, companyId, { includeArchived })
+      await filterVehiclesForDriver(
+        auth,
+        await listVehicles(orgId, companyId, { includeArchived })
+      )
     );
     return NextResponse.json(
       { vehicles },
@@ -67,8 +95,45 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
-    const office = sessionGrantsOffice(auth) || (await isOfficeRequest(req));
-    if (!office) {
+    const fleetId = body.fleetId?.trim() || "";
+    if ((auth.role === "office" || auth.role === "manager") && !fleetId) {
+      const existing = await findVehicleByPlate(auth.orgId, body.companyId, body.plate);
+      if (!existing) {
+        return NextResponse.json(
+          {
+            error:
+              auth.role === "office" ? "Manager access is required." : "Choose a fleet.",
+          },
+          { status: auth.role === "office" ? 403 : 400 }
+        );
+      }
+      await assertVehicleInScope(auth, existing.id);
+      const vehicle = await upsertVehicle(auth.orgId, {
+        companyId: existing.companyId,
+        unitNumber: existing.unitNumber,
+        plate: existing.plate,
+        make: existing.make,
+        model: existing.model,
+        year: existing.year,
+        powertrain: body.powertrain ?? existing.powertrain,
+      });
+      return NextResponse.json({ vehicle }, { status: 200 });
+    }
+    if (auth.role === "office") {
+      return NextResponse.json({ error: "Manager access is required." }, { status: 403 });
+    }
+    const editor = sessionGrantsUnitEdit(auth) || (await isOfficeRequest(req));
+    if (editor && auth.role === "manager") {
+      await assertFleetInScope(auth, fleetId);
+      const companies = await companyIdsInScope(auth);
+      if (companies && !companies.includes(body.companyId)) {
+        return NextResponse.json(
+          { error: "That fleet is outside your fleets." },
+          { status: 403 }
+        );
+      }
+    }
+    if (!editor) {
       // Driver (no PIN): may add a new unit only when the office toggle is on,
       // or update just the powertrain of a unit that already exists.
       const orgId = auth.orgId;
@@ -88,7 +153,7 @@ export async function POST(req: Request) {
       const settings = await getFleetSettings(orgId);
       if (!settings.allowDriverAddVehicles) {
         return NextResponse.json(
-          { error: "Only the office can add units right now." },
+          { error: "Only a manager can add units right now." },
           { status: 403 }
         );
       }

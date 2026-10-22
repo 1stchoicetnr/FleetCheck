@@ -1,7 +1,8 @@
 import { errorResponse } from "@/lib/server/api-error";
 import { NextRequest, NextResponse } from "next/server";
 import { createFleet, listFleets } from "@/lib/server/checkout-repo";
-import { assertOfficeAccess, orgIdFromRequest } from "@/lib/server/request-auth";
+import { fleetScopeFor } from "@/lib/server/fleet-scope";
+import { assertOwnerAccess, resolveRequestAuth } from "@/lib/server/request-auth";
 import { parseFleetName, parseFleetType } from "@/lib/fleet-catalog";
 
 export const runtime = "nodejs";
@@ -10,7 +11,15 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   try {
     const includeArchived = req.nextUrl.searchParams.get("includeArchived") === "1";
-    const fleets = await listFleets(await orgIdFromRequest(req), { includeArchived });
+    const auth = await resolveRequestAuth(req);
+    let fleets = await listFleets(auth.orgId, { includeArchived });
+    if (auth.role === "office" || auth.role === "manager") {
+      const scope = await fleetScopeFor(auth);
+      if (!scope.all) {
+        const allowed = new Set(scope.fleetIds);
+        fleets = fleets.filter((fleet) => allowed.has(fleet.id));
+      }
+    }
     return NextResponse.json(
       { fleets },
       { headers: { "Cache-Control": "no-store" } }
@@ -22,7 +31,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: Request) {
   try {
-    const auth = await assertOfficeAccess(req);
+    const auth = await assertOwnerAccess(req);
     const body = (await req.json()) as {
       name?: unknown;
       type?: unknown;

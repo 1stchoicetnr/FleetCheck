@@ -1,5 +1,6 @@
 import { errorResponse } from "@/lib/server/api-error";
 import { assertDriverMayCheckVehicle } from "@/lib/server/driver-fleets";
+import { vehicleIdsInScope } from "@/lib/server/fleet-scope";
 import {
   assertOfficeAccess,
   canViewArchivedRecords,
@@ -46,6 +47,7 @@ export async function GET(req: NextRequest) {
         (params.get("includeArchived") === "1" || statusParam === "archived"),
       companyId: params.get("companyId") || undefined,
       vehicleId: params.get("vehicleId") || undefined,
+      vehicleIds: await vehicleIdsInScope(auth),
       status: (statusParam as OfficeListStatus | null) || undefined,
       limit: params.has("limit") ? Number(params.get("limit")) : undefined,
       offset: params.has("offset") ? Number(params.get("offset")) : undefined,

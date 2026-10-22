@@ -4,8 +4,10 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppHeader } from "@/components/app-header";
 import { OfficePinGate } from "@/components/office-pin-gate";
+import { RolePicker } from "@/components/role-picker";
 import { useAuth } from "@/hooks/use-auth";
-import { canManageFleet, canReviewCheckout } from "@/lib/fleet-config";
+import { fetchFleets, type SharedFleet } from "@/lib/checkout-api";
+import { canManagePeople } from "@/lib/role-access";
 import {
   dangerOutlineButtonClass,
   primaryButtonClass,
@@ -20,6 +22,7 @@ type Person = {
   role: string;
   roleTitle: string;
   hasPassword: boolean;
+  fleetIds: string[];
 };
 
 type Invite = {
@@ -45,24 +48,34 @@ type Issued = {
 export default function PeoplePage() {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const includeOwner = Boolean(
+    user && (user.role === "super_admin" || user.roleTitle === "Owner")
+  );
   const [ready, setReady] = useState(false);
   const [people, setPeople] = useState<Person[]>([]);
   const [invites, setInvites] = useState<Invite[]>([]);
+  const [fleets, setFleets] = useState<SharedFleet[]>([]);
   const [error, setError] = useState("");
   const [issued, setIssued] = useState<Issued | null>(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("driver");
+  const [inviteFleets, setInviteFleets] = useState<string[]>([]);
+  const [personRoles, setPersonRoles] = useState<Record<string, string>>({});
+  const [personFleets, setPersonFleets] = useState<Record<string, string[]>>({});
   const [busy, setBusy] = useState("");
   const markReady = useCallback(() => setReady(true), []);
 
   useEffect(() => {
     if (!loading && !user) router.replace("/");
-    if (user && !canReviewCheckout(user.role)) router.replace("/dashboard");
+    if (user && !canManagePeople(user)) router.replace("/dashboard");
   }, [user, loading, router]);
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/auth/people", { cache: "no-store" });
+    const [res, fleetList] = await Promise.all([
+      fetch("/api/auth/people", { cache: "no-store" }),
+      fetchFleets().catch(() => [] as SharedFleet[]),
+    ]);
     const data = (await res.json().catch(() => ({}))) as {
       people?: Person[];
       invites?: Invite[];
@@ -72,8 +85,24 @@ export default function PeoplePage() {
       setError(data.error || "Could not load people.");
       return;
     }
-    setPeople(data.people || []);
+    const nextPeople = data.people || [];
+    setPeople(nextPeople);
     setInvites(data.invites || []);
+    setFleets(fleetList.filter((fleet) => !fleet.archivedAt));
+    setPersonRoles((current) => {
+      const next = { ...current };
+      for (const person of nextPeople) {
+        if (!next[person.id]) next[person.id] = person.role || "driver";
+      }
+      return next;
+    });
+    setPersonFleets((current) => {
+      const next = { ...current };
+      for (const person of nextPeople) {
+        if (!next[person.id]) next[person.id] = person.fleetIds || [];
+      }
+      return next;
+    });
     setError("");
   }, []);
 
@@ -112,13 +141,17 @@ export default function PeoplePage() {
 
   const invite = async (event: FormEvent) => {
     event.preventDefault();
+    if (!includeOwner && inviteFleets.length < 1) {
+      setError("Choose at least one fleet.");
+      return;
+    }
     setBusy("invite");
     setError("");
     try {
       const res = await fetch("/api/auth/invites", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, role }),
+        body: JSON.stringify({ name, email, role, fleetIds: inviteFleets }),
       });
       const data = (await res.json().catch(() => ({}))) as Issued & { error?: string };
       if (!res.ok || !data.url) {
@@ -134,6 +167,7 @@ export default function PeoplePage() {
       setName("");
       setEmail("");
       setRole("driver");
+      setInviteFleets([]);
       await load();
     } catch {
       setError("Could not create that invite.");
@@ -160,8 +194,71 @@ export default function PeoplePage() {
     }
   };
 
-  if (loading || !user) return null;
-  const owner = canManageFleet(user.role) || user.roleTitle === "Owner";
+  const toggleFleet = (
+    current: string[],
+    fleetId: string,
+    apply: (next: string[]) => void
+  ) => {
+    const selected = new Set(current);
+    if (selected.has(fleetId)) selected.delete(fleetId);
+    else selected.add(fleetId);
+    apply([...selected]);
+  };
+
+  const savePerson = async (person: Person) => {
+    const fleetIds = personFleets[person.id] || person.fleetIds || [];
+    if (fleetIds.length < 1 && (person.fleetIds || []).length > 0) {
+      setError("Choose at least one fleet.");
+      return;
+    }
+    setBusy(person.id + "save");
+    setError("");
+    try {
+      const res = await fetch(`/api/auth/people/${encodeURIComponent(person.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          fleetIds.length
+            ? { role: personRoles[person.id] || person.role || "driver", fleetIds }
+            : { role: personRoles[person.id] || person.role || "driver" }
+        ),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setError(data.error || "Could not update that person.");
+        return;
+      }
+      await load();
+    } catch {
+      setError("Could not update that person.");
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const setActive = async (person: Person, active: boolean) => {
+    setBusy(person.id + "active");
+    setError("");
+    try {
+      const res = await fetch(`/api/auth/people/${encodeURIComponent(person.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ active }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setError(data.error || "Could not update that person.");
+        return;
+      }
+      await load();
+    } catch {
+      setError("Could not update that person.");
+    } finally {
+      setBusy("");
+    }
+  };
+
+  if (loading || !user || !canManagePeople(user)) return null;
   const openInvites = invites.filter(
     (inviteRow) =>
       !inviteRow.usedAt &&
@@ -178,8 +275,8 @@ export default function PeoplePage() {
             <h2 className="text-xl font-bold text-gray-900">People and invites</h2>
             <p className="mt-1 text-sm text-gray-600">
               Invite links and QR codes skip approval. They expire in 7 days, work once,
-              and can be revoked. Reset password sends a one-time setup link. The office
-              PIN stays on the sign-in page until an owner sets a password.
+              and can be revoked. A manager can invite and approve people only on fleets
+              they already have. Owner stays with an owner.
             </p>
           </div>
 
@@ -189,13 +286,7 @@ export default function PeoplePage() {
             </p>
           )}
 
-          {!owner && (
-            <p className="rounded-2xl border border-gray-200 bg-white p-4 text-sm text-gray-700">
-              Only an owner can invite people.
-            </p>
-          )}
-
-          {owner && issued && (
+          {issued && (
             <section className="space-y-3 rounded-2xl border border-gray-200 bg-white p-4">
               <h3 className="font-bold text-gray-900">{issued.label}</h3>
               <p className="text-xs text-gray-500">
@@ -232,69 +323,70 @@ export default function PeoplePage() {
             </section>
           )}
 
-          {owner && (
-            <section className="space-y-3 rounded-2xl border border-gray-200 bg-white p-4">
-              <h3 className="font-bold text-gray-900">Invite someone</h3>
-              <form onSubmit={invite} className="space-y-3">
-                <div>
-                  <label htmlFor="invite-name" className="mb-1 block text-sm font-semibold text-gray-900">
-                    Name
+          <section className="space-y-3 rounded-2xl border border-gray-200 bg-white p-4">
+            <h3 className="font-bold text-gray-900">Invite someone</h3>
+            <form onSubmit={invite} className="space-y-3">
+              <div>
+                <label htmlFor="invite-name" className="mb-1 block text-sm font-semibold text-gray-900">
+                  Name
+                </label>
+                <input
+                  id="invite-name"
+                  required
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  className="min-h-[48px] w-full rounded-xl border border-gray-200 bg-white px-3 text-gray-900"
+                />
+              </div>
+              <div>
+                <label htmlFor="invite-email" className="mb-1 block text-sm font-semibold text-gray-900">
+                  Email
+                </label>
+                <input
+                  id="invite-email"
+                  type="email"
+                  required
+                  autoComplete="off"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  className="min-h-[48px] w-full rounded-xl border border-gray-200 bg-white px-3 text-gray-900"
+                />
+              </div>
+              <RolePicker id="invite-role" value={role} includeOwner={includeOwner} onChange={setRole} />
+              <fieldset className="space-y-2">
+                <legend className="text-sm font-semibold text-gray-900">Fleets</legend>
+                {fleets.map((fleet) => (
+                  <label key={fleet.id} className="flex min-h-[44px] items-center gap-3 text-sm text-gray-900">
+                    <input
+                      type="checkbox"
+                      checked={inviteFleets.includes(fleet.id)}
+                      onChange={() =>
+                        toggleFleet(inviteFleets, fleet.id, setInviteFleets)
+                      }
+                    />
+                    {fleet.name}
                   </label>
-                  <input
-                    id="invite-name"
-                    required
-                    value={name}
-                    onChange={(event) => setName(event.target.value)}
-                    className="min-h-[48px] w-full rounded-xl border border-gray-200 bg-white px-3 text-gray-900"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="invite-email" className="mb-1 block text-sm font-semibold text-gray-900">
-                    Email
-                  </label>
-                  <input
-                    id="invite-email"
-                    type="email"
-                    required
-                    autoComplete="off"
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
-                    className="min-h-[48px] w-full rounded-xl border border-gray-200 bg-white px-3 text-gray-900"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="invite-role" className="mb-1 block text-sm font-semibold text-gray-900">
-                    Role
-                  </label>
-                  <select
-                    id="invite-role"
-                    value={role}
-                    onChange={(event) => setRole(event.target.value)}
-                    className="min-h-[48px] w-full rounded-xl border border-gray-200 bg-white px-3 text-gray-900"
-                  >
-                    <option value="driver">Driver</option>
-                    <option value="office">Office</option>
-                    <option value="owner">Owner</option>
-                  </select>
-                </div>
-                <button
-                  type="submit"
-                  disabled={busy === "invite"}
-                  className={`min-h-[48px] rounded-xl px-4 font-semibold ${primaryButtonClass}`}
-                >
-                  {busy === "invite" ? "Creating…" : "Create invite link"}
-                </button>
-              </form>
-            </section>
-          )}
+                ))}
+              </fieldset>
+              <button
+                type="submit"
+                disabled={busy === "invite"}
+                className={`min-h-[48px] rounded-xl px-4 font-semibold ${primaryButtonClass}`}
+              >
+                {busy === "invite" ? "Creating…" : "Create invite link"}
+              </button>
+            </form>
+          </section>
 
-          {owner && (
-            <section className="space-y-3">
-              <h3 className="font-bold text-gray-900">People</h3>
-              {people.map((person) => (
+          <section className="space-y-3">
+            <h3 className="font-bold text-gray-900">People</h3>
+            {people.map((person) => {
+              const selected = personFleets[person.id] || person.fleetIds || [];
+              const ownerPerson = person.role === "owner";
+              return (
                 <article
                   key={person.id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white p-4"
+                  className="space-y-3 rounded-2xl border border-gray-200 bg-white p-4"
                 >
                   <div>
                     <p className="font-semibold text-gray-900">{person.name}</p>
@@ -308,51 +400,103 @@ export default function PeoplePage() {
                         : "Inactive"}
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    disabled={!person.active || busy === person.id}
-                    onClick={() => void issueSetup(person)}
-                    className={`min-h-[44px] rounded-xl px-3 text-sm font-semibold ${secondaryOutlineButtonClass}`}
-                  >
-                    {busy === person.id ? "Creating…" : "Reset password"}
-                  </button>
-                </article>
-              ))}
-            </section>
-          )}
-
-          {owner && (
-            <section className="space-y-3">
-              <h3 className="font-bold text-gray-900">Open links</h3>
-              {openInvites.length === 0 && (
-                <p className="text-sm text-gray-500">No open links.</p>
-              )}
-              {openInvites.map((inviteRow) => (
-                <article
-                  key={inviteRow.id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white p-4"
-                >
-                  <div>
-                    <p className="font-semibold text-gray-900">
-                      {inviteRow.kind === "setup" ? "Setup" : "Invite"} ·{" "}
-                      {inviteRow.name || inviteRow.email || inviteRow.userId}
-                    </p>
-                    <p className="text-sm text-gray-600">
-                      {inviteRow.roleTitle} · expires {new Date(inviteRow.expiresAt).toLocaleString()}
-                    </p>
+                  {!ownerPerson && (
+                    <>
+                      <RolePicker
+                        id={`person-role-${person.id}`}
+                        value={personRoles[person.id] || person.role || "driver"}
+                        includeOwner={includeOwner}
+                        onChange={(next) =>
+                          setPersonRoles((current) => ({ ...current, [person.id]: next }))
+                        }
+                      />
+                      <fieldset className="space-y-2">
+                        <legend className="text-sm font-semibold text-gray-900">Fleets</legend>
+                        {fleets.map((fleet) => (
+                          <label
+                            key={fleet.id}
+                            className="flex min-h-[44px] items-center gap-3 text-sm text-gray-900"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selected.includes(fleet.id)}
+                              onChange={() =>
+                                toggleFleet(selected, fleet.id, (next) =>
+                                  setPersonFleets((current) => ({ ...current, [person.id]: next }))
+                                )
+                              }
+                            />
+                            {fleet.name}
+                          </label>
+                        ))}
+                      </fieldset>
+                    </>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    {!ownerPerson && (
+                      <button
+                        type="button"
+                        disabled={busy === person.id + "save"}
+                        onClick={() => void savePerson(person)}
+                        className={`min-h-[44px] rounded-xl px-3 text-sm font-semibold ${primaryButtonClass}`}
+                      >
+                        {busy === person.id + "save" ? "Saving…" : "Save access"}
+                      </button>
+                    )}
+                    {!ownerPerson && (
+                      <button
+                        type="button"
+                        disabled={busy === person.id + "active"}
+                        onClick={() => void setActive(person, !person.active)}
+                        className={`min-h-[44px] rounded-xl px-3 text-sm font-semibold ${secondaryOutlineButtonClass}`}
+                      >
+                        {person.active ? "Deactivate" : "Reactivate"}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      disabled={!person.active || busy === person.id || (ownerPerson && !includeOwner)}
+                      onClick={() => void issueSetup(person)}
+                      className={`min-h-[44px] rounded-xl px-3 text-sm font-semibold ${secondaryOutlineButtonClass}`}
+                    >
+                      {busy === person.id ? "Creating…" : "Reset password"}
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    disabled={busy === inviteRow.id}
-                    onClick={() => void revoke(inviteRow.id)}
-                    className={`min-h-[44px] rounded-xl px-3 text-sm font-semibold ${dangerOutlineButtonClass}`}
-                  >
-                    Revoke
-                  </button>
                 </article>
-              ))}
-            </section>
-          )}
+              );
+            })}
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="font-bold text-gray-900">Open links</h3>
+            {openInvites.length === 0 && (
+              <p className="text-sm text-gray-500">No open links.</p>
+            )}
+            {openInvites.map((inviteRow) => (
+              <article
+                key={inviteRow.id}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white p-4"
+              >
+                <div>
+                  <p className="font-semibold text-gray-900">
+                    {inviteRow.kind === "setup" ? "Setup" : "Invite"} ·{" "}
+                    {inviteRow.name || inviteRow.email || inviteRow.userId}
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    {inviteRow.roleTitle} · expires {new Date(inviteRow.expiresAt).toLocaleString()}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={busy === inviteRow.id}
+                  onClick={() => void revoke(inviteRow.id)}
+                  className={`min-h-[44px] rounded-xl px-3 text-sm font-semibold ${dangerOutlineButtonClass}`}
+                >
+                  Revoke
+                </button>
+              </article>
+            ))}
+          </section>
         </div>
       </OfficePinGate>
     </div>

@@ -4,7 +4,7 @@ import {
   getFleetSettings,
   updateFleetSettings,
 } from "@/lib/server/checkout-repo";
-import { assertOfficeAccess, orgIdFromRequest } from "@/lib/server/request-auth";
+import { assertOwnerAccess, orgIdFromRequest } from "@/lib/server/request-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,7 +23,7 @@ export async function GET(req: Request) {
 
 export async function PATCH(req: Request) {
   try {
-    const auth = await assertOfficeAccess(req);
+    const auth = await assertOwnerAccess(req);
     const body = (await req.json()) as {
       allowDriverAddVehicles?: boolean;
     };

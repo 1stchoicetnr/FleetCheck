@@ -4,6 +4,7 @@ import {
   getReport,
   patchReportPhotoFlags,
 } from "@/lib/server/checkout-repo";
+import { assertVehicleInScope } from "@/lib/server/fleet-scope";
 import { assertOfficeAccess, orgIdFromRequest } from "@/lib/server/request-auth";
 import { PhotoAngle } from "@/lib/types";
 
@@ -75,6 +76,11 @@ export async function PATCH(
   try {
     const auth = await assertOfficeAccess(req);
     const { id, angle } = await params;
+    const existing = await getReport(auth.orgId, id);
+    if (!existing) {
+      return NextResponse.json({ error: "Report not found" }, { status: 404 });
+    }
+    await assertVehicleInScope(auth, existing.vehicleId);
     const body = (await req.json()) as {
       flaggedDamage?: boolean;
       damageNote?: string;

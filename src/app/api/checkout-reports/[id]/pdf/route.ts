@@ -1,6 +1,7 @@
 import { errorResponse } from "@/lib/server/api-error";
 import { getPublicCompanySettings, getReport } from "@/lib/server/checkout-repo";
 import { checkoutReportPdfBytes } from "@/lib/server/pdf-runtime";
+import { assertVehicleInScope } from "@/lib/server/fleet-scope";
 import { assertOfficeAccess } from "@/lib/server/request-auth";
 import { photoStepsForCompany, usesClover } from "@/lib/company-settings";
 import { checkoutReportPdfFilename } from "@/lib/pdf";
@@ -20,6 +21,7 @@ export async function GET(
     if (!report) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
+    await assertVehicleInScope(auth, report.vehicleId);
     const settings = await getPublicCompanySettings(auth.orgId);
     const bytes = await checkoutReportPdfBytes(report, {
       logoDataUrl: settings.pdfLogoDataUrl || undefined,

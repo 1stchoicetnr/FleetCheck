@@ -397,6 +397,7 @@ export async function listReportPage(orgId: string, query: OfficeListQuery) {
       status,
       limit,
       offset,
+      vehicleIds: query.vehicleIds,
     });
     const olderThan = new Date(Date.now() - STUCK_UPLOAD_AFTER_MS).toISOString();
     return {

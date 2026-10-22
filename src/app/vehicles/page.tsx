@@ -10,8 +10,9 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { OfficeUnitService } from "@/components/office-unit-service";
 import { UnitImportNote } from "@/components/unit-import-note";
 import { useAuth } from "@/hooks/use-auth";
-import { canViewFleetOverview, canReviewCheckout } from "@/lib/fleet-config";
+import { canViewFleetOverview } from "@/lib/fleet-config";
 import { canAddVehicle } from "@/lib/home-menu";
+import { canEditVehicles } from "@/lib/role-access";
 import {
   FIRST_CHOICE_COMPANY_ID,
   OTHER_FLEETS_COMPANY_ID,
@@ -76,8 +77,8 @@ function VehiclesPageContent() {
   }, []);
 
   const summary = useMemo(() => summarizeUnits(vehicles), [vehicles]);
-  const manage = Boolean(user && canReviewCheckout(user.role));
-  const add = Boolean(user && canAddVehicle(user.role));
+  const manage = Boolean(user && canEditVehicles(user));
+  const add = Boolean(user && canAddVehicle(user));
   const visible = useMemo(() => {
     return vehicles
       .filter((vehicle) => companyId === "all" || vehicle.companyId === companyId)

@@ -9,7 +9,8 @@ import { OfficePinGate } from "@/components/office-pin-gate";
 import { ReviewStatusBadge } from "@/components/review-status-badge";
 import { DeliveryBadge } from "@/components/delivery-badge";
 import { useAuth } from "@/hooks/use-auth";
-import { canManageFleet, canReviewCheckout, isOwnerAccount } from "@/lib/fleet-config";
+import { canReviewCheckout, isOwnerAccount } from "@/lib/fleet-config";
+import { canReviewAccessRequests, settingsSections } from "@/lib/home-menu";
 import { isCheckoutFlagged } from "@/lib/storage";
 import {
   fetchCheckoutReports,
@@ -229,7 +230,7 @@ function OfficeReportsPage() {
                   href="/vehicles"
                   className="text-xs font-semibold text-brand-700 underline underline-offset-2"
                 >
-                  Manage units (archive)
+                  Units
                 </Link>
                 <Link
                   href="/office/feedback"
@@ -237,7 +238,7 @@ function OfficeReportsPage() {
                 >
                   App feedback
                 </Link>
-                {(canManageFleet(user.role) || user.role === "management" || user.roleTitle === "Owner") && (
+                {settingsSections(user).length > 0 && (
                   <Link
                     href="/settings"
                     className="text-xs font-semibold text-brand-700 underline underline-offset-2"
@@ -245,7 +246,7 @@ function OfficeReportsPage() {
                     Settings
                   </Link>
                 )}
-                {canManageFleet(user.role) && (
+                {canReviewAccessRequests(user) && (
                   <Link
                     href="/office/people"
                     className="text-xs font-semibold text-brand-700 underline underline-offset-2"

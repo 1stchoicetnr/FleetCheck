@@ -67,7 +67,8 @@ const SCHEMA = `
     expires_at TIMESTAMPTZ NOT NULL,
     revoked_at TIMESTAMPTZ,
     used_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL
+    created_at TIMESTAMPTZ NOT NULL,
+    fleet_ids TEXT
   );
   CREATE TABLE fleets (
     id TEXT PRIMARY KEY,
@@ -163,7 +164,7 @@ test("a new request waits, a repeat does not create another row, and sign-in sho
   await pg.close();
 });
 
-test("office cannot grant owner, an owner can approve a fleet, and deny does not grant access", async () => {
+test("office cannot approve or grant owner, and a manager stays inside assigned fleets", async () => {
   const pg = new PGlite();
   await seed(pg);
   const db = runner(pg);
@@ -184,11 +185,37 @@ test("office cannot grant owner, an owner can approve a fleet, and deny does not
         orgId: ORG,
         userId,
         action: "approve",
-        role: "owner",
+        role: "driver",
         fleetIds: ["fleet-rad-cab"],
         actorRole: "office",
       }),
+    (err: unknown) => err instanceof Error && /Manager access is required/.test(err.message)
+  );
+  await assert.rejects(
+    () =>
+      reviewAccessRequest(db, {
+        orgId: ORG,
+        userId,
+        action: "approve",
+        role: "owner",
+        fleetIds: ["fleet-rad-cab"],
+        actorRole: "manager",
+        actorFleetIds: ["fleet-rad-cab"],
+      }),
     (err: unknown) => err instanceof Error && /Only an owner/.test(err.message)
+  );
+  await assert.rejects(
+    () =>
+      reviewAccessRequest(db, {
+        orgId: ORG,
+        userId,
+        action: "approve",
+        role: "driver",
+        fleetIds: ["fleet-turo"],
+        actorRole: "manager",
+        actorFleetIds: ["fleet-rad-cab"],
+      }),
+    (err: unknown) => err instanceof Error && /inside your own fleets/.test(err.message)
   );
   await reviewAccessRequest(db, {
     orgId: ORG,
@@ -217,7 +244,8 @@ test("office cannot grant owner, an owner can approve a fleet, and deny does not
     orgId: ORG,
     userId: String(deniedRow[0].id),
     action: "deny",
-    actorRole: "office",
+    actorRole: "manager",
+    actorFleetIds: ["fleet-rad-cab"],
   });
   const denied = await classifySignIn(db, ORG, "dee.nied@example.com", "long-enough-password");
   assert.equal(denied.kind, "denied");

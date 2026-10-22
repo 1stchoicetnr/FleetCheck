@@ -1,7 +1,8 @@
 import { errorResponse } from "@/lib/server/api-error";
 import { NextRequest, NextResponse } from "next/server";
 import { getPriorReports } from "@/lib/server/checkout-repo";
-import { orgIdFromRequest } from "@/lib/server/request-auth";
+import { assertVehicleInScope } from "@/lib/server/fleet-scope";
+import { resolveRequestAuth } from "@/lib/server/request-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,7 +14,11 @@ export async function GET(req: NextRequest) {
     if (!vehicleId) {
       return NextResponse.json({ error: "vehicleId is required" }, { status: 400 });
     }
-    const reports = await getPriorReports(await orgIdFromRequest(req), vehicleId, currentId, 2);
+    const auth = await resolveRequestAuth(req);
+    if (auth.role === "office" || auth.role === "manager") {
+      await assertVehicleInScope(auth, vehicleId);
+    }
+    const reports = await getPriorReports(auth.orgId, vehicleId, currentId, 2);
     return NextResponse.json(
       { reports },
       { headers: { "Cache-Control": "no-store" } }

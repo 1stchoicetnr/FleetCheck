@@ -19,6 +19,7 @@ export type InviteRow = {
   email: string | null;
   name: string | null;
   role: MemberRole;
+  fleet_ids?: string | null;
   expires_at: string;
   revoked_at: string | null;
   used_at: string | null;
@@ -70,8 +71,8 @@ export async function deleteUserSessions(db: OrgDb, orgId: string, userId: strin
 export async function insertInvite(db: OrgDb, invite: InviteRow): Promise<void> {
   await db.query(
     `INSERT INTO auth_invites (
-      id, org_id, token_hash, kind, user_id, email, name, role, expires_at, created_at
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      id, org_id, token_hash, kind, user_id, email, name, role, expires_at, created_at, fleet_ids
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
     [
       invite.id,
       invite.org_id,
@@ -83,6 +84,7 @@ export async function insertInvite(db: OrgDb, invite: InviteRow): Promise<void> 
       invite.role,
       invite.expires_at,
       invite.created_at,
+      invite.fleet_ids ?? null,
     ]
   );
 }
@@ -90,7 +92,7 @@ export async function insertInvite(db: OrgDb, invite: InviteRow): Promise<void> 
 export async function getInviteByHash(db: OrgDb, tokenHash: string): Promise<InviteRow | undefined> {
   const rows = await db.query(
     `SELECT id, org_id, token_hash, kind, user_id, email, name, role,
-            expires_at, revoked_at, used_at, created_at
+            expires_at, revoked_at, used_at, created_at, fleet_ids
      FROM auth_invites
      WHERE token_hash = $1
      LIMIT 1`,
@@ -101,13 +103,29 @@ export async function getInviteByHash(db: OrgDb, tokenHash: string): Promise<Inv
 
 export async function listInvites(db: OrgDb, orgId: string) {
   return db.query(
-    `SELECT id, kind, user_id, email, name, role, expires_at, revoked_at, used_at, created_at
+    `SELECT id, kind, user_id, email, name, role, expires_at, revoked_at, used_at, created_at, fleet_ids
      FROM auth_invites
      WHERE org_id = $1
      ORDER BY created_at DESC
      LIMIT 50`,
     [orgId]
   );
+}
+
+export async function getInviteById(
+  db: OrgDb,
+  orgId: string,
+  id: string
+): Promise<InviteRow | undefined> {
+  const rows = await db.query(
+    `SELECT id, org_id, token_hash, kind, user_id, email, name, role,
+            expires_at, revoked_at, used_at, created_at, fleet_ids
+     FROM auth_invites
+     WHERE id = $1 AND org_id = $2
+     LIMIT 1`,
+    [id, orgId]
+  );
+  return rows[0] as unknown as InviteRow | undefined;
 }
 
 export async function revokeInvite(db: OrgDb, orgId: string, id: string): Promise<boolean> {

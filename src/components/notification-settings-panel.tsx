@@ -47,7 +47,12 @@ function ToggleRow({
   );
 }
 
-export function NotificationSettingsPanel() {
+export function NotificationSettingsPanel({
+  companyIds = null,
+}: {
+  /** Null shows every fleet. A list limits checkout posts to those companies. */
+  companyIds?: string[] | null;
+}) {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [saved, setSaved] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
@@ -87,7 +92,11 @@ export function NotificationSettingsPanel() {
     await saveSettings(settings);
     if (routes && routesReady) {
       try {
-        const next = await saveCompanySettings({ checkoutSlack: routes });
+        const allowed = new Set(companyIds || []);
+        const checkoutSlack = Object.fromEntries(
+          Object.entries(routes).filter(([id]) => !companyIds || allowed.has(id))
+        );
+        const next = await saveCompanySettings({ checkoutSlack });
         setRoutes(next.checkoutSlack);
         setRouteError("");
       } catch (err) {
@@ -118,6 +127,10 @@ export function NotificationSettingsPanel() {
   if (!settings) return null;
 
   const ns = settings.notificationSettings;
+  const fleetLimited = Array.isArray(companyIds);
+  const visibleFleets = CHECKOUT_SLACK_FLEETS.filter(
+    (fleet) => !fleetLimited || companyIds.includes(fleet.id)
+  );
   const slackNotReady =
     ns.slackEnabled &&
     (!ns.slackRadCabWebhookUrl || !ns.slackEquipmentWebhookUrl);
@@ -144,7 +157,7 @@ export function NotificationSettingsPanel() {
               direct message. Saving does not send a message.
             </p>
             {routes &&
-              CHECKOUT_SLACK_FLEETS.map((fleet) => {
+              visibleFleets.map((fleet) => {
                 const route = routes[fleet.id] ?? defaultCheckoutSlackRoute(fleet.id);
                 return (
                   <div key={fleet.id} className="space-y-2 rounded-xl border border-[#3a3a40] p-3">
@@ -224,6 +237,7 @@ export function NotificationSettingsPanel() {
           </CardContent>
         </Card>
 
+        {!fleetLimited && (
         <Card>
           <CardContent className="py-5 space-y-3">
             <CardTitle>Slack Alerts</CardTitle>
@@ -374,6 +388,7 @@ export function NotificationSettingsPanel() {
             )}
           </CardContent>
         </Card>
+        )}
 
         <Button size="lg" className="w-full" onClick={handleSave}>
           <Save className="h-5 w-5 mr-2" />

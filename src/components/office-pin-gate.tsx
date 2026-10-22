@@ -28,7 +28,10 @@ export function OfficePinGate({
         if (res.ok) {
           const data = (await res.json()) as { user?: { roleTitle?: string } | null };
           const title = data.user?.roleTitle;
-          if (!cancelled && (title === "Owner" || title === "Office")) {
+          if (
+            !cancelled &&
+            (title === "Owner" || title === "Manager" || title === "Office")
+          ) {
             setUnlocked(true);
             setReady(true);
             onUnlocked?.();

@@ -1,6 +1,7 @@
 import { randomBytes } from "crypto";
 import { AuthError } from "./auth-accounts";
 import { isMemberRole, legacyRoleForMember, type MemberRole } from "./member-role";
+import { canGrantMemberRole, fleetsStayInside } from "../role-access";
 import { hashPassword } from "./password";
 import {
   approvePendingUser,
@@ -92,8 +93,12 @@ export async function reviewAccessRequest(
     role?: string;
     fleetIds?: string[];
     actorRole: MemberRole;
+    actorFleetIds?: string[] | null;
   }
 ): Promise<void> {
+  if (input.actorRole !== "owner" && input.actorRole !== "manager") {
+    throw new AuthError("Manager access is required.", 403);
+  }
   if (input.action === "deny") {
     const denied = await denyPendingUser(db, input.orgId, input.userId);
     if (!denied) throw new AuthError("That request is no longer waiting.", 404);
@@ -102,7 +107,7 @@ export async function reviewAccessRequest(
   }
   if (!isMemberRole(input.role || "")) throw new AuthError("Choose a role.", 400);
   const role = input.role as MemberRole;
-  if (role === "owner" && input.actorRole !== "owner") {
+  if (!canGrantMemberRole(input.actorRole, role)) {
     throw new AuthError("Only an owner can grant Owner.", 403);
   }
   const fleetIds = [
@@ -110,6 +115,12 @@ export async function reviewAccessRequest(
   ];
   if (fleetIds.length < 1 || fleetIds.length > 20) {
     throw new AuthError("Choose at least one fleet.", 400);
+  }
+  if (
+    input.actorRole === "manager" &&
+    !fleetsStayInside(input.actorFleetIds ?? [], fleetIds)
+  ) {
+    throw new AuthError("Choose fleets inside your own fleets.", 403);
   }
   for (const fleetId of fleetIds) {
     const fleet = await getFleet(db, input.orgId, fleetId);

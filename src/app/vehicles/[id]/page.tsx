@@ -18,11 +18,10 @@ import {
 } from "@/lib/storage";
 import { fetchCompanies, fetchVehicles, SharedVehicle } from "@/lib/checkout-api";
 import {
-  canManageVehicleMaintenance,
   canViewVehicleHistory,
   canExportHistory,
-  canManageOfficeRecords,
 } from "@/lib/fleet-config";
+import { canEditVehicles } from "@/lib/role-access";
 import { isOfficeUnlocked } from "@/lib/office-auth";
 import { Vehicle, Fleet, CheckRecord, MaintenanceLogEntry, FUEL_LEVEL_LABELS } from "@/lib/types";
 import { formatDate, formatMileage, formatUnitLabel } from "@/lib/utils";
@@ -123,7 +122,7 @@ export default function VehicleDetailPage() {
     );
   }
 
-  const canMaintain = canManageVehicleMaintenance(user.role);
+  const canMaintain = canEditVehicles(user) || user.role === "tech";
   const currentMi = vehicle.lastMileage ?? 0;
   const checkIns = checks.filter((c) => c.type === "check_in");
 
@@ -163,7 +162,7 @@ export default function VehicleDetailPage() {
               </p>
             )}
             <OilChangeStatusBadge vehicle={vehicle} currentMileage={currentMi} />
-            {canManageOfficeRecords(user.role) && (
+            {canEditVehicles(user) && (
               <Button
                 type="button"
                 variant="danger"

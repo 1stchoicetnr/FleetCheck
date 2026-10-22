@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { fetchFleets, type SharedFleet } from "@/lib/checkout-api";
 import { primaryButtonClass, secondaryOutlineButtonClass } from "@/lib/button-styles";
+import { RolePicker } from "@/components/role-picker";
 
 type AccessRequest = {
   id: string;
@@ -17,7 +18,9 @@ type Person = {
   name: string;
   email: string;
   active: boolean;
+  role: string;
   roleTitle: string;
+  fleetIds: string[];
 };
 
 type Issued = {
@@ -39,6 +42,8 @@ export function AccessRequestsPanel({
   const [people, setPeople] = useState<Person[]>([]);
   const [roles, setRoles] = useState<Record<string, string>>({});
   const [fleetsChosen, setFleetsChosen] = useState<Record<string, string[]>>({});
+  const [personRoles, setPersonRoles] = useState<Record<string, string>>({});
+  const [personFleets, setPersonFleets] = useState<Record<string, string[]>>({});
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
   const [issued, setIssued] = useState<Issued | null>(null);
@@ -62,7 +67,24 @@ export function AccessRequestsPanel({
     if (canResetPassword) {
       const peopleRes = await fetch("/api/auth/people", { cache: "no-store" });
       const peopleData = (await peopleRes.json().catch(() => ({}))) as { people?: Person[] };
-      if (peopleRes.ok) setPeople(peopleData.people || []);
+      if (peopleRes.ok) {
+        const nextPeople = peopleData.people || [];
+        setPeople(nextPeople);
+        setPersonRoles((current) => {
+          const next = { ...current };
+          for (const person of nextPeople) {
+            if (!next[person.id]) next[person.id] = person.role || "driver";
+          }
+          return next;
+        });
+        setPersonFleets((current) => {
+          const next = { ...current };
+          for (const person of nextPeople) {
+            if (!next[person.id]) next[person.id] = person.fleetIds || [];
+          }
+          return next;
+        });
+      }
     }
   }, [canResetPassword]);
 
@@ -103,6 +125,68 @@ export function AccessRequestsPanel({
       await load();
     } catch {
       setError("Could not update that request.");
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const togglePersonFleet = (personId: string, fleetId: string) => {
+    setPersonFleets((current) => {
+      const selected = new Set(current[personId] || []);
+      if (selected.has(fleetId)) selected.delete(fleetId);
+      else selected.add(fleetId);
+      return { ...current, [personId]: [...selected] };
+    });
+  };
+
+  const savePerson = async (person: Person) => {
+    const fleetIds = personFleets[person.id] || person.fleetIds || [];
+    if (fleetIds.length < 1 && (person.fleetIds || []).length > 0) {
+      setError("Choose at least one fleet.");
+      return;
+    }
+    setBusy(person.id + "save");
+    setError("");
+    try {
+      const res = await fetch(`/api/auth/people/${encodeURIComponent(person.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          fleetIds.length
+            ? { role: personRoles[person.id] || person.role || "driver", fleetIds }
+            : { role: personRoles[person.id] || person.role || "driver" }
+        ),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setError(data.error || "Could not update that person.");
+        return;
+      }
+      await load();
+    } catch {
+      setError("Could not update that person.");
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const setActive = async (person: Person, active: boolean) => {
+    setBusy(person.id + "active");
+    setError("");
+    try {
+      const res = await fetch(`/api/auth/people/${encodeURIComponent(person.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ active }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setError(data.error || "Could not update that person.");
+        return;
+      }
+      await load();
+    } catch {
+      setError("Could not update that person.");
     } finally {
       setBusy("");
     }
@@ -166,21 +250,12 @@ export function AccessRequestsPanel({
                 <p className="text-sm text-muted">{request.email}</p>
                 {request.phone && <p className="text-sm text-muted">{request.phone}</p>}
               </div>
-              <label className="block text-sm font-semibold text-ink" htmlFor={`role-${request.id}`}>
-                Role
-              </label>
-              <select
+              <RolePicker
                 id={`role-${request.id}`}
                 value={role}
-                onChange={(event) =>
-                  setRoles((current) => ({ ...current, [request.id]: event.target.value }))
-                }
-                className="min-h-[48px] w-full rounded-xl border border-line bg-canvas px-3 text-ink"
-              >
-                <option value="driver">Driver</option>
-                <option value="office">Office</option>
-                {canGrantOwner && <option value="owner">Owner</option>}
-              </select>
+                includeOwner={canGrantOwner}
+                onChange={(next) => setRoles((current) => ({ ...current, [request.id]: next }))}
+              />
               {!canGrantOwner && (
                 <p className="text-xs text-muted">Only an owner can grant Owner.</p>
               )}
@@ -250,26 +325,79 @@ export function AccessRequestsPanel({
               )}
             </div>
           )}
-          {people.map((person) => (
+          {people.map((person) => {
+            const selected = new Set(personFleets[person.id] || person.fleetIds || []);
+            const ownerPerson = person.role === "owner";
+            return (
             <article
               key={person.id}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface p-4"
+              className="space-y-3 rounded-2xl border border-line bg-surface p-4"
             >
               <div>
                 <p className="font-semibold text-ink">{person.name}</p>
                 <p className="text-sm text-muted">{person.email}</p>
-                <p className="text-xs text-muted">{person.roleTitle || "No membership"}</p>
+                <p className="text-xs text-muted">
+                  {person.roleTitle || "No membership"} · {person.active ? "Active" : "Inactive"}
+                </p>
               </div>
-              <button
-                type="button"
-                disabled={!person.active || busy === person.id}
-                onClick={() => void resetPassword(person)}
-                className={`min-h-[44px] rounded-xl px-3 text-sm font-semibold ${secondaryOutlineButtonClass}`}
-              >
-                {busy === person.id ? "Creating…" : "Reset password"}
-              </button>
+              {!ownerPerson && (
+                <>
+                  <RolePicker
+                    id={`person-role-${person.id}`}
+                    value={personRoles[person.id] || person.role || "driver"}
+                    includeOwner={canGrantOwner}
+                    onChange={(next) =>
+                      setPersonRoles((current) => ({ ...current, [person.id]: next }))
+                    }
+                  />
+                  <fieldset className="space-y-2">
+                    <legend className="text-sm font-semibold text-ink">Fleets</legend>
+                    {fleets.map((fleet) => (
+                      <label key={fleet.id} className="flex min-h-[44px] items-center gap-3 text-sm text-ink">
+                        <input
+                          type="checkbox"
+                          checked={selected.has(fleet.id)}
+                          onChange={() => togglePersonFleet(person.id, fleet.id)}
+                        />
+                        {fleet.name}
+                      </label>
+                    ))}
+                  </fieldset>
+                </>
+              )}
+              <div className="flex flex-wrap gap-2">
+                {!ownerPerson && (
+                  <button
+                    type="button"
+                    disabled={busy === person.id + "save"}
+                    onClick={() => void savePerson(person)}
+                    className={`min-h-[44px] rounded-xl px-3 text-sm font-semibold ${primaryButtonClass}`}
+                  >
+                    {busy === person.id + "save" ? "Saving…" : "Save access"}
+                  </button>
+                )}
+                {!ownerPerson && (
+                  <button
+                    type="button"
+                    disabled={busy === person.id + "active"}
+                    onClick={() => void setActive(person, !person.active)}
+                    className={`min-h-[44px] rounded-xl px-3 text-sm font-semibold ${secondaryOutlineButtonClass}`}
+                  >
+                    {person.active ? "Deactivate" : "Reactivate"}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  disabled={!person.active || busy === person.id || (ownerPerson && !canGrantOwner)}
+                  onClick={() => void resetPassword(person)}
+                  className={`min-h-[44px] rounded-xl px-3 text-sm font-semibold ${secondaryOutlineButtonClass}`}
+                >
+                  {busy === person.id ? "Creating…" : "Reset password"}
+                </button>
+              </div>
             </article>
-          ))}
+            );
+          })}
         </section>
       )}
     </div>

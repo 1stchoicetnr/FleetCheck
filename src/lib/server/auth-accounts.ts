@@ -23,6 +23,7 @@ import {
   findUserByEmail,
   getUser,
   insertMemberUser,
+  replaceUserFleets,
   type OrgDb,
   setUserPassword,
 } from "./org-data";
@@ -133,6 +134,7 @@ export async function issueLink(
     userId?: string | null;
     email?: string | null;
     name?: string | null;
+    fleetIds?: string[];
   }
 ): Promise<{ token: string; expiresAt: string; id: string }> {
   if (input.kind === "setup" && input.userId) {
@@ -151,6 +153,7 @@ export async function issueLink(
     email: input.email ?? null,
     name: input.name ?? null,
     role: input.role,
+    fleet_ids: input.fleetIds && input.fleetIds.length ? input.fleetIds.join(",") : null,
     expires_at: expiresAt,
     revoked_at: null,
     used_at: null,
@@ -237,6 +240,11 @@ export async function acceptLink(
     }
     throw err;
   }
+  const fleetIds = String(invite.fleet_ids || "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+  if (fleetIds.length) await replaceUserFleets(db, invite.org_id, id, fleetIds);
   return { id, name, email, role: invite.role, orgId: invite.org_id };
 }
 

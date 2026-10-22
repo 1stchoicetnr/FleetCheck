@@ -1,4 +1,4 @@
-export type MemberRole = "driver" | "office" | "owner";
+export type MemberRole = "driver" | "office" | "manager" | "owner";
 
 export const CARRY_OVER_USER_IDS = new Set([
   "user-ashley",
@@ -21,17 +21,18 @@ export function membershipRoleForLegacy(name: string, role: string): MemberRole 
 
 export function memberRoleTitle(role: MemberRole): string {
   if (role === "owner") return "Owner";
+  if (role === "manager") return "Manager";
   if (role === "office") return "Office";
   return "Driver";
 }
 
-/** Existing screens still understand the old role names. */
+/** Existing screens still understand the old role names. Manager shares Office's legacy role. */
 export function legacyRoleForMember(role: MemberRole): "super_admin" | "management" | "driver" {
   if (role === "owner") return "super_admin";
-  if (role === "office") return "management";
+  if (role === "office" || role === "manager") return "management";
   return "driver";
 }
 
 export function isMemberRole(value: string): value is MemberRole {
-  return value === "driver" || value === "office" || value === "owner";
+  return value === "driver" || value === "office" || value === "manager" || value === "owner";
 }

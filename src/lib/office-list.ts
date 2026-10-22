@@ -23,6 +23,8 @@ export interface OfficeListQuery {
   status?: OfficeListStatus;
   limit?: number;
   offset?: number;
+  /** When set, only these units. An empty list matches nothing. */
+  vehicleIds?: string[] | null;
 }
 
 export interface OfficeListPage {
@@ -76,6 +78,7 @@ export function pageOfficeReports(
       }
       if (query.companyId && report.companyId !== query.companyId) return false;
       if (query.vehicleId && report.vehicleId !== query.vehicleId) return false;
+      if (query.vehicleIds && !query.vehicleIds.includes(report.vehicleId)) return false;
       return true;
     })
     .sort(

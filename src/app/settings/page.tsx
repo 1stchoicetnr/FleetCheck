@@ -53,10 +53,17 @@ function SettingsPage() {
         ))}
       </div>
       {sections.includes("company") && <CompanySettingsPanel />}
-      {sections.includes("company") && user ? (
-        <FleetManager canEdit={canEditFleets(user)} />
+      {sections.includes("company") || canEditFleets(user) ? (
+        <FleetManager
+          canEdit={canEditFleets(user)}
+          canCreate={user.role === "super_admin" || user.roleTitle === "Owner"}
+        />
       ) : null}
-      {sections.includes("notifications") && <NotificationSettingsPanel />}
+      {sections.includes("notifications") && (
+        <NotificationSettingsPanel
+          companyIds={user.fleetScope === "assigned" ? user.companyIds : null}
+        />
+      )}
       {sections.includes("people") && user && (
         <PeopleSettingsPanel
           owner={user.role === "super_admin" || user.roleTitle === "Owner"}
