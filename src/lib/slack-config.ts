@@ -2,6 +2,9 @@ export type SlackRoute = "rad_cab" | "equipment";
 
 export const SLACK_WORKSPACE_ID = "THPMZQD8S";
 
+/** #radcabcr. Repair alerts use a different channel. */
+export const RADCABCR_CHANNEL_ID = "C0BABDEGGKY";
+
 export const SLACK_CHANNEL_DEFAULTS = {
   rad_cab: {
     id: "C09K8F5F05U",

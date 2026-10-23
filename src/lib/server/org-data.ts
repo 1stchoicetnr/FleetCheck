@@ -1834,6 +1834,28 @@ export async function claimFailedSlackDelivery(
   return deliveryClaim(rows[0]);
 }
 
+/**
+ * A checkout that already has a Slack message can resume file uploads after
+ * the request died. A row still sending with no message id is left alone.
+ */
+export async function claimStuckSlackDelivery(
+  db: OrgDb,
+  input: { orgId: string; reportId: string; kind: SlackDeliveryKind; cap: number }
+): Promise<{ attempts: number; body: string | null } | undefined> {
+  const rows = await db.query(
+    `UPDATE slack_deliveries
+     SET attempts = attempts + 1, updated_at = NOW()
+     WHERE org_id = $1 AND report_id = $2 AND kind = $3
+       AND status = 'sending'
+       AND attempts < $4
+       AND body LIKE '%"ts":%'
+       AND updated_at <= NOW() - INTERVAL '10 minutes'
+     RETURNING attempts, body`,
+    [org(input.orgId), input.reportId, input.kind, input.cap]
+  );
+  return deliveryClaim(rows[0]);
+}
+
 function deliveryClaim(
   row: Record<string, unknown> | undefined
 ): { attempts: number; body: string | null } | undefined {
@@ -1893,12 +1915,19 @@ export async function listDueSlackDeliveries(
   limit: number
 ): Promise<Array<{ reportId: string; kind: SlackDeliveryKind; attempts: number }>> {
   const rows = await db.query(
-    `SELECT report_id, kind, attempts
+     `SELECT report_id, kind, attempts
      FROM slack_deliveries
      WHERE org_id = $1
-       AND status = 'failed'
        AND attempts < $2
-       AND (next_attempt_at IS NULL OR next_attempt_at <= NOW())
+       AND (
+         (status = 'failed' AND (next_attempt_at IS NULL OR next_attempt_at <= NOW()))
+         OR (
+           status = 'sending'
+           AND kind = 'checkout'
+           AND body LIKE '%"ts":%'
+           AND updated_at <= NOW() - INTERVAL '10 minutes'
+         )
+       )
      ORDER BY next_attempt_at NULLS FIRST
      LIMIT $3`,
     [org(orgId), cap, limit]

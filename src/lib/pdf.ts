@@ -25,6 +25,7 @@ import {
   damageFlagText,
   isPhotoDamageFlagged,
 } from "./photo-flags";
+import { checkoutDamageLines, formatCheckoutTime, fuelGaugeLabel } from "./checkout-slack";
 import { companyUsesClover } from "./companies";
 import { INSPEKT_ICON, INSPEKT_NAVY_RGB } from "./brand-mark";
 import {
@@ -397,7 +398,7 @@ export async function generateCheckoutReportPDF(
   let y = paintInspektHeader(
     doc,
     logo,
-    `Checkout Report · ${formatDate(report.completedAt)}`
+    `Checkout Report · ${formatCheckoutTime(report.completedAt)}`
   );
   doc.setFontSize(10);
   doc.setFont("helvetica", "normal");
@@ -428,6 +429,50 @@ export async function generateCheckoutReportPDF(
     y += 8;
   };
 
+  section("Checkout");
+  addWrapped(`Date and time: ${formatCheckoutTime(report.completedAt)}`);
+  addWrapped(`Driver: ${report.driverName.trim() || "—"}`);
+  addWrapped(`Dispatcher: ${report.dispatcherName.trim() || "—"}`);
+  addWrapped(`Unit: ${formatUnitLabel(report.unitNumber, plate)}`);
+  addWrapped(`Odometer: ${formatMileage(report.odometer)}`);
+  addWrapped(`Fuel: ${fuelGaugeLabel(report.inspectionForm)}`);
+  const damage = checkoutDamageLines(report);
+  addWrapped(damage.length ? `Damage: ${damage.join("; ")}` : "Damage: none");
+
+  section("Driver signature");
+  if (report.signedAt) {
+    addWrapped(`Signed: ${formatCheckoutTime(report.signedAt)}`);
+  }
+  if (report.signatureDataUrl?.trim()) {
+    try {
+      const dataUrl = report.signatureDataUrl.startsWith("data:")
+        ? report.signatureDataUrl
+        : await resolvePdfPhoto(report.signatureDataUrl);
+      let width = 90;
+      let height = 36;
+      try {
+        const size = await getImageDimensions(dataUrl);
+        const fitted = fitInBox(size.width, size.height, pageWidth - 28, 36);
+        width = fitted.width;
+        height = fitted.height;
+      } catch {
+        // The signature pad is 600×240. Keep that shape when the size cannot be read.
+      }
+      if (y + height > pageHeight - 20) {
+        doc.addPage();
+        y = 20;
+      }
+      doc.setDrawColor(180, 180, 180);
+      doc.rect(14, y, Math.max(width, 40), height);
+      doc.addImage(dataUrl, pdfImageFormat(dataUrl), 14, y, width, height);
+      y += height + 8;
+    } catch {
+      addWrapped("[Signature could not be embedded]");
+    }
+  } else {
+    addWrapped("Signature: missing");
+  }
+
   section("Precheck");
   const usesClover = options.usesClover ?? companyUsesClover(report.companyId);
   const formLines = [
@@ -443,7 +488,7 @@ export async function generateCheckoutReportPDF(
     `Type: ${report.type === "check_in" ? "Check In" : "Check Out"}`,
     `Odometer start: ${formatMileage(report.odometer)}`,
     `Dispatcher: ${report.dispatcherName}`,
-    `Completed: ${formatDate(report.completedAt)}`,
+    `Completed: ${formatCheckoutTime(report.completedAt)}`,
     `Photos: ${present.length} of ${listed.length}`,
     `Office id: ${report.id}`,
   ];
@@ -486,32 +531,6 @@ export async function generateCheckoutReportPDF(
     addWrapped(
       `DAMAGE flagged: ${damagedPhotos.map((photo) => damageFlagText(photo)).join("; ")}`
     );
-  }
-
-  if (report.signatureDataUrl) {
-    section("Driver signature");
-    addWrapped(`Signed by ${report.driverName}${report.signedAt ? ` · ${formatDate(report.signedAt)}` : ""}`);
-    try {
-      const { width: sigW, height: sigH } = await getImageDimensions(
-        report.signatureDataUrl
-      );
-      const { width, height } = fitInBox(sigW, sigH, pageWidth - 28, 36);
-      if (y + height > pageHeight - 20) {
-        doc.addPage();
-        y = 20;
-      }
-      doc.addImage(
-        report.signatureDataUrl,
-        pdfImageFormat(report.signatureDataUrl),
-        14,
-        y,
-        width,
-        height
-      );
-      y += height + 6;
-    } catch {
-      addWrapped("[Signature could not be embedded]");
-    }
   }
 
   section("Photo index");

@@ -7,6 +7,7 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 const DRIVER_WINDOW_MS = 6 * 60 * 60 * 1000;
 

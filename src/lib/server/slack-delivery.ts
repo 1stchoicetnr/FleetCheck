@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { RAD_CAB_COMPANY_ID } from "../company-rules";
 import {
+  checkoutSlackText,
   postCheckoutSlack,
   postSlackMessage,
   SlackDeliveryError,
@@ -21,9 +22,24 @@ import {
   stallReason,
   stallSlackText,
 } from "../slack-delivery";
-import type { CheckoutReport } from "../types";
+import { RADCABCR_CHANNEL_ID } from "../slack-config";
+import {
+  checkoutThreadFilePlan,
+  parseSlackThreadProgress,
+  pendingThreadFiles,
+  slackThreadProgressBody,
+  threadUploadBatches,
+} from "../slack-files";
+import {
+  postSlackApiMessage,
+  uploadSlackThreadBatch,
+  type SlackBinaryFile,
+  type SlackHttp,
+} from "../slack-upload";
+import type { CheckoutReport, PhotoStep } from "../types";
 import {
   claimFailedSlackDelivery,
+  claimStuckSlackDelivery,
   finishSlackDelivery,
   insertSlackDelivery,
   listDueSlackDeliveries,
@@ -76,12 +92,40 @@ async function claimDelivery(
     kind,
   });
   if (inserted) return inserted;
-  return claimFailedSlackDelivery(db, {
+  const failed = await claimFailedSlackDelivery(db, {
     orgId,
     reportId,
     kind,
     cap: SLACK_DELIVERY_CAP,
   });
+  if (failed) return failed;
+  if (kind !== "checkout") return undefined;
+  return claimStuckSlackDelivery(db, {
+    orgId,
+    reportId,
+    kind,
+    cap: SLACK_DELIVERY_CAP,
+  });
+}
+
+export function slackBotFromEnv(): { token: string; channelId: string } | undefined {
+  const token = process.env.SLACK_BOT_TOKEN?.trim();
+  if (!token) return undefined;
+  const channelId = process.env.SLACK_CHANNEL_RADCABCR?.trim() || RADCABCR_CHANNEL_ID;
+  return { token, channelId };
+}
+
+function wantsThreadFiles(report: CheckoutReport, route: CheckoutSlackRoute): boolean {
+  return report.companyId === RAD_CAB_COMPANY_ID && route.destination === "radcabcr";
+}
+
+async function defaultThreadFiles(
+  report: CheckoutReport,
+  keys: string[],
+  steps?: PhotoStep[]
+): Promise<SlackBinaryFile[]> {
+  const { loadCheckoutThreadFiles } = await import("./slack-thread-files");
+  return loadCheckoutThreadFiles(report, keys, steps);
 }
 
 async function recordFailure(
@@ -151,23 +195,108 @@ export async function deliverCheckoutSlack(
     webhooks: CheckoutSlackWebhooks;
     appOrigin?: string | null;
     fetchImpl?: CheckoutFetch;
+    slackApi?: { token: string; channelId: string } | null;
+    slackFetch?: SlackHttp;
+    photoSteps?: PhotoStep[];
+    loadThreadFiles?: (report: CheckoutReport, keys: string[]) => Promise<SlackBinaryFile[]>;
     now?: number;
   }
 ): Promise<SlackSendStatus> {
   const route = options.route ?? defaultCheckoutSlackRoute(report.companyId);
+  const filesWanted = wantsThreadFiles(report, route);
+  const api = filesWanted
+    ? options.slackApi === undefined
+      ? slackBotFromEnv()
+      : options.slackApi
+    : undefined;
   const url = checkoutSlackUrl(report, route, options.webhooks);
-  if (!url) {
+  if (!url && !(filesWanted && api?.token)) {
     logDelivery("checkout", report.id, 0, "skipped", "no webhook");
     return "skipped";
   }
   const claimed = await claimDelivery(db, options.orgId, report.id, "checkout");
   if (!claimed) return "skipped";
+  const slackFetch: SlackHttp = options.slackFetch ?? (fetch as unknown as SlackHttp);
   try {
-    await postCheckoutSlack(report, {
-      webhookUrl: url,
-      fetchImpl: options.fetchImpl,
-      appOrigin: options.appOrigin,
-    });
+    const progress = parseSlackThreadProgress(claimed.body);
+    if (!progress.ts) {
+      if (filesWanted && api?.token && api.channelId) {
+        const text = checkoutSlackText(report, { appOrigin: options.appOrigin });
+        const posted = await postSlackApiMessage(slackFetch, {
+          token: api.token,
+          channel: api.channelId,
+          text,
+        });
+        progress.ts = posted.ts;
+        progress.channel = posted.channel;
+        await saveSlackDeliveryBody(db, {
+          orgId: options.orgId,
+          reportId: report.id,
+          kind: "checkout",
+          body: slackThreadProgressBody(progress),
+        });
+      } else if (url) {
+        await postCheckoutSlack(report, {
+          webhookUrl: url,
+          fetchImpl: options.fetchImpl,
+          appOrigin: options.appOrigin,
+        });
+        await finishSlackDelivery(db, {
+          orgId: options.orgId,
+          reportId: report.id,
+          kind: "checkout",
+          status: "sent",
+        });
+        if (filesWanted) {
+          logDelivery("checkout", report.id, claimed.attempts, "sent", "no bot token");
+        } else {
+          logDelivery("checkout", report.id, claimed.attempts, "sent");
+        }
+        return "sent";
+      } else {
+        await finishSlackDelivery(db, {
+          orgId: options.orgId,
+          reportId: report.id,
+          kind: "checkout",
+          status: "skipped",
+          error: "no webhook",
+        });
+        logDelivery("checkout", report.id, claimed.attempts, "skipped", "no webhook");
+        return "skipped";
+      }
+    }
+    if (filesWanted && progress.ts) {
+      if (!api?.token) throw new SlackDeliveryError("no bot token");
+      const channel = progress.channel || api.channelId;
+      const pending = pendingThreadFiles(
+        checkoutThreadFilePlan(report, options.photoSteps),
+        progress
+      );
+      const load = options.loadThreadFiles ?? ((item, keys) => defaultThreadFiles(item, keys, options.photoSteps));
+      for (const batch of threadUploadBatches(pending)) {
+        const loaded = await load(report, batch.map((file) => file.key));
+        const byKey = new Map(loaded.map((file) => [file.key, file]));
+        const ordered: SlackBinaryFile[] = [];
+        for (const file of batch) {
+          const binary = byKey.get(file.key);
+          if (!binary) throw new SlackDeliveryError("file missing");
+          ordered.push({ ...binary, key: file.key, title: file.title });
+        }
+        await uploadSlackThreadBatch(slackFetch, {
+          token: api.token,
+          channel,
+          threadTs: progress.ts,
+          files: ordered,
+        });
+        progress.done.push(...batch.map((file) => file.key));
+        await saveSlackDeliveryBody(db, {
+          orgId: options.orgId,
+          reportId: report.id,
+          kind: "checkout",
+          body: slackThreadProgressBody(progress),
+        });
+      }
+    }
     await finishSlackDelivery(db, {
       orgId: options.orgId,
       reportId: report.id,
@@ -262,6 +391,10 @@ export async function runSlackDeliveries(
     routes: Record<string, CheckoutSlackRoute>;
     webhooks: CheckoutSlackWebhooks;
     requiredRadCabAngles: string[];
+    photoSteps?: PhotoStep[];
+    slackApi?: { token: string; channelId: string } | null;
+    slackFetch?: SlackHttp;
+    loadThreadFiles?: (report: CheckoutReport, keys: string[]) => Promise<SlackBinaryFile[]>;
     appOrigin?: string | null;
     fetchImpl?: CheckoutFetch;
     now?: number;
@@ -346,6 +479,10 @@ export async function runSlackDeliveries(
         webhooks: input.webhooks,
         appOrigin: input.appOrigin,
         fetchImpl: input.fetchImpl,
+        slackApi: input.slackApi,
+        slackFetch: input.slackFetch,
+        photoSteps: input.photoSteps,
+        loadThreadFiles: input.loadThreadFiles,
         now,
       })
     );

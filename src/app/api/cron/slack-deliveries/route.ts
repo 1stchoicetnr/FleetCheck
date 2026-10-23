@@ -29,7 +29,8 @@ async function run(req: Request) {
     const orgId = orgFromSession();
     const doc = parseCompanySettings(await pgReadCompanySettings(orgId));
     const settings = publicCompanySettings(doc);
-    const requiredRadCabAngles = photoStepsForCompany(settings, RAD_CAB_COMPANY_ID)
+    const photoSteps = photoStepsForCompany(settings, RAD_CAB_COMPANY_ID);
+    const requiredRadCabAngles = photoSteps
       .filter((step) => step.required)
       .map((step) => step.angle);
     const counts = await runSlackDeliveries(pgDb(), {
@@ -38,6 +39,7 @@ async function run(req: Request) {
       routes: effectiveCheckoutSlack(doc),
       webhooks: slackWebhooksFromEnv(slackWebhookOverride(doc) || undefined),
       requiredRadCabAngles,
+      photoSteps,
       appOrigin: appOrigin(),
     });
     return NextResponse.json({ ok: true, ...counts });

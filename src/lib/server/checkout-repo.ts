@@ -1,6 +1,7 @@
 import {
   mergeCompanySettings,
   parseCompanySettings,
+  photoStepsForCompany,
   publicCompanySettings,
   slackWebhookOverride,
   usesClover,
@@ -453,6 +454,7 @@ export async function confirmReportSent(
         route: routes[saved.companyId],
         webhooks,
         appOrigin: options?.appOrigin,
+        photoSteps: photoStepsForCompany(publicCompanySettings(settingsDoc), saved.companyId),
       });
     } catch (err) {
       const message =
