@@ -35,12 +35,12 @@ export function PeopleSettingsEntries({
 }) {
   if (actions.length === 0) return null;
   return (
-    <div id="people" className="space-y-3">
+    <div className="space-y-3">
       {actions.includes("users") && (
-        <Link href="/admin/users" className={peopleEntryClass}>
+        <a href="#people" className={peopleEntryClass}>
           <Users className="h-5 w-5" aria-hidden="true" />
           Add or edit users
-        </Link>
+        </a>
       )}
       {actions.includes("invites") && (
         <Link href="/office/people" className={peopleEntryClass}>
@@ -96,7 +96,7 @@ export function PeopleSettingsPanel({ owner }: { owner: boolean }) {
   }, [owner]);
 
   return (
-    <div className="space-y-4">
+    <div id="people" className="scroll-mt-28 space-y-4">
       <AccessRequestsPanel canGrantOwner={owner} canResetPassword part="accounts" />
       {owner && (
       <>
@@ -114,10 +114,10 @@ export function PeopleSettingsPanel({ owner }: { owner: boolean }) {
               label: "Users",
               value: serverUserCount ?? "…",
               icon: Users,
-              href: "/admin/users",
+              href: "#people",
             },
-          ].map((stat) => (
-            <Link key={stat.label} href={stat.href}>
+          ].map((stat) => {
+            const card = (
               <Card>
                 <CardContent className="py-4 text-center">
                   <stat.icon className="h-5 w-5 mx-auto text-brand-600 mb-1" />
@@ -125,8 +125,20 @@ export function PeopleSettingsPanel({ owner }: { owner: boolean }) {
                   <p className="text-xs text-gray-500">{stat.label}</p>
                 </CardContent>
               </Card>
-            </Link>
-          ))}
+            );
+            if (stat.href.startsWith("#")) {
+              return (
+                <a key={stat.label} href={stat.href}>
+                  {card}
+                </a>
+              );
+            }
+            return (
+              <Link key={stat.label} href={stat.href}>
+                {card}
+              </Link>
+            );
+          })}
         </div>
         <p className="text-sm text-gray-600 -mt-3">
           {unitSummary
