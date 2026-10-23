@@ -5,6 +5,7 @@ import {
   canReviewAccessRequests,
   canStartCheck,
   homeTiles,
+  settingsPeopleActions,
   settingsSections,
   visibleMenuBadge,
 } from "./home-menu.ts";
@@ -33,6 +34,7 @@ test("a manager sees office work plus notifications and people, not company sett
     "settings",
   ]);
   assert.deepEqual(settingsSections(user), ["notifications", "people"]);
+  assert.deepEqual(settingsPeopleActions(user), ["invites"]);
 });
 
 test("an owner sees every daily tile and all three settings sections", () => {
@@ -49,6 +51,7 @@ test("an owner sees every daily tile and all three settings sections", () => {
     "notifications",
     "people",
   ]);
+  assert.deepEqual(settingsPeopleActions(user), ["users", "invites"]);
 });
 
 test("manager and owner review access requests, and office, driver, and tech do not", () => {
@@ -56,6 +59,8 @@ test("manager and owner review access requests, and office, driver, and tech do 
   assert.equal(canReviewAccessRequests({ role: "management", roleTitle: "Manager" }), true);
   assert.equal(canReviewAccessRequests({ role: "super_admin", roleTitle: "Owner" }), true);
   assert.equal(canReviewAccessRequests({ role: "driver", roleTitle: "Driver" }), false);
+  assert.deepEqual(settingsPeopleActions({ role: "management", roleTitle: "Office" }), []);
+  assert.deepEqual(settingsPeopleActions({ role: "driver", roleTitle: "Driver" }), []);
   assert.equal(canReviewAccessRequests({ role: "tech", roleTitle: "Tech" }), false);
   assert.deepEqual(settingsSections({ role: "tech", roleTitle: "Tech" }), [
     "company",

@@ -6,9 +6,14 @@ import { AppHeader } from "@/components/app-header";
 import { OfficePinGate } from "@/components/office-pin-gate";
 import { CompanySettingsPanel } from "@/components/company-settings-panel";
 import { NotificationSettingsPanel } from "@/components/notification-settings-panel";
-import { PeopleSettingsPanel } from "@/components/people-settings-panel";
+import { PeopleSettingsEntries, PeopleSettingsPanel } from "@/components/people-settings-panel";
 import { useAuth } from "@/hooks/use-auth";
-import { canEditFleets, settingsSections, type SettingsSectionId } from "@/lib/home-menu";
+import {
+  canEditFleets,
+  settingsPeopleActions,
+  settingsSections,
+  type SettingsSectionId,
+} from "@/lib/home-menu";
 import { FleetManager } from "@/components/fleet-manager";
 
 const LABELS: Record<SettingsSectionId, string> = {
@@ -39,8 +44,13 @@ function SettingsPage() {
 
   if (loading || !user) return null;
 
+  const owner = user.role === "super_admin" || user.roleTitle === "Owner";
   const body = (
     <div className="max-w-lg mx-auto px-4 py-6 space-y-8">
+      <PeopleSettingsEntries
+        actions={settingsPeopleActions(user)}
+        canGrantOwner={owner}
+      />
       <div className="flex gap-2">
         {sections.map((id) => (
           <a
@@ -56,7 +66,7 @@ function SettingsPage() {
       {sections.includes("company") || canEditFleets(user) ? (
         <FleetManager
           canEdit={canEditFleets(user)}
-          canCreate={user.role === "super_admin" || user.roleTitle === "Owner"}
+          canCreate={owner}
         />
       ) : null}
       {sections.includes("notifications") && (
@@ -65,9 +75,7 @@ function SettingsPage() {
         />
       )}
       {sections.includes("people") && user && (
-        <PeopleSettingsPanel
-          owner={user.role === "super_admin" || user.roleTitle === "Owner"}
-        />
+        <PeopleSettingsPanel owner={owner} />
       )}
     </div>
   );

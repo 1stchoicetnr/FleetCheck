@@ -46,6 +46,14 @@ export function canEditPeople(user: MenuUser): boolean {
   return accessRank(user) === "owner";
 }
 
+/** Owner gets the company-wide user list. Manager gets fleet-scoped invites only. */
+export function settingsPeopleActions(user: MenuUser): Array<"users" | "invites"> {
+  const actions: Array<"users" | "invites"> = [];
+  if (accessRank(user) === "owner") actions.push("users");
+  if (canManagePeople(user)) actions.push("invites");
+  return actions;
+}
+
 /** Owner and Manager approve access requests. Office, Tech, and Driver do not. */
 export function canReviewAccessRequests(user: MenuUser): boolean {
   return canManagePeople(user);

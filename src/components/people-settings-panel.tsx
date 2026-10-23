@@ -13,10 +13,49 @@ import {
 } from "@/lib/checkout-api";
 import { Company } from "@/lib/types";
 import { summarizeUnits, unitCountLine, UnitCounts } from "@/lib/unit-counts";
+import { primaryButtonClass } from "@/lib/button-styles";
+import type { settingsPeopleActions } from "@/lib/home-menu";
 import Link from "next/link";
 import { Users, Truck } from "lucide-react";
 import { UnitImportNote } from "@/components/unit-import-note";
 import { AccessRequestsPanel } from "@/components/access-requests-panel";
+
+const peopleEntryClass = [
+  "inline-flex w-full min-h-[56px] items-center justify-center gap-2 rounded-xl px-6 text-lg font-semibold tracking-tight",
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4ade80] focus-visible:ring-offset-2 focus-visible:ring-offset-[#101012]",
+  primaryButtonClass,
+].join(" ");
+
+export function PeopleSettingsEntries({
+  actions,
+  canGrantOwner,
+}: {
+  actions: ReturnType<typeof settingsPeopleActions>;
+  canGrantOwner: boolean;
+}) {
+  if (actions.length === 0) return null;
+  return (
+    <div id="people" className="space-y-3">
+      {actions.includes("users") && (
+        <Link href="/admin/users" className={peopleEntryClass}>
+          <Users className="h-5 w-5" aria-hidden="true" />
+          Add or edit users
+        </Link>
+      )}
+      {actions.includes("invites") && (
+        <Link href="/office/people" className={peopleEntryClass}>
+          <Users className="h-5 w-5" aria-hidden="true" />
+          People and invites
+        </Link>
+      )}
+      <AccessRequestsPanel
+        canGrantOwner={canGrantOwner}
+        canResetPassword={false}
+        part="requests"
+      />
+    </div>
+  );
+}
 
 export function PeopleSettingsPanel({ owner }: { owner: boolean }) {
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -57,8 +96,8 @@ export function PeopleSettingsPanel({ owner }: { owner: boolean }) {
   }, [owner]);
 
   return (
-    <div id="people" className="space-y-4">
-      <AccessRequestsPanel canGrantOwner={owner} canResetPassword />
+    <div className="space-y-4">
+      <AccessRequestsPanel canGrantOwner={owner} canResetPassword part="accounts" />
       {owner && (
       <>
         {/* Stats */}
@@ -96,21 +135,6 @@ export function PeopleSettingsPanel({ owner }: { owner: boolean }) {
               ? "Unlock Office to load the shared unit count."
               : "Loading units…"}
         </p>
-        <Link href="/admin/users">
-          <Button size="lg" variant="secondary" className="w-full">
-            <Users className="h-5 w-5 mr-2" />
-            Add or edit users
-          </Button>
-        </Link>
-
-        {/* Add Vehicle */}
-        <Link href="/office/people">
-          <Button size="lg" variant="secondary" className="w-full">
-            <Users className="h-5 w-5 mr-2" />
-            People and invites
-          </Button>
-        </Link>
-
         <Card>
           <CardContent className="py-5 space-y-3">
             <CardTitle>Driver settings</CardTitle>

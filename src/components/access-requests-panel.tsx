@@ -38,9 +38,12 @@ function reveal(node: HTMLElement | null) {
 export function AccessRequestsPanel({
   canGrantOwner,
   canResetPassword,
+  part = "all",
 }: {
   canGrantOwner: boolean;
   canResetPassword: boolean;
+  /** Requests sit at the top of Settings. Account edits stay further down. */
+  part?: "all" | "requests" | "accounts";
 }) {
   const [requests, setRequests] = useState<AccessRequest[]>([]);
   const [fleets, setFleets] = useState<SharedFleet[]>([]);
@@ -55,23 +58,31 @@ export function AccessRequestsPanel({
   const [issued, setIssued] = useState<Issued | null>(null);
 
   const load = useCallback(async () => {
-    const [requestRes, fleetList] = await Promise.all([
-      fetch("/api/auth/access-requests", { cache: "no-store" }),
+    const [requestRes, fleetList, peopleRes] = await Promise.all([
+      part === "accounts"
+        ? Promise.resolve(null)
+        : fetch("/api/auth/access-requests", { cache: "no-store" }),
       fetchFleets().catch(() => [] as SharedFleet[]),
+      part !== "requests" && canResetPassword
+        ? fetch("/api/auth/people", { cache: "no-store" })
+        : Promise.resolve(null),
     ]);
-    const data = (await requestRes.json().catch(() => ({}))) as {
-      requests?: AccessRequest[];
-      error?: string;
-    };
-    if (!requestRes.ok) {
-      setError(data.error || "Could not load access requests.");
-      return;
-    }
-    setRequests(data.requests || []);
     setFleets(fleetList.filter((fleet) => !fleet.archivedAt));
-    setError("");
-    if (canResetPassword) {
-      const peopleRes = await fetch("/api/auth/people", { cache: "no-store" });
+    if (!requestRes) {
+      setRequests([]);
+    } else {
+      const data = (await requestRes.json().catch(() => ({}))) as {
+        requests?: AccessRequest[];
+        error?: string;
+      };
+      if (!requestRes.ok) {
+        setError(data.error || "Could not load access requests.");
+        return;
+      }
+      setRequests(data.requests || []);
+      setError("");
+    }
+    if (peopleRes) {
       const peopleData = (await peopleRes.json().catch(() => ({}))) as { people?: Person[] };
       if (peopleRes.ok) {
         const nextPeople = peopleData.people || [];
@@ -92,7 +103,7 @@ export function AccessRequestsPanel({
         });
       }
     }
-  }, [canResetPassword]);
+  }, [canResetPassword, part]);
 
   useEffect(() => {
     void load().catch(() => setError("Could not load access requests."));
@@ -238,17 +249,20 @@ export function AccessRequestsPanel({
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-lg font-bold text-ink">People and invites</h2>
-        <p className="mt-1 text-sm text-muted">
-          Approve a request, or reset a password with a one-time setup link.
-        </p>
-      </div>
+      {part === "all" && (
+        <div>
+          <h2 className="text-lg font-bold text-ink">People and invites</h2>
+          <p className="mt-1 text-sm text-muted">
+            Approve a request, or reset a password with a one-time setup link.
+          </p>
+        </div>
+      )}
       {error && (
         <p className="text-sm font-medium text-red-600" role="alert">
           {error}
         </p>
       )}
+      {part !== "accounts" && (
       <section className="space-y-3">
         <h3 className="font-bold text-ink">Waiting for approval</h3>
         {requests.length === 0 && (
@@ -311,8 +325,9 @@ export function AccessRequestsPanel({
           );
         })}
       </section>
+      )}
 
-      {canResetPassword && (
+      {part !== "requests" && canResetPassword && (
         <section className="space-y-3">
           <h3 className="font-bold text-ink">Reset a password</h3>
           <p className="text-sm text-muted">
