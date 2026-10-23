@@ -15,8 +15,10 @@ import {
 } from "../checkout-slack-route";
 import {
   SLACK_DELIVERY_CAP,
+  SLACK_AUTOPOST_MAX_AGE_MS,
   STALL_LOOKBACK_MS,
   STALL_PHOTOS_AFTER_MS,
+  slackAutopostTooOld,
   slackDeliveryExhausted,
   slackRetryDelayMs,
   stallReason,
@@ -52,6 +54,11 @@ import {
 export type SlackSendStatus = "sent" | "failed" | "dead" | "skipped";
 
 const BATCH = 8;
+
+/** Old quiet rows are recorded in one run so they do not fill the post batch. */
+const SKIP_BATCH = 50;
+
+const OLD_AUTOPOST = "older than 24h";
 
 function deliveryId(kind: SlackDeliveryKind, reportId: string): string {
   return `slack-${kind}-${reportId}`.slice(0, 120);
@@ -126,6 +133,25 @@ async function defaultThreadFiles(
 ): Promise<SlackBinaryFile[]> {
   const { loadCheckoutThreadFiles } = await import("./slack-thread-files");
   return loadCheckoutThreadFiles(report, keys, steps);
+}
+
+/** Record a delivery the daily job must not post. No Slack call. */
+async function skipOldAutopost(
+  db: OrgDb,
+  orgId: string,
+  reportId: string,
+  kind: SlackDeliveryKind
+): Promise<void> {
+  const claimed = await claimDelivery(db, orgId, reportId, kind);
+  if (!claimed) return;
+  await finishSlackDelivery(db, {
+    orgId,
+    reportId,
+    kind,
+    status: "skipped",
+    error: OLD_AUTOPOST,
+  });
+  logDelivery(kind, reportId, claimed.attempts, "skipped", OLD_AUTOPOST);
 }
 
 async function recordFailure(
@@ -427,20 +453,24 @@ export async function runSlackDeliveries(
       counts.dead += 1;
       continue;
     }
+    if (row.kind === "stall" && report.sentAt) {
+      const claimed = await claimDelivery(db, input.orgId, report.id, "stall");
+      if (!claimed) continue;
+      await finishSlackDelivery(db, {
+        orgId: input.orgId,
+        reportId: report.id,
+        kind: "stall",
+        status: "skipped",
+        error: "completed",
+      });
+      logDelivery("stall", report.id, claimed.attempts, "skipped", "completed");
+      continue;
+    }
+    if (slackAutopostTooOld(report.createdAt, now)) {
+      await skipOldAutopost(db, input.orgId, report.id, row.kind);
+      continue;
+    }
     if (row.kind === "stall") {
-      if (report.sentAt) {
-        const claimed = await claimDelivery(db, input.orgId, report.id, "stall");
-        if (!claimed) continue;
-        await finishSlackDelivery(db, {
-          orgId: input.orgId,
-          reportId: report.id,
-          kind: "stall",
-          status: "skipped",
-          error: "completed",
-        });
-        logDelivery("stall", report.id, claimed.attempts, "skipped", "completed");
-        continue;
-      }
       const reason = stallReason({
         createdAt: report.createdAt,
         sentAt: report.sentAt,
@@ -489,11 +519,29 @@ export async function runSlackDeliveries(
   }
 
   const newest = new Date(now - STALL_PHOTOS_AFTER_MS).toISOString();
-  const oldest = new Date(now - STALL_LOOKBACK_MS).toISOString();
+  const freshOldest = new Date(now - SLACK_AUTOPOST_MAX_AGE_MS).toISOString();
+  const lookbackOldest = new Date(now - STALL_LOOKBACK_MS).toISOString();
+  const quiet = await listRadCabStallCandidates(db, {
+    orgId: input.orgId,
+    companyId: RAD_CAB_COMPANY_ID,
+    oldest: lookbackOldest,
+    newest: new Date(now - SLACK_AUTOPOST_MAX_AGE_MS - 1).toISOString(),
+    limit: SKIP_BATCH,
+  });
+  for (const candidate of quiet) {
+    const reason = stallReason({
+      createdAt: candidate.createdAt,
+      photoAngles: candidate.photoAngles,
+      requiredAngles: input.requiredRadCabAngles,
+      now,
+    });
+    if (!reason) continue;
+    await skipOldAutopost(db, input.orgId, candidate.id, "stall");
+  }
   const candidates = await listRadCabStallCandidates(db, {
     orgId: input.orgId,
     companyId: RAD_CAB_COMPANY_ID,
-    oldest,
+    oldest: freshOldest,
     newest,
     limit: BATCH,
   });

@@ -3,11 +3,13 @@ import test from "node:test";
 import { PGlite } from "@electric-sql/pglite";
 import type { CheckoutFetch } from "./checkout-slack.ts";
 import {
+  SLACK_AUTOPOST_MAX_AGE_MS,
   SLACK_DELIVERY_CAP,
   STALL_PHOTOS_AFTER_MS,
   STALL_REASON_PHOTOS,
   STALL_REASON_UNFINISHED,
   STALL_UNFINISHED_AFTER_MS,
+  slackAutopostTooOld,
   slackDeliveryExhausted,
   slackPlain,
   slackRetryDelayMs,
@@ -563,6 +565,110 @@ test("a completed check does not get a stall retry", async () => {
   ]);
   assert.equal(String(rows.rows[0]?.status), "skipped");
   assert.equal(String(rows.rows[0]?.last_error), "completed");
+});
+
+test("the daily job does not auto-post a check older than 24 hours", () => {
+  const created = Date.parse(STARTED);
+  assert.equal(slackAutopostTooOld(STARTED, created + SLACK_AUTOPOST_MAX_AGE_MS), false);
+  assert.equal(slackAutopostTooOld(STARTED, created + SLACK_AUTOPOST_MAX_AGE_MS + 1), true);
+});
+
+test("checks older than 24 hours are marked skipped and a fresh stall still posts", async () => {
+  const db = new PGlite();
+  await db.exec(SCHEMA);
+  const org = runner(db);
+  const now = Date.parse(STARTED) + 26 * 60 * 60 * 1000;
+  const freshAt = new Date(now - 20 * 60 * 1000).toISOString();
+  await insertReport(db, { id: "cr-old-stall", createdAt: STARTED });
+  await insertReport(db, { id: "cr-fresh-stall", createdAt: freshAt });
+  await insertReport(db, {
+    id: "cr-old-checkout",
+    createdAt: STARTED,
+    sentAt: STARTED,
+  });
+  await db.query(
+    `INSERT INTO slack_deliveries (
+       id, org_id, report_id, kind, status, attempts, next_attempt_at
+     ) VALUES (
+       'slack-checkout-cr-old-checkout', $1, 'cr-old-checkout', 'checkout', 'failed', 1,
+       NOW() - INTERVAL '1 minute'
+     )`,
+    [ORG]
+  );
+  const hook = recorder();
+  const counts = await runSlackDeliveries(org, {
+    orgId: ORG,
+    getReport: async (id) =>
+      report({
+        id,
+        createdAt: id === "cr-fresh-stall" ? freshAt : STARTED,
+        sentAt: id === "cr-old-checkout" ? STARTED : null,
+      }),
+    routes: {},
+    webhooks: { radcabcr: RAD },
+    requiredRadCabAngles: REQUIRED,
+    fetchImpl: hook.fetchImpl,
+    slackApi: null,
+    now,
+  });
+  assert.equal(counts.stalls, 1);
+  assert.equal(counts.sent, 1);
+  assert.equal(hook.calls.length, 1);
+  assert.match(hook.texts[0], /\*Not sent\*/);
+  const rows = await org.query(
+    `SELECT report_id, kind, status, last_error
+     FROM slack_deliveries
+     ORDER BY report_id, kind`
+  );
+  const byKey = new Map(rows.map((row) => [`${row.report_id}:${row.kind}`, row]));
+  assert.equal(byKey.get("cr-old-stall:stall")?.status, "skipped");
+  assert.equal(byKey.get("cr-old-stall:stall")?.last_error, "older than 24h");
+  assert.equal(byKey.get("cr-old-checkout:checkout")?.status, "skipped");
+  assert.equal(byKey.get("cr-old-checkout:checkout")?.last_error, "older than 24h");
+  assert.equal(byKey.get("cr-fresh-stall:stall")?.status, "sent");
+  const again = await runSlackDeliveries(org, {
+    orgId: ORG,
+    getReport: async (id) => report({ id, createdAt: STARTED }),
+    routes: {},
+    webhooks: { radcabcr: RAD },
+    requiredRadCabAngles: REQUIRED,
+    fetchImpl: hook.fetchImpl,
+    slackApi: null,
+    now,
+  });
+  assert.equal(again.stalls, 0);
+  assert.equal(hook.calls.length, 1);
+});
+
+test("a failed checkout from the last day still retries", async () => {
+  const db = new PGlite();
+  await db.exec(SCHEMA);
+  const org = runner(db);
+  const now = Date.parse(STARTED) + 2 * 60 * 60 * 1000;
+  const saved = report({ id: "cr-fresh-fail", createdAt: STARTED, sentAt: STARTED });
+  await db.query(
+    `INSERT INTO slack_deliveries (
+       id, org_id, report_id, kind, status, attempts, next_attempt_at
+     ) VALUES (
+       'slack-checkout-cr-fresh-fail', $1, $2, 'checkout', 'failed', 1,
+       NOW() - INTERVAL '1 minute'
+     )`,
+    [ORG, saved.id]
+  );
+  const hook = recorder();
+  const counts = await runSlackDeliveries(org, {
+    orgId: ORG,
+    getReport: async () => saved,
+    routes: {},
+    webhooks: { radcabcr: RAD },
+    requiredRadCabAngles: REQUIRED,
+    fetchImpl: hook.fetchImpl,
+    slackApi: null,
+    now,
+  });
+  assert.equal(counts.sent, 1);
+  assert.equal(hook.calls.length, 1);
+  assert.match(hook.texts[0], /\*Checkout\*/);
 });
 
 test("deliverStallSlack skips a check that already completed", async () => {
