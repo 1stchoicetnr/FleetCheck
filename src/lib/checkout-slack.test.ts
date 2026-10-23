@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   CHECKOUT_SLACK_MAX,
+  SlackDeliveryError,
   checkoutSlackText,
   postCheckoutSlack,
+  postSlackMessage,
 } from "./checkout-slack.ts";
 import type { CheckoutReport, PhotoAngle } from "./types.ts";
 
@@ -144,4 +146,32 @@ test("the webhook mock sends exactly one message, even when Slack returns a thre
   assert.match(result.text, /\/office\/cr-sample\/photos/);
   assert.equal(result.text.includes("blob.example"), false);
   assert.equal(result.text.length <= CHECKOUT_SLACK_MAX, true);
+});
+
+test("a failed webhook throws once and does not send a second message", async () => {
+  let calls = 0;
+  await assert.rejects(
+    () =>
+      postCheckoutSlack(report(), {
+        webhookUrl: "https://hooks.example.test/radcab",
+        fetchImpl: async () => {
+          calls += 1;
+          return { ok: false, status: 500, text: async () => "no" };
+        },
+      }),
+    (err: unknown) => err instanceof SlackDeliveryError && err.message === "HTTP 500"
+  );
+  assert.equal(calls, 1);
+});
+
+test("a webhook timeout is a delivery error", async () => {
+  await assert.rejects(
+    () =>
+      postSlackMessage("https://hooks.example.test/radcab", "hello", async () => {
+        const err = new Error("timed out");
+        err.name = "TimeoutError";
+        throw err;
+      }),
+    (err: unknown) => err instanceof SlackDeliveryError && err.message === "timeout"
+  );
 });

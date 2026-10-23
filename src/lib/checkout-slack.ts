@@ -7,8 +7,22 @@ import { formatMileage, formatUnitLabel } from "./utils";
 
 export type CheckoutFetch = (
   url: string,
-  init: { method: string; headers: Record<string, string>; body: string }
-) => Promise<{ ok: boolean; text: () => Promise<string> }>;
+  init: {
+    method: string;
+    headers: Record<string, string>;
+    body: string;
+    signal?: AbortSignal;
+  }
+) => Promise<{ ok: boolean; status?: number; text: () => Promise<string> }>;
+
+export class SlackDeliveryError extends Error {
+  status?: number;
+  constructor(message: string, status?: number) {
+    super(message);
+    this.name = "SlackDeliveryError";
+    this.status = status;
+  }
+}
 
 /** Slack splits a single webhook body once the text gets long. Stay under that. */
 export const CHECKOUT_SLACK_MAX = 2500;
@@ -148,6 +162,34 @@ export function checkoutSlackText(
   return fitCheckoutSlack(head, checkoutDamageLines(report), tail);
 }
 
+/** One webhook post. Throws on HTTP errors, rate limits, and timeouts. */
+export async function postSlackMessage(
+  webhookUrl: string,
+  text: string,
+  fetchImpl?: CheckoutFetch
+): Promise<void> {
+  const send = fetchImpl ?? fetch;
+  let response: { ok: boolean; status?: number; text: () => Promise<string> };
+  try {
+    response = await send(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, username: "Inspekt" }),
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch (err) {
+    const name = err instanceof Error ? err.name : "";
+    if (name === "TimeoutError" || name === "AbortError") {
+      throw new SlackDeliveryError("timeout");
+    }
+    throw new SlackDeliveryError("network");
+  }
+  if (!response.ok) {
+    const status = response.status || 0;
+    throw new SlackDeliveryError(status ? `HTTP ${status}` : "HTTP error", status || undefined);
+  }
+}
+
 /**
  * Send exactly one checkout message. A long body is shortened here so Slack
  * does not split it, and a thread id in the response is ignored.
@@ -156,12 +198,7 @@ export async function postCheckoutSlack(
   report: CheckoutReport,
   options: { webhookUrl: string; fetchImpl?: CheckoutFetch; appOrigin?: string | null }
 ): Promise<{ text: string }> {
-  const fetchImpl = options.fetchImpl ?? fetch;
   const text = checkoutSlackText(report, { appOrigin: options.appOrigin });
-  await fetchImpl(options.webhookUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, username: "Inspekt" }),
-  });
+  await postSlackMessage(options.webhookUrl, text, options.fetchImpl);
   return { text };
 }

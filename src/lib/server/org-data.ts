@@ -9,7 +9,7 @@ import { OrgAccessError, requireOrgId } from "./org-scope";
 /**
  * The only application module that may read or write
  * companies, vehicles, fleets, user_fleets, checkout_reports, fleet_alerts,
- * app_users, app_feedback, and fleet_settings.
+ * app_users, app_feedback, fleet_settings, and slack_deliveries.
  * Every statement includes org_id. org-stamp.ts is the migration only.
  */
 export type OrgDb = {
@@ -1798,6 +1798,173 @@ export async function applyManagerRoleMigration(
     [scoped, appliedAt]
   );
   return { alreadyApplied: false, officeCount };
+}
+
+export type SlackDeliveryKind = "checkout" | "stall";
+
+export async function insertSlackDelivery(
+  db: OrgDb,
+  input: { id: string; orgId: string; reportId: string; kind: SlackDeliveryKind }
+): Promise<{ attempts: number; body: string | null } | undefined> {
+  const rows = await db.query(
+    `INSERT INTO slack_deliveries (
+       id, org_id, report_id, kind, status, attempts, created_at, updated_at
+     ) VALUES ($1, $2, $3, $4, 'sending', 1, NOW(), NOW())
+     ON CONFLICT (org_id, report_id, kind) DO NOTHING
+     RETURNING attempts, body`,
+    [input.id, org(input.orgId), input.reportId, input.kind]
+  );
+  return deliveryClaim(rows[0]);
+}
+
+export async function claimFailedSlackDelivery(
+  db: OrgDb,
+  input: { orgId: string; reportId: string; kind: SlackDeliveryKind; cap: number }
+): Promise<{ attempts: number; body: string | null } | undefined> {
+  const rows = await db.query(
+    `UPDATE slack_deliveries
+     SET status = 'sending', attempts = attempts + 1, updated_at = NOW()
+     WHERE org_id = $1 AND report_id = $2 AND kind = $3
+       AND status = 'failed'
+       AND attempts < $4
+       AND (next_attempt_at IS NULL OR next_attempt_at <= NOW())
+     RETURNING attempts, body`,
+    [org(input.orgId), input.reportId, input.kind, input.cap]
+  );
+  return deliveryClaim(rows[0]);
+}
+
+function deliveryClaim(
+  row: Record<string, unknown> | undefined
+): { attempts: number; body: string | null } | undefined {
+  if (!row || row.attempts == null) return undefined;
+  return {
+    attempts: Number(row.attempts),
+    body: row.body == null ? null : String(row.body),
+  };
+}
+
+export async function saveSlackDeliveryBody(
+  db: OrgDb,
+  input: { orgId: string; reportId: string; kind: SlackDeliveryKind; body: string }
+): Promise<void> {
+  await db.query(
+    `UPDATE slack_deliveries
+     SET body = $4, updated_at = NOW()
+     WHERE org_id = $1 AND report_id = $2 AND kind = $3 AND status = 'sending'`,
+    [org(input.orgId), input.reportId, input.kind, input.body]
+  );
+}
+
+export async function finishSlackDelivery(
+  db: OrgDb,
+  input: {
+    orgId: string;
+    reportId: string;
+    kind: SlackDeliveryKind;
+    status: "sent" | "failed" | "dead" | "skipped";
+    error?: string | null;
+    nextAttemptAt?: string | null;
+  }
+): Promise<void> {
+  await db.query(
+    `UPDATE slack_deliveries
+     SET status = $4,
+         last_error = $5,
+         next_attempt_at = $6,
+         sent_at = CASE WHEN $4 = 'sent' THEN NOW() ELSE sent_at END,
+         updated_at = NOW()
+     WHERE org_id = $1 AND report_id = $2 AND kind = $3 AND status = 'sending'`,
+    [
+      org(input.orgId),
+      input.reportId,
+      input.kind,
+      input.status,
+      input.error ?? null,
+      input.nextAttemptAt ?? null,
+    ]
+  );
+}
+
+export async function listDueSlackDeliveries(
+  db: OrgDb,
+  orgId: string,
+  cap: number,
+  limit: number
+): Promise<Array<{ reportId: string; kind: SlackDeliveryKind; attempts: number }>> {
+  const rows = await db.query(
+    `SELECT report_id, kind, attempts
+     FROM slack_deliveries
+     WHERE org_id = $1
+       AND status = 'failed'
+       AND attempts < $2
+       AND (next_attempt_at IS NULL OR next_attempt_at <= NOW())
+     ORDER BY next_attempt_at NULLS FIRST
+     LIMIT $3`,
+    [org(orgId), cap, limit]
+  );
+  return rows.map((row) => ({
+    reportId: String(row.report_id),
+    kind: String(row.kind) as SlackDeliveryKind,
+    attempts: Number(row.attempts),
+  }));
+}
+
+export async function listRadCabStallCandidates(
+  db: OrgDb,
+  input: { orgId: string; companyId: string; oldest: string; newest: string; limit: number }
+): Promise<
+  Array<{
+    id: string;
+    unitNumber: string;
+    plate: string;
+    driverName: string;
+    dispatcherName: string;
+    createdAt: string;
+    photoAngles: string[];
+  }>
+> {
+  const rows = await db.query(
+    `SELECT r.id, r.unit_number, r.plate, r.driver_name, r.dispatcher_name, r.created_at,
+            COALESCE(
+              (
+                SELECT jsonb_agg(elem.value->>'angle')
+                FROM jsonb_array_elements(COALESCE(r.photos, '[]'::jsonb)) AS elem
+              ),
+              '[]'::jsonb
+            ) AS photo_angles
+     FROM checkout_reports r
+     WHERE r.org_id = $1
+       AND r.company_id = $2
+       AND r.archived_at IS NULL
+       AND r.sent_at IS NULL
+       AND r.created_at <= $3::timestamptz
+       AND r.created_at >= $4::timestamptz
+       AND NOT EXISTS (
+         SELECT 1 FROM slack_deliveries d
+         WHERE d.org_id = r.org_id AND d.report_id = r.id AND d.kind = 'stall'
+       )
+     ORDER BY r.created_at
+     LIMIT $5`,
+    [org(input.orgId), input.companyId, input.newest, input.oldest, input.limit]
+  );
+  return rows.map((row) => {
+    const raw = row.photo_angles;
+    const angles = Array.isArray(raw)
+      ? raw.map((angle) => String(angle))
+      : typeof raw === "string"
+        ? (JSON.parse(raw) as unknown[]).map((angle) => String(angle))
+        : [];
+    return {
+      id: String(row.id),
+      unitNumber: String(row.unit_number || ""),
+      plate: String(row.plate || ""),
+      driverName: String(row.driver_name || ""),
+      dispatcherName: String(row.dispatcher_name || ""),
+      createdAt: new Date(String(row.created_at)).toISOString(),
+      photoAngles: angles.filter(Boolean),
+    };
+  });
 }
 
 export async function deleteMemberUser(db: OrgDb, orgId: string, userId: string) {

@@ -291,6 +291,23 @@ export async function pgMigrateAndSeed(): Promise<void> {
   `;
   const db = orgDb();
   await applyOrgStamp(db);
+  await sql`
+    CREATE TABLE IF NOT EXISTS slack_deliveries (
+      id TEXT PRIMARY KEY,
+      org_id TEXT NOT NULL,
+      report_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      status TEXT NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      next_attempt_at TIMESTAMPTZ,
+      last_error TEXT,
+      sent_at TIMESTAMPTZ,
+      body TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (org_id, report_id, kind)
+    )
+  `;
   await sql`ALTER TABLE checkout_reports ADD COLUMN IF NOT EXISTS idempotency_key TEXT`;
   await sql`ALTER TABLE checkout_reports ADD COLUMN IF NOT EXISTS sent_at TIMESTAMPTZ`;
   await sql`

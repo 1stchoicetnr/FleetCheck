@@ -69,6 +69,7 @@ import { recordCheckoutAlerts } from "./report-alerts";
 import { effectiveCheckoutSlack } from "@/lib/company-settings";
 import { isGenericDriverName } from "@/lib/driver-name";
 import { notifyCheckoutReport } from "./slack-notify";
+import { deliverCheckoutSlack, slackWebhooksFromEnv } from "./slack-delivery";
 import { assertIdempotencyKey, isUniqueViolation } from "@/lib/checkout-idempotency";
 import { isStuckUpload, STUCK_UPLOAD_AFTER_MS } from "@/lib/delivery-status";
 import {
@@ -106,6 +107,7 @@ import {
   pgReadCompanySettings,
   pgSetFleetSettings,
   pgWriteCompanySettings,
+  pgDb,
 } from "./postgres-store";
 import { OrgAccessError } from "./org-scope";
 import { sharedBackendMode } from "./shared-config";
@@ -443,13 +445,29 @@ export async function confirmReportSent(
       : await localPutReport({ ...existing, sentAt });
   const settingsDoc = await readStoredCompanySettings(orgId);
   const routes = effectiveCheckoutSlack(settingsDoc);
-  void notifyCheckoutReport(saved, {
-    route: routes[saved.companyId],
-    appOrigin: options?.appOrigin,
-    webhooks: {
-      radcabOverride: slackWebhookOverride(settingsDoc) || undefined,
-    },
-  });
+  const webhooks = slackWebhooksFromEnv(slackWebhookOverride(settingsDoc) || undefined);
+  if (mode === "postgres") {
+    try {
+      await deliverCheckoutSlack(pgDb(), saved, {
+        orgId,
+        route: routes[saved.companyId],
+        webhooks,
+        appOrigin: options?.appOrigin,
+      });
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message.replace(/https?:\/\/\S+/g, "").slice(0, 180) : "";
+      console.log(
+        `[slack-delivery] kind=checkout report=${saved.id} attempt=0 status=retry error=${message || "delivery"}`
+      );
+    }
+  } else {
+    void notifyCheckoutReport(saved, {
+      route: routes[saved.companyId],
+      appOrigin: options?.appOrigin,
+      webhooks,
+    });
+  }
   return saved;
 }
 
