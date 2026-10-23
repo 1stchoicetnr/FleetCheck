@@ -24,11 +24,16 @@ type Person = {
 };
 
 type Issued = {
+  personId: string;
   url: string;
   qr: string;
   expiresAt: string;
   label: string;
 };
+
+function reveal(node: HTMLElement | null) {
+  node?.scrollIntoView({ block: "center" });
+}
 
 export function AccessRequestsPanel({
   canGrantOwner,
@@ -45,6 +50,7 @@ export function AccessRequestsPanel({
   const [personRoles, setPersonRoles] = useState<Record<string, string>>({});
   const [personFleets, setPersonFleets] = useState<Record<string, string[]>>({});
   const [error, setError] = useState("");
+  const [resetError, setResetError] = useState<{ id: string; message: string } | null>(null);
   const [busy, setBusy] = useState("");
   const [issued, setIssued] = useState<Issued | null>(null);
 
@@ -195,25 +201,36 @@ export function AccessRequestsPanel({
   const resetPassword = async (person: Person) => {
     setBusy(person.id);
     setError("");
+    setResetError(null);
+    setIssued(null);
     try {
       const res = await fetch("/api/auth/setup-links", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: person.id }),
       });
-      const data = (await res.json().catch(() => ({}))) as Issued & { error?: string };
+      const data = (await res.json().catch(() => ({}))) as {
+        url?: string;
+        qr?: string;
+        expiresAt?: string;
+        error?: string;
+      };
       if (!res.ok || !data.url) {
-        setError(data.error || "Could not create a setup link.");
+        setResetError({
+          id: person.id,
+          message: data.error || "Could not create a setup link.",
+        });
         return;
       }
       setIssued({
+        personId: person.id,
         url: data.url,
-        qr: data.qr,
-        expiresAt: data.expiresAt,
+        qr: data.qr || "",
+        expiresAt: data.expiresAt || "",
         label: `Password reset for ${person.name}`,
       });
     } catch {
-      setError("Could not create a setup link.");
+      setResetError({ id: person.id, message: "Could not create a setup link." });
     } finally {
       setBusy("");
     }
@@ -299,32 +316,8 @@ export function AccessRequestsPanel({
         <section className="space-y-3">
           <h3 className="font-bold text-ink">Reset a password</h3>
           <p className="text-sm text-muted">
-            A reset sends a one-time setup link. It expires in 7 days and replaces any unused setup link.
+            A reset creates a one-time setup link the admin must pass on. It expires in 7 days and replaces any unused setup link.
           </p>
-          {issued && (
-            <div className="space-y-2 rounded-2xl border border-line bg-surface p-4">
-              <p className="font-semibold text-ink">{issued.label}</p>
-              <p className="text-xs text-muted">
-                Expires {new Date(issued.expiresAt).toLocaleString()}. Copy it now. It is not shown again.
-              </p>
-              <input
-                readOnly
-                value={issued.url}
-                aria-label="One-time setup link"
-                className="min-h-[48px] w-full rounded-xl border border-line bg-canvas px-3 text-sm text-ink"
-              />
-              {issued.qr && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={issued.qr}
-                  alt="QR code for this one-time setup link"
-                  width={180}
-                  height={180}
-                  className="h-[180px] w-[180px] rounded-xl bg-white"
-                />
-              )}
-            </div>
-          )}
           {people.map((person) => {
             const selected = new Set(personFleets[person.id] || person.fleetIds || []);
             const ownerPerson = person.role === "owner";
@@ -395,6 +388,41 @@ export function AccessRequestsPanel({
                   {busy === person.id ? "Creating…" : "Reset password"}
                 </button>
               </div>
+              {resetError?.id === person.id && (
+                <p
+                  ref={reveal}
+                  className="rounded-xl border border-[#fca5a5] bg-[#1c1c1e] px-3 py-2 text-sm font-semibold text-[#fecaca]"
+                  role="alert"
+                >
+                  {resetError.message}
+                </p>
+              )}
+              {issued?.personId === person.id && (
+                <div ref={reveal} className="space-y-2 rounded-xl border border-line bg-canvas p-3">
+                  <p className="font-semibold text-ink">{issued.label}</p>
+                  <p className="text-xs text-muted">
+                    Pass this link on. It is not emailed. Expires{" "}
+                    {issued.expiresAt ? new Date(issued.expiresAt).toLocaleString() : "in 7 days"}.
+                    Copy it now. It is not shown again.
+                  </p>
+                  <input
+                    readOnly
+                    value={issued.url}
+                    aria-label="One-time setup link"
+                    className="min-h-[48px] w-full rounded-xl border border-line bg-canvas px-3 text-sm text-ink"
+                  />
+                  {issued.qr && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={issued.qr}
+                      alt="QR code for this one-time setup link"
+                      width={180}
+                      height={180}
+                      className="h-[180px] w-[180px] rounded-xl bg-white"
+                    />
+                  )}
+                </div>
+              )}
             </article>
             );
           })}

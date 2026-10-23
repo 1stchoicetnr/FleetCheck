@@ -43,7 +43,12 @@ type Issued = {
   qr: string;
   expiresAt: string;
   label: string;
+  personId?: string;
 };
+
+function reveal(node: HTMLElement | null) {
+  node?.scrollIntoView({ block: "center" });
+}
 
 export default function PeoplePage() {
   const { user, loading } = useAuth();
@@ -56,6 +61,7 @@ export default function PeoplePage() {
   const [invites, setInvites] = useState<Invite[]>([]);
   const [fleets, setFleets] = useState<SharedFleet[]>([]);
   const [error, setError] = useState("");
+  const [resetError, setResetError] = useState<{ id: string; message: string } | null>(null);
   const [issued, setIssued] = useState<Issued | null>(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -114,6 +120,8 @@ export default function PeoplePage() {
   const issueSetup = async (person: Person) => {
     setBusy(person.id);
     setError("");
+    setResetError(null);
+    setIssued((current) => (current?.personId ? null : current));
     try {
       const res = await fetch("/api/auth/setup-links", {
         method: "POST",
@@ -122,18 +130,22 @@ export default function PeoplePage() {
       });
       const data = (await res.json().catch(() => ({}))) as Issued & { error?: string };
       if (!res.ok || !data.url) {
-        setError(data.error || "Could not create a setup link.");
+        setResetError({
+          id: person.id,
+          message: data.error || "Could not create a setup link.",
+        });
         return;
       }
       setIssued({
         url: data.url,
         qr: data.qr,
         expiresAt: data.expiresAt,
-        label: `Password reset for ${person.name} (${person.email})`,
+        label: `Password reset for ${person.name}`,
+        personId: person.id,
       });
       await load();
     } catch {
-      setError("Could not create a setup link.");
+      setResetError({ id: person.id, message: "Could not create a setup link." });
     } finally {
       setBusy("");
     }
@@ -286,7 +298,7 @@ export default function PeoplePage() {
             </p>
           )}
 
-          {issued && (
+          {issued && !issued.personId && (
             <section className="space-y-3 rounded-2xl border border-gray-200 bg-white p-4">
               <h3 className="font-bold text-gray-900">{issued.label}</h3>
               <p className="text-xs text-gray-500">
@@ -462,6 +474,40 @@ export default function PeoplePage() {
                       {busy === person.id ? "Creating…" : "Reset password"}
                     </button>
                   </div>
+                  {resetError?.id === person.id && (
+                    <p
+                      ref={reveal}
+                      className="rounded-xl border border-[#fca5a5] bg-[#1c1c1e] px-3 py-2 text-sm font-semibold text-[#fecaca]"
+                      role="alert"
+                    >
+                      {resetError.message}
+                    </p>
+                  )}
+                  {issued?.personId === person.id && (
+                    <div ref={reveal} className="space-y-2 rounded-xl border border-gray-200 bg-gray-50 p-3">
+                      <p className="font-semibold text-gray-900">{issued.label}</p>
+                      <p className="text-xs text-gray-500">
+                        Pass this link on. It is not emailed. Expires{" "}
+                        {new Date(issued.expiresAt).toLocaleString()}. Copy it now. It is not shown again.
+                      </p>
+                      <input
+                        readOnly
+                        value={issued.url}
+                        aria-label="One-time setup link"
+                        className="min-h-[48px] w-full rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-900"
+                      />
+                      {issued.qr && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={issued.qr}
+                          alt="QR code for this one-time setup link"
+                          width={180}
+                          height={180}
+                          className="h-[180px] w-[180px] rounded-xl bg-white"
+                        />
+                      )}
+                    </div>
+                  )}
                 </article>
               );
             })}
