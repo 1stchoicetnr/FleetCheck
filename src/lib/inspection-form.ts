@@ -674,6 +674,21 @@ export function treadLevelLabel(level?: TreadLevel | "" | null): string {
   return TREAD_LEVEL_ITEMS.find((item) => item.id === level)?.label ?? level;
 }
 
+/** Display-only summary of the four tread chips. Does not affect flags or the traffic light. */
+export function treadSummaryChip(tread: TreadByTire): {
+  label: string;
+  tone: TreadLevel;
+} | null {
+  if (TREAD_TIRE_ITEMS.every((tire) => tread[tire.id] === "good")) {
+    return { label: "Tires: all good", tone: "good" };
+  }
+  const worst = worstTreadLevel(tread);
+  if (worst === "fair") return { label: "Tires: worst Fair", tone: "fair" };
+  if (worst === "low") return { label: "Tires: worst Low", tone: "low" };
+  if (worst === "bald") return { label: "Tires: worst Bald", tone: "bald" };
+  return null;
+}
+
 export function trafficLightLabel(light?: TrafficLight | "" | null): string {
   if (light === "green") return "Green — good to go";
   if (light === "yellow") return "Yellow — note & drive";

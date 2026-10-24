@@ -10,7 +10,7 @@ import {
   trafficLightLabel,
   TREAD_TIRE_ITEMS,
   treadLevelLabel,
-  worstTreadLevel,
+  treadSummaryChip,
 } from "@/lib/inspection-form";
 import { cn } from "@/lib/utils";
 
@@ -50,7 +50,7 @@ export function InspectionFormSummary({
   const traffic = form.trafficNote?.trim();
   const extra = form.additionalComments?.trim();
   const tread = asTreadByTire(form.treadByTire, form.treadLevel);
-  const worst = worstTreadLevel(tread);
+  const treadSummary = treadSummaryChip(tread);
   return (
     <div className="space-y-3">
       {showClover ? (
@@ -90,9 +90,20 @@ export function InspectionFormSummary({
             {tire.label} {treadLevelLabel(tread[tire.id])}
           </span>
         ))}
-        {worst ? (
-          <span className="rounded-full px-2.5 py-1 bg-gray-100 text-gray-600">
-            Worst {treadLevelLabel(worst)}
+        {treadSummary ? (
+          <span
+            className={cn(
+              "rounded-full px-2.5 py-1",
+              treadSummary.tone === "good"
+                ? "bg-green-100 text-green-800"
+                : treadSummary.tone === "fair"
+                  ? "bg-sky-100 text-sky-800"
+                  : treadSummary.tone === "low"
+                    ? "bg-amber-100 text-amber-900"
+                    : "bg-red-100 text-red-800"
+            )}
+          >
+            {treadSummary.label}
           </span>
         ) : null}
         <span
