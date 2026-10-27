@@ -13,8 +13,18 @@ export type InspectionCheckId =
 
 export type CheckResult = "ok" | "not_ok" | "na";
 
+export type CheckIssueReason = "not_working" | "couldnt_check" | "other";
+
+export const CHECK_ISSUE_REASONS: Array<{ id: CheckIssueReason; label: string }> = [
+  { id: "not_working", label: "Not working" },
+  { id: "couldnt_check", label: "Couldn't check" },
+  { id: "other", label: "Other" },
+];
+
 export type InspectionCheckState = {
   result: CheckResult | "";
+  /** Set when the driver marks an issue. Older checks may omit it. */
+  reason?: CheckIssueReason;
   note?: string;
   /** Legacy paper-form field — mapped to result on read. */
   checked?: boolean;
@@ -297,31 +307,28 @@ export function applyPowertrainToForm(
   };
 }
 
+function asCheckReason(value: unknown): CheckIssueReason | undefined {
+  if (value === "not_working" || value === "couldnt_check" || value === "other") {
+    return value;
+  }
+  return undefined;
+}
+
 function asCheckState(value: unknown): InspectionCheckState {
   if (!value || typeof value !== "object") return { result: "" };
   const row = value as InspectionCheckState;
+  const note = typeof row.note === "string" ? row.note : undefined;
+  const reason = asCheckReason(row.reason);
   if (row.result === "ok" || row.result === "not_ok" || row.result === "na") {
     return {
       result: row.result,
-      note: typeof row.note === "string" ? row.note : undefined,
+      note,
+      ...(row.result === "not_ok" && reason ? { reason } : {}),
     };
   }
-  if (row.na) {
-    return {
-      result: "na",
-      note: typeof row.note === "string" ? row.note : undefined,
-    };
-  }
-  if (row.checked) {
-    return {
-      result: "ok",
-      note: typeof row.note === "string" ? row.note : undefined,
-    };
-  }
-  return {
-    result: "",
-    note: typeof row.note === "string" ? row.note : undefined,
-  };
+  if (row.na) return { result: "na", note };
+  if (row.checked) return { result: "ok", note };
+  return { result: "", note };
 }
 
 function asYesNo(value: unknown): YesNo | "" {
@@ -623,6 +630,8 @@ export function validateInspectionForm(
     if (evSkipsCheck(item.id, powertrain) || state.result === "na") continue;
     if (state.result !== "ok" && state.result !== "not_ok") {
       missing.push(item.id);
+    } else if (state.result === "not_ok" && !asCheckReason(state.reason)) {
+      missing.push(item.id);
     }
   }
   const tread = asTreadByTire(normalized.treadByTire, normalized.treadLevel);
@@ -703,10 +712,14 @@ export function inspectionCheckLabel(id: InspectionCheckId): string {
   return INSPECTION_CHECK_ITEMS.find((item) => item.id === id)?.label ?? id;
 }
 
+export function checkIssueReasonLabel(reason?: string | null): string {
+  return CHECK_ISSUE_REASONS.find((item) => item.id === reason)?.label ?? "";
+}
+
 export function formatCheckResult(state: InspectionCheckState): string {
   if (state.result === "na" || state.na) return "N/A";
   if (state.result === "ok" || state.checked) return "OK";
-  if (state.result === "not_ok") return "Issue";
+  if (state.result === "not_ok") return checkIssueReasonLabel(state.reason) || "Issue";
   return "Not answered";
 }
 

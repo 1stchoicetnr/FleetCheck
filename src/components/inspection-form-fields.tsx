@@ -3,6 +3,7 @@
 import {
   applyPowertrainToForm,
   asTreadByTire,
+  CHECK_ISSUE_REASONS,
   CheckoutInspectionForm,
   CLOVER_SERIAL_HINT,
   CLOVER_SERIAL_LABEL,
@@ -245,11 +246,13 @@ export function InspectionFormFields({
                       N/A for EV — skipped
                     </p>
                   )}
-                  {error && (
-                    <p className="text-xs font-medium text-red-600 mt-1">
-                      Required — pick {okLabel} or {issueLabel}.
-                    </p>
-                  )}
+                    {error && (
+                      <p className="text-xs font-medium text-red-600 mt-1">
+                        {state.result === "not_ok"
+                          ? "Choose a reason."
+                          : `Required — pick ${okLabel} or ${issueLabel}.`}
+                      </p>
+                    )}
                 </div>
                 {skipped ? (
                   <span className="text-xs font-bold uppercase tracking-wide text-gray-500 bg-gray-200 rounded-full px-3 py-1 shrink-0">
@@ -264,7 +267,7 @@ export function InspectionFormFields({
                           ...synced,
                           checks: {
                             ...synced.checks,
-                            [item.id]: { ...state, result: "ok" },
+                            [item.id]: { ...state, result: "ok", reason: undefined },
                           },
                         })
                       }
@@ -305,20 +308,51 @@ export function InspectionFormFields({
                 )}
               </div>
               {!skipped && state.result === "not_ok" && (
-                <input
-                  value={state.note ?? ""}
-                  onChange={(e) =>
-                    update({
-                      ...synced,
-                      checks: {
-                        ...synced.checks,
-                        [item.id]: { ...state, note: e.target.value },
-                      },
-                    })
-                  }
-                  placeholder="Optional note"
-                  className="w-full rounded-xl border-2 border-gray-200 px-3 py-2.5 text-sm min-h-[44px]"
-                />
+                <div className="space-y-2">
+                  <select
+                    aria-label={`${item.label} reason`}
+                    value={state.reason ?? ""}
+                    onChange={(e) =>
+                      update({
+                        ...synced,
+                        checks: {
+                          ...synced.checks,
+                          [item.id]: {
+                            ...state,
+                            reason:
+                              e.target.value === "not_working" ||
+                              e.target.value === "couldnt_check" ||
+                              e.target.value === "other"
+                                ? e.target.value
+                                : undefined,
+                          },
+                        },
+                      })
+                    }
+                    className="w-full rounded-xl border-2 border-gray-200 bg-white px-3 py-2.5 text-sm min-h-[44px]"
+                  >
+                    <option value="">Reason</option>
+                    {CHECK_ISSUE_REASONS.map((reason) => (
+                      <option key={reason.id} value={reason.id}>
+                        {reason.label}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    value={state.note ?? ""}
+                    onChange={(e) =>
+                      update({
+                        ...synced,
+                        checks: {
+                          ...synced.checks,
+                          [item.id]: { ...state, note: e.target.value },
+                        },
+                      })
+                    }
+                    placeholder="Optional note"
+                    className="w-full rounded-xl border-2 border-gray-200 px-3 py-2.5 text-sm min-h-[44px]"
+                  />
+                </div>
               )}
             </div>
           );
