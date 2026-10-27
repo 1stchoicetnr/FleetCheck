@@ -87,6 +87,7 @@ type ReportRow = {
   archived_at?: string | null;
   idempotency_key?: string | null;
   sent_at?: string | null;
+  driver_user_id?: string | null;
 };
 
 function rowToReport(row: ReportRow): CheckoutReport {
@@ -125,6 +126,7 @@ function rowToReport(row: ReportRow): CheckoutReport {
     inspectionForm: row.inspection_form ?? undefined,
     idempotencyKey: row.idempotency_key ?? undefined,
     sentAt: row.sent_at ? new Date(row.sent_at).toISOString() : undefined,
+    driverUserId: row.driver_user_id ?? undefined,
     archivedAt: row.archived_at
       ? new Date(row.archived_at).toISOString()
       : undefined,
@@ -310,6 +312,7 @@ export async function pgMigrateAndSeed(): Promise<void> {
   `;
   await sql`ALTER TABLE checkout_reports ADD COLUMN IF NOT EXISTS idempotency_key TEXT`;
   await sql`ALTER TABLE checkout_reports ADD COLUMN IF NOT EXISTS sent_at TIMESTAMPTZ`;
+  await sql`ALTER TABLE checkout_reports ADD COLUMN IF NOT EXISTS driver_user_id TEXT`;
   await sql`
     CREATE UNIQUE INDEX IF NOT EXISTS checkout_reports_org_idempotency_idx
     ON checkout_reports (org_id, idempotency_key)
@@ -760,10 +763,16 @@ export async function pgMarkReportSent(
 
 export async function pgListReportsForDriver(
   orgId: string,
-  driverName: string
+  driverName: string,
+  driverUserId?: string | null
 ): Promise<CheckoutReport[]> {
   await pgMigrateAndSeed();
-  const rows = (await orgData.listReportsForDriver(orgDb(), orgId, driverName)) as ReportRow[];
+  const rows = (await orgData.listReportsForDriver(
+    orgDb(),
+    orgId,
+    driverName,
+    driverUserId
+  )) as ReportRow[];
   return rows.map(rowToReport);
 }
 
@@ -812,6 +821,7 @@ async function upsertReportRow(orgId: string, report: CheckoutReport): Promise<v
     inspectionFormJson: JSON.stringify(report.inspectionForm ?? null),
     idempotencyKey: report.idempotencyKey ?? null,
     sentAt: report.sentAt ?? null,
+    driverUserId: report.driverUserId ?? null,
   });
   await orgData.recomputeVehicleMileage(db, orgId, report.vehicleId);
 }

@@ -8,6 +8,7 @@ import {
   type CompanySettingsPatch,
   type PublicCompanySettings,
 } from "@/lib/company-settings";
+import { reportBelongsToDriver } from "@/lib/checkout-access";
 import { checkoutCompletionStatus, missingRequiredPhotos } from "@/lib/checkout-completion";
 import { displayPlate, generateId } from "@/lib/utils";
 import {
@@ -422,16 +423,21 @@ export async function listReportPage(orgId: string, query: OfficeListQuery) {
   return { ...local, stuck };
 }
 
-export async function listMyReports(orgId: string, driverName: string): Promise<CheckoutReport[]> {
+export async function listMyReports(
+  orgId: string,
+  driverName: string,
+  driverUserId?: string | null
+): Promise<CheckoutReport[]> {
   const mode = assertConfigured();
   const name = driverName.trim();
-  if (!name) return [];
-  if (mode === "postgres") return pgListReportsForDriver(orgId, name);
+  if (!name && !driverUserId) return [];
+  if (mode === "postgres") return pgListReportsForDriver(orgId, name, driverUserId);
   const reports = await localListReports();
   return reports
     .filter(
       (report) =>
-        !report.archivedAt && report.driverName.trim().toLowerCase() === name.toLowerCase()
+        !report.archivedAt &&
+        reportBelongsToDriver(report, { userId: driverUserId, name })
     )
     .slice(0, 30);
 }
@@ -629,6 +635,7 @@ export async function createReport(
     createdAt: now,
     signatureDataUrl: input.signatureDataUrl,
     signedAt: input.signedAt,
+    driverUserId: input.driverUserId,
     idempotencyKey: input.idempotencyKey,
   };
   let saved: CheckoutReport;

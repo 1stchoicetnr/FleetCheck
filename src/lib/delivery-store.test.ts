@@ -55,7 +55,8 @@ test("old checks are marked sent once, and a new upload stays open", async () =>
       inspection_form JSONB,
       archived_at TIMESTAMPTZ,
       idempotency_key TEXT,
-      sent_at TIMESTAMPTZ
+      sent_at TIMESTAMPTZ,
+      driver_user_id TEXT
     );
   `);
   const data = runner(db);
