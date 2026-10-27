@@ -250,12 +250,12 @@ export async function acceptLink(
   }
 
   const passwordHash = await hashPassword(password);
-  const claimed = await claimInvite(db, invite.org_id, invite.id);
-  if (!claimed) throw new AuthError("This link has expired or was already used.", 404);
 
   if (invite.kind === "setup" && existing && invite.user_id) {
     await setUserPassword(db, invite.org_id, invite.user_id, passwordHash);
     await deleteUserSessions(db, invite.org_id, invite.user_id);
+    const claimed = await claimInvite(db, invite.org_id, invite.id);
+    if (!claimed) throw new AuthError("This link has expired or was already used.", 404);
     return {
       id: String(existing.id),
       name: String(existing.name),
@@ -281,18 +281,21 @@ export async function acceptLink(
       membershipId: `member-${id}`,
       memberRole: invite.role,
     });
+    const fleetIds = String(invite.fleet_ids || "")
+      .split(",")
+      .map((fleetId) => fleetId.trim())
+      .filter(Boolean);
+    if (fleetIds.length) await replaceUserFleets(db, invite.org_id, id, fleetIds);
   } catch (err) {
+    await deleteMemberUser(db, invite.org_id, id).catch(() => undefined);
     const message = err instanceof Error ? err.message : "";
     if (/unique|duplicate/i.test(message)) {
       throw new AuthError("That email already has an account. Ask for a setup link.", 409);
     }
     throw err;
   }
-  const fleetIds = String(invite.fleet_ids || "")
-    .split(",")
-    .map((id) => id.trim())
-    .filter(Boolean);
-  if (fleetIds.length) await replaceUserFleets(db, invite.org_id, id, fleetIds);
+  const claimed = await claimInvite(db, invite.org_id, invite.id);
+  if (!claimed) throw new AuthError("This link has expired or was already used.", 404);
   return { id, name, email, role: invite.role, orgId: invite.org_id };
 }
 
