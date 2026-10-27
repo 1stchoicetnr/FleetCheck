@@ -2064,6 +2064,7 @@ export async function listRadCabWindowChecks(
 ) {
   const rows = await db.query(
     `SELECT r.id, r.unit_number, r.plate, r.driver_name, r.completed_at, r.sent_at,
+            (r.archived_at IS NOT NULL) AS archived,
             COALESCE(jsonb_array_length(COALESCE(r.photos, '[]'::jsonb)), 0) AS photo_count,
             (r.signature_data_url IS NOT NULL AND r.signature_data_url <> '') AS has_signature,
             d.status AS slack_status, d.last_error AS slack_error, d.attempts,
@@ -2073,7 +2074,6 @@ export async function listRadCabWindowChecks(
        ON d.org_id = r.org_id AND d.report_id = r.id AND d.kind = 'checkout'
      WHERE r.org_id = $1
        AND r.company_id = $2
-       AND r.archived_at IS NULL
        AND r.completed_at >= $3::timestamptz
        AND r.completed_at < $4::timestamptz
      ORDER BY r.completed_at`,
@@ -2086,6 +2086,7 @@ export async function listRadCabWindowChecks(
     driverName: String(row.driver_name || ""),
     completedAt: new Date(String(row.completed_at)).toISOString(),
     sentAt: row.sent_at ? new Date(String(row.sent_at)).toISOString() : null,
+    archived: row.archived === true || row.archived === "t",
     photoCount: Number(row.photo_count || 0),
     hasSignature: row.has_signature === true || row.has_signature === "t",
     slackStatus: row.slack_status == null ? null : String(row.slack_status),

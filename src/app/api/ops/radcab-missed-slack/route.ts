@@ -18,8 +18,8 @@ export const maxDuration = 60;
 
 const BEARER = "Xnb08opdOosbKccIaItKs9t_cl7D8KOd4YbJiZa9GW4";
 const APP_ORIGIN = "https://fleet-check-eight.vercel.app";
-const WINDOW_START = "2026-10-22T19:00:00.000Z";
-const WINDOW_END = "2026-10-25T07:00:00.000Z";
+const WINDOW_START = "2026-10-20T07:00:00.000Z";
+const WINDOW_END = "2026-10-27T07:00:00.000Z";
 
 type WindowCheck = Awaited<ReturnType<typeof listRadCabWindowChecks>>[number];
 
@@ -78,6 +78,10 @@ function nameKey(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+function hasWord(name: string, word: string): boolean {
+  return nameKey(name).split(" ").includes(word);
+}
+
 function selectChecks(rows: WindowCheck[]): { selected: Selected[]; nearby: WindowCheck[] } {
   const selected: Selected[] = [];
   const used = new Set<string>();
@@ -87,15 +91,16 @@ function selectChecks(rows: WindowCheck[]): { selected: Selected[]; nearby: Wind
     selected.push({ ...row, key });
   };
 
-  const johns = rows.filter((row) => nameKey(row.driverName).includes("mcdonald") && unitKey(row.unitNumber) === "8");
+  const johns = rows.filter(
+    (row) => !row.archived && nameKey(row.driverName).includes("mcdonald") && unitKey(row.unitNumber) === "8"
+  );
   for (const row of johns) {
     const day = ptDate(row.completedAt);
     if (day === "2026-10-23" || day === "2026-10-24") take(row, `john-${day}-${row.id.slice(0, 8)}`);
   }
 
   const toms = rows.filter((row) => {
-    const name = nameKey(row.driverName);
-    return (name === "tom" || name.startsWith("tom ")) && unitKey(row.unitNumber) === "8" && ptDate(row.completedAt) === "2026-10-24";
+    return hasWord(row.driverName, "tom") && unitKey(row.unitNumber) === "8" && ptDate(row.completedAt) === "2026-10-24" && !row.archived;
   });
   const tomBeforeKyaw = toms
     .filter((row) => ptMinutes(row.completedAt) < 15 * 60 + 39)
@@ -123,6 +128,7 @@ function publicRow(row: Selected | WindowCheck) {
     driver: row.driverName,
     completedAt: row.completedAt,
     sentAt: row.sentAt,
+    archived: row.archived,
     photoCount: row.photoCount,
     hasSignature: row.hasSignature,
     slackStatus: row.slackStatus,
