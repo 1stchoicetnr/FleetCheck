@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { fetchFleets, type SharedFleet } from "@/lib/checkout-api";
 import { primaryButtonClass, secondaryOutlineButtonClass } from "@/lib/button-styles";
+import { formatCheckoutTime } from "@/lib/checkout-slack";
 import { setupLinkHandoff } from "@/lib/setup-link-copy";
 import { RolePicker } from "@/components/role-picker";
 
@@ -453,7 +454,7 @@ export function AccessRequestsPanel({
                   <p className="font-semibold text-ink">{issued.label}</p>
                   <p className="text-xs text-muted">
                     {setupLinkHandoff(Boolean(issued.emailed))}{" "}
-                    {issued.expiresAt ? new Date(issued.expiresAt).toLocaleString() : "in 7 days"}.
+                    {issued.expiresAt ? formatCheckoutTime(issued.expiresAt) : "in 7 days"}.
                     Copy it now. It is not shown again.
                   </p>
                   <input

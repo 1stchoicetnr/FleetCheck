@@ -52,7 +52,8 @@ import {
   UNIT_NUMBER_LABEL,
   validateInspectionForm,
 } from "@/lib/inspection-form";
-import { formatDate, formatDateOnly, formatUnitLabel } from "@/lib/utils";
+import { formatCheckoutTime } from "@/lib/checkout-slack";
+import { formatDateOnly, formatUnitLabel } from "@/lib/utils";
 import { PHOTO_EXAMPLE_PATHS } from "@/lib/photo-examples";
 import { InspectionFormFields } from "@/components/inspection-form-fields";
 import { InspectionFormSummary } from "@/components/inspection-form-summary";
@@ -452,7 +453,7 @@ function CheckoutCapturePage() {
             {completed.make} {completed.model}
           </p>
           <p className="text-sm text-gray-500">
-            Sent {formatDate(completed.sentAt || completed.completedAt)}. Office has
+            Sent {formatCheckoutTime(completed.sentAt || completed.completedAt)}. Office has
             this check. Slack is only a copy.
           </p>
           <div className="space-y-3 pt-2">

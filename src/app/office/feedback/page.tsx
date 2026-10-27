@@ -14,7 +14,8 @@ import {
   feedbackStepLabel,
   StoredFeedback,
 } from "@/lib/feedback";
-import { formatDate, formatUnitLabel } from "@/lib/utils";
+import { formatCheckoutTime } from "@/lib/checkout-slack";
+import { formatUnitLabel } from "@/lib/utils";
 
 export default function OfficeFeedbackPage() {
   const { user, loading } = useAuth();
@@ -104,7 +105,7 @@ function FeedbackCard({ row }: { row: StoredFeedback }) {
           {row.note?.trim() || "(no note)"}
         </p>
         <p className="text-xs text-gray-500">
-          {who} · {feedbackRoleLabel(row.userRole)} · {page} · {formatDate(row.createdAt)}
+          {who} · {feedbackRoleLabel(row.userRole)} · {page} · {formatCheckoutTime(row.createdAt)}
         </p>
         {row.pageUrl && (
           <p className="text-xs text-gray-400 break-all">{row.pageUrl}</p>

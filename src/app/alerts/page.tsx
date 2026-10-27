@@ -25,7 +25,7 @@ import {
   setAlertArchived,
 } from "@/lib/storage";
 import { AlertEventType, ALERT_TYPE_LABELS } from "@/lib/types";
-import { formatDate } from "@/lib/utils";
+import { formatCheckoutTime } from "@/lib/checkout-slack";
 import { isBeforeRolloutSlate } from "@/lib/rollout-slate";
 import { AlertTriangle, Bell, CheckCheck, Settings } from "lucide-react";
 
@@ -269,7 +269,7 @@ export default function AlertsPage() {
                       {alert.vehiclePlate} · {alert.actorName}
                     </p>
                     <p className="text-xs text-gray-400 mt-1">
-                      {formatDate(alert.createdAt)}
+                      {formatCheckoutTime(alert.createdAt)}
                     </p>
                   </div>
                 </div>
@@ -326,7 +326,7 @@ export default function AlertsPage() {
         open={pending !== null}
         title={
           pending
-            ? `${pending.action === "delete" ? "Delete" : pending.alert.archivedAt ? "Restore" : "Archive"} ${pending.alert.vehiclePlate} ${ALERT_TYPE_LABELS[pending.alert.type]} from ${formatDate(pending.alert.createdAt)}?`
+            ? `${pending.action === "delete" ? "Delete" : pending.alert.archivedAt ? "Restore" : "Archive"} ${pending.alert.vehiclePlate} ${ALERT_TYPE_LABELS[pending.alert.type]} from ${formatCheckoutTime(pending.alert.createdAt)}?`
             : "Update this alert?"
         }
         body={

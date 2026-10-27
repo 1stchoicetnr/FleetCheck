@@ -1,5 +1,5 @@
 import { deliveryView, DeliveryView } from "@/lib/delivery-status";
-import { formatDate } from "@/lib/utils";
+import { formatCheckoutTime } from "@/lib/checkout-slack";
 
 const TONE: Record<DeliveryView["state"], string> = {
   saved: "bg-amber-100 text-amber-900",
@@ -23,7 +23,7 @@ export function DeliveryBadge({
   return (
     <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${TONE[view.state]}`}>
       {view.label}
-      {view.at ? ` · ${formatDate(view.at)}` : ""}
+      {view.at ? ` · ${formatCheckoutTime(view.at)}` : ""}
     </span>
   );
 }

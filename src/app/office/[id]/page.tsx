@@ -44,7 +44,8 @@ import {
   walkaroundPhotoSteps,
 } from "@/lib/types";
 import { downloadCheckoutReportFile } from "@/lib/pdf-download";
-import { formatDate, formatDateOnly, formatMileage, formatUnitLabel } from "@/lib/utils";
+import { formatCheckoutTime } from "@/lib/checkout-slack";
+import { formatDateOnly, formatMileage, formatUnitLabel } from "@/lib/utils";
 import { isVehicleArchived } from "@/lib/vehicle-archive";
 import {
   cleanDamageNote,
@@ -365,9 +366,9 @@ export default function OfficeReportDetailPage() {
                 </div>
               )}
               <p className="text-xs text-gray-400">
-                Complete {formatDate(report.completedAt)}
+                Complete {formatCheckoutTime(report.completedAt)}
                 {report.reviewedAt
-                  ? ` · Reviewed ${formatDate(report.reviewedAt)} by ${report.reviewedBy}`
+                  ? ` · Reviewed ${formatCheckoutTime(report.reviewedAt)} by ${report.reviewedBy}`
                   : ""}
               </p>
               {user && isOwnerAccount(user) && report.companyId === RAD_CAB_COMPANY_ID && (
@@ -406,7 +407,7 @@ export default function OfficeReportDetailPage() {
                 <div className="rounded-xl border border-gray-300 bg-gray-50 p-2">
                   <p className="text-xs font-semibold text-gray-600 mb-1">
                     Driver signature · {report.driverName}
-                    {report.signedAt ? ` · ${formatDate(report.signedAt)}` : ""}
+                    {report.signedAt ? ` · ${formatCheckoutTime(report.signedAt)}` : ""}
                   </p>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
@@ -732,7 +733,7 @@ export default function OfficeReportDetailPage() {
         open={recordAction !== null}
         title={
           report
-            ? `${recordAction === "delete" ? "Delete" : report.archivedAt ? "Restore" : "Archive"} ${formatUnitLabel(report.unitNumber, report.plate)} ${report.type === "check_in" ? "check-in" : "check-out"} from ${formatDate(report.completedAt)}?`
+            ? `${recordAction === "delete" ? "Delete" : report.archivedAt ? "Restore" : "Archive"} ${formatUnitLabel(report.unitNumber, report.plate)} ${report.type === "check_in" ? "check-in" : "check-out"} from ${formatCheckoutTime(report.completedAt)}?`
             : "Update this report?"
         }
         body={
