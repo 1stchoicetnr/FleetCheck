@@ -22,6 +22,8 @@ test("drivers get four screens and office or owner get a shorter tour", () => {
   assert.equal(/\bvan\b/i.test(copy), false);
   assert.match(copy, /Saved on phone/);
   assert.match(copy, /PIN/);
+  assert.match(copy, /Flags at the bottom/);
+  assert.match(copy, /Safety issue/);
 });
 
 test("a finished tour stays finished until that person asks to see it again", () => {

@@ -12,35 +12,35 @@ export const TOUR_REPLAY_EVENT = "inspekt-tour-replay";
 
 const DRIVER_STEPS: TourStep[] = [
   {
-    title: "Start a checkout",
-    body: "This is the check Office reviews. Pick the unit, finish the precheck, and sign.",
+    title: "Start a check",
+    body: "Pick the unit, answer the questions, and sign. The office reads this check.",
   },
   {
-    title: "It stays on this phone",
-    body: "If the signal drops, the check and its photos stay here and send when you are back online. Submitting again does not create a second report.",
+    title: "Flags at the bottom",
+    body: "At the bottom of the questions are four flags: Safety issue, Needs repair, Refuse to drive, and Out of service. Tap one only when it is true.",
   },
   {
-    title: "Line up the photo",
-    body: "Each required angle shows an outline on the camera. Match the outline, then capture.",
+    title: "Take the photos",
+    body: "The camera shows an outline. Line the vehicle up with it, then take the photo. A dark, blurry, or blank photo has to be taken again.",
   },
   {
-    title: "Watch it send",
-    body: "My recent checks moves from Saved on phone, to Uploading, to Sent.",
+    title: "If the phone loses signal",
+    body: "The check stays on this phone. My recent checks shows Saved on phone, then Uploading, then Sent. Sending it again does not make a second check.",
   },
 ];
 
 const OFFICE_STEPS: TourStep[] = [
   {
-    title: "Office is the record",
-    body: "A checkout is saved on the phone, then uploaded, then marked sent. Slack is only a copy.",
+    title: "The check is the record",
+    body: "The phone saves the check, then uploads it, then marks it sent. Slack is only a copy.",
   },
   {
-    title: "Spot a stuck check",
-    body: "The office list shows Saved, Uploading, or Sent. A check that sits for more than 30 minutes is flagged stuck.",
+    title: "A check that did not finish",
+    body: "The office list shows Saved, Uploading, or Sent. A check that sits for more than 30 minutes is marked stuck.",
   },
   {
-    title: "Sign in",
-    body: "Use the email and password an owner approved. The office PIN stays on the sign-in page until an owner sets a password.",
+    title: "How people sign in",
+    body: "People sign in with the email and password an owner approved. The office PIN stays on the sign-in page until an owner sets a password.",
   },
 ];
 
