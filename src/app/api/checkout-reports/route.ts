@@ -126,6 +126,7 @@ export async function POST(req: Request) {
       inspectionForm: body.inspectionForm,
       signatureDataUrl: body.signatureDataUrl,
       signedAt: body.signedAt,
+      driverUserId: auth.userId ?? undefined,
       idempotencyKey:
         typeof body.idempotencyKey === "string" ? body.idempotencyKey : undefined,
     });

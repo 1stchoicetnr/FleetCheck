@@ -10,8 +10,8 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   try {
     const auth = await resolveRequestAuth(req);
-    if (!auth.name) throw new RequestError("Sign in required", 401);
-    const reports = await listMyReports(auth.orgId, auth.name);
+    if (!auth.userId || !auth.name) throw new RequestError("Sign in required", 401);
+    const reports = await listMyReports(auth.orgId, auth.name, auth.userId);
     return NextResponse.json(
       { reports: reports.map(toClientReport) },
       { headers: { "Cache-Control": "no-store" } }

@@ -128,6 +128,8 @@ export interface CheckoutReport {
   model: string;
   odometer: number;
   driverName: string;
+  /** Signed-in person who submitted the check. Absent on checks saved before this was stored. */
+  driverUserId?: string;
   dispatcherName: string;
   type: CheckoutType;
   /** Precheck (paper inspection) completed before the photo walkaround. */

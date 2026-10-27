@@ -1,3 +1,4 @@
+import { mayUpdateCheckout } from "@/lib/checkout-access";
 import { toClientReport } from "@/lib/photo-url";
 import { errorResponse, RequestError } from "@/lib/server/api-error";
 import { slackLinkOrigin } from "@/lib/server/auth-http";
@@ -25,6 +26,17 @@ export async function POST(
     const office = sessionGrantsOffice(auth) || (await isOfficeRequest(req));
     const existing = await getReport(auth.orgId, id);
     if (!existing) throw new RequestError("Not found", 404);
+    if (
+      !mayUpdateCheckout({
+        office,
+        userId: auth.userId,
+        userName: auth.name,
+        driverUserId: existing.driverUserId,
+        driverName: existing.driverName,
+      })
+    ) {
+      throw new RequestError("You can only send your own check.", 403);
+    }
     const created = Date.parse(existing.createdAt);
     if (!office && (!Number.isFinite(created) || Date.now() - created > DRIVER_WINDOW_MS)) {
       throw new RequestError("This checkout is closed. Ask the office.", 403);

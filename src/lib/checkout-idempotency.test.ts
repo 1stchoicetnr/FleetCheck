@@ -231,7 +231,8 @@ test("the same idempotency key cannot insert a second report", async () => {
       signed_at TIMESTAMPTZ,
       inspection_form JSONB,
       idempotency_key TEXT,
-      sent_at TIMESTAMPTZ
+      sent_at TIMESTAMPTZ,
+      driver_user_id TEXT
     );
     CREATE UNIQUE INDEX checkout_reports_org_idempotency_idx
       ON checkout_reports (org_id, idempotency_key)

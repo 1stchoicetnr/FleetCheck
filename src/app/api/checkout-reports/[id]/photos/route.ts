@@ -1,3 +1,4 @@
+import { mayUpdateCheckout } from "@/lib/checkout-access";
 import { toClientReport } from "@/lib/photo-url";
 import { errorResponse } from "@/lib/server/api-error";
 import { NextResponse } from "next/server";
@@ -43,6 +44,19 @@ export async function POST(
       }>;
     };
     const batch = Array.isArray(body.photos) ? body.photos : null;
+    const existing = await getReport(orgId, id);
+    if (!existing) throw new RequestError("Checkout report not found", 404);
+    if (
+      !mayUpdateCheckout({
+        office,
+        userId: auth.userId,
+        userName: auth.name,
+        driverUserId: existing.driverUserId,
+        driverName: existing.driverName,
+      })
+    ) {
+      throw new RequestError("You can only add photos to your own check.", 403);
+    }
     if (batch) {
       if (batch.length === 0 || batch.length > 8) {
         throw new RequestError("Send 1 to 8 photos at a time", 400);
@@ -60,9 +74,8 @@ export async function POST(
         }
       }
       if (!office) {
-        const existing = await getReport(orgId, id);
-        const created = existing ? Date.parse(existing.createdAt) : NaN;
-        if (!existing || !Number.isFinite(created) || Date.now() - created > DRIVER_UPLOAD_WINDOW_MS) {
+        const created = Date.parse(existing.createdAt);
+        if (!Number.isFinite(created) || Date.now() - created > DRIVER_UPLOAD_WINDOW_MS) {
           throw new RequestError("This checkout is closed for new photos. Ask the office.", 403);
         }
       }
@@ -92,13 +105,11 @@ export async function POST(
       throw new RequestError("Damage note is too long", 400);
     }
     if (!office) {
-      // Driver upload (no PIN): only to a report created in the last few hours.
-      const existing = await getReport(orgId, id);
-      const created = existing ? Date.parse(existing.createdAt) : NaN;
+      const created = Date.parse(existing.createdAt);
       if (!body.dataUrl.startsWith("data:") && !body.dataUrl.startsWith("/photo-examples/")) {
         throw new RequestError("Photo must be an image upload", 400);
       }
-      if (!existing || !Number.isFinite(created) || Date.now() - created > DRIVER_UPLOAD_WINDOW_MS) {
+      if (!Number.isFinite(created) || Date.now() - created > DRIVER_UPLOAD_WINDOW_MS) {
         throw new RequestError("This checkout is closed for new photos. Ask the office.", 403);
       }
     }

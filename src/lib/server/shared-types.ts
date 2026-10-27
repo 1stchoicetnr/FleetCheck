@@ -54,6 +54,8 @@ export interface CheckoutReportInput {
   model: string;
   odometer: number;
   driverName: string;
+  /** Taken from the session. A client-sent value is ignored. */
+  driverUserId?: string;
   dispatcherName: string;
   type: CheckoutType;
   inspectionForm?: CheckoutInspectionForm;
