@@ -85,6 +85,11 @@ export type CheckoutInspectionForm = {
   issueFlags?: InspectionIssueFlags;
   /** Starting fuel gauge. Separate from the OK / issue fuel check. */
   fuelGauge?: FuelGauge | "";
+  /**
+   * Who chose the stored result. `app` is the automatic Pass / Conditional / FAIL.
+   * `office` is a later override. Older checks have neither and stay as stored.
+   */
+  resultSource?: "app" | "office";
 };
 
 export const INSPECTION_CHECK_ITEMS: ReadonlyArray<{
@@ -480,6 +485,10 @@ export function normalizeInspectionForm(
         : undefined,
     issueFlags: asIssueFlags(row.issueFlags),
     fuelGauge: asFuelGauge(row.fuelGauge),
+    resultSource:
+      row.resultSource === "app" || row.resultSource === "office"
+        ? row.resultSource
+        : undefined,
   };
 }
 
@@ -514,6 +523,44 @@ export function suggestedTrafficLight(
     return "yellow";
   }
   return "green";
+}
+
+/** App result. Bald, safety, refuse, and out of service are FAIL. Low tread, checklist issues, damage notes, and photo damage marks are Conditional. */
+export function appTrafficLight(
+  form: CheckoutInspectionForm,
+  photos?: ReadonlyArray<{ flaggedDamage?: boolean }>
+): TrafficLight {
+  const base = suggestedTrafficLight(form);
+  if (base === "red") return "red";
+  if (photos?.some((photo) => photo.flaggedDamage)) return "yellow";
+  return base;
+}
+
+export function reviewStatusForLight(
+  light: TrafficLight
+): "pass" | "conditional" | "fail" {
+  if (light === "red") return "fail";
+  if (light === "yellow") return "conditional";
+  return "pass";
+}
+
+/** Photo uploads may update a new app result. Older rows and office overrides stay put. */
+export function shouldRefreshAppResult(
+  form?: { resultSource?: string } | null,
+  reviewedBy?: string | null
+): boolean {
+  return form?.resultSource === "app" && !reviewedBy;
+}
+
+export function withAppResult(
+  form: CheckoutInspectionForm,
+  photos?: ReadonlyArray<{ flaggedDamage?: boolean }>
+): CheckoutInspectionForm {
+  return {
+    ...form,
+    trafficLight: appTrafficLight(form, photos),
+    resultSource: "app",
+  };
 }
 
 export function applyTrafficLightDefaults(
@@ -555,7 +602,7 @@ export function validateInspectionForm(
     return {
       ok: false,
       error: "Fill Precheck before submitting.",
-      missing: ["trafficLight"],
+      missing: ["oil"],
     };
   }
   const includeClover = options?.includeClover !== false;
@@ -583,20 +630,6 @@ export function validateInspectionForm(
   }
   if (normalized.exteriorClean !== "yes" && normalized.exteriorClean !== "no") {
     missing.push("exteriorClean");
-  }
-  if (
-    normalized.trafficLight !== "green" &&
-    normalized.trafficLight !== "yellow" &&
-    normalized.trafficLight !== "red"
-  ) {
-    missing.push("trafficLight");
-  }
-  if (
-    (normalized.trafficLight === "yellow" ||
-      normalized.trafficLight === "red") &&
-    !precheckNote(normalized)
-  ) {
-    missing.push("trafficNote");
   }
   if (powertrain !== "ev" && !asFuelGauge(normalized.fuelGauge)) {
     missing.push("fuelGauge");
@@ -647,15 +680,19 @@ export function canContinueToPhotos(
   options?: InspectionFormOptions
 ): boolean {
   const result = validateInspectionForm(form, powertrain, options);
-  return result.ok && result.form.trafficLight !== "red";
+  return result.ok && !isPrecheckRed(result.form);
 }
 
 export function isPrecheckRed(form?: CheckoutInspectionForm | null): boolean {
-  return form?.trafficLight === "red";
+  if (!form) return false;
+  if (form.resultSource === "office") return form.trafficLight === "red";
+  return appTrafficLight(form) === "red";
 }
 
 export function isPrecheckYellow(form?: CheckoutInspectionForm | null): boolean {
-  return form?.trafficLight === "yellow";
+  if (!form) return false;
+  if (form.resultSource === "office") return form.trafficLight === "yellow";
+  return appTrafficLight(form) === "yellow";
 }
 
 export function inspectionCheckLabel(id: InspectionCheckId): string {

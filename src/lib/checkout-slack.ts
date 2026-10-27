@@ -58,18 +58,19 @@ export function fuelGaugeLabel(form?: CheckoutInspectionForm | null): string {
   return "—";
 }
 
-/** Central time, so the Slack line does not depend on the server zone. */
+/** Pacific time, labeled PT, so Slack and the PDF do not follow the server zone. */
 export function formatCheckoutTime(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "—";
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/Chicago",
+  const formatted = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles",
     month: "short",
     day: "numeric",
     year: "numeric",
     hour: "numeric",
     minute: "2-digit",
   }).format(date);
+  return `${formatted} PT`;
 }
 
 export function checkoutDamageLines(

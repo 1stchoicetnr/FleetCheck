@@ -41,10 +41,13 @@ export function InspectionFormSummary({
   form,
   compact = false,
   showClover = false,
+  hideResult = false,
 }: {
   form: CheckoutInspectionForm;
   compact?: boolean;
   showClover?: boolean;
+  /** Drivers do not see or pick the Pass / Conditional / FAIL result. */
+  hideResult?: boolean;
 }) {
   const flags = activeIssueFlagLabels(form);
   const traffic = form.trafficNote?.trim();
@@ -60,7 +63,7 @@ export function InspectionFormSummary({
         </p>
       ) : null}
       <div className="flex flex-wrap gap-2 text-xs font-semibold">
-        <TrafficLightBadge form={form} />
+        {hideResult ? null : <TrafficLightBadge form={form} />}
         <span
           className={cn(
             "rounded-full px-2.5 py-1",
@@ -140,7 +143,7 @@ export function InspectionFormSummary({
         ))}
       </div>
 
-      {form.trafficLight === "red" && (
+      {!hideResult && form.trafficLight === "red" && (
         <p className="text-sm font-semibold text-red-800 bg-red-50 rounded-xl px-3 py-2">
           Park it — driver did not continue to photos. Flagged for Office /
           repairs.
@@ -148,7 +151,8 @@ export function InspectionFormSummary({
       )}
       {traffic && (
         <p className="text-sm text-gray-800 bg-gray-50 rounded-xl px-3 py-2">
-          {form.trafficLight === "yellow" || form.trafficLight === "red"
+          {!hideResult &&
+          (form.trafficLight === "yellow" || form.trafficLight === "red")
             ? `${trafficLightLabel(form.trafficLight)}: ${traffic}`
             : traffic}
         </p>

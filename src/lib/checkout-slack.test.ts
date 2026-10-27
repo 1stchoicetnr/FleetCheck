@@ -78,7 +78,7 @@ test("checkout slack text names the check and links the PDF and photo gallery", 
   assert.match(text, /\*Odometer:\* 145,900 mi/);
   assert.match(text, /\*Fuel:\* 3\/4/);
   assert.match(text, /\*Result:\* Conditional/);
-  assert.match(text, /\*Time:\* Oct 21, 2026, 2:40 PM/);
+  assert.match(text, /\*Time:\* Oct 21, 2026, 12:40 PM PT/);
   assert.match(text, /LF Fender: scrape/);
   assert.match(text, /Left: scrape/);
   assert.match(text, /\*PDF:\* https:\/\/fleet\.example\.test\/api\/checkout-reports\/cr-sample\/pdf/);

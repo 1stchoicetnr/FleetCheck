@@ -48,7 +48,6 @@ import {
   createEmptyInspectionForm,
   inferPowertrain,
   isPrecheckRed,
-  trafficLightLabel,
   UNIT_NUMBER_LABEL,
   validateInspectionForm,
 } from "@/lib/inspection-form";
@@ -214,8 +213,8 @@ function CheckoutCapturePage() {
   }, [draft, photos, photoFlags, inspectionForm, signatureDataUrl, signedAt, vehicle, company]);
 
   useEffect(() => {
-    if (inspectionForm.trafficLight === "red") setPhase("inspect");
-  }, [inspectionForm.trafficLight]);
+    if (isPrecheckRed(inspectionForm)) setPhase("inspect");
+  }, [inspectionForm]);
 
   useEffect(() => {
     void fetchCompanySettings().then(setCompanySettings).catch(() => {});
@@ -418,16 +417,14 @@ function CheckoutCapturePage() {
           <div className="bg-green-100 rounded-full p-6 inline-flex">
             <Check className="h-12 w-12 text-green-600" />
           </div>
-          <h2 className="text-2xl font-bold text-gray-900">
-            {completed.type === "check_in" ? "Check-in complete" : "Checkout report complete"}
-          </h2>
+          <h2 className="text-2xl font-bold text-gray-900">Submitted</h2>
           <p className="text-gray-600">
             {formatUnitLabel(completed.unitNumber, completed.plate)} — {completed.year}{" "}
             {completed.make} {completed.model}
           </p>
           <p className="text-sm text-gray-500">
-            Sent {formatDate(completed.sentAt || completed.completedAt)} · pending review.
-            Slack is only a copy — Office is the record.
+            Sent {formatDate(completed.sentAt || completed.completedAt)}. Office has
+            this check. Slack is only a copy.
           </p>
           <div className="space-y-3 pt-2">
             <Button
@@ -496,9 +493,6 @@ function CheckoutCapturePage() {
           </p>
           <p className="text-xs text-gray-500">
             {powertrain === "ev" ? "EV — oil/fuel N/A" : "Gas — oil/fuel required"}
-            {inspectionForm.trafficLight
-              ? ` · ${trafficLightLabel(inspectionForm.trafficLight)}`
-              : ""}
           </p>
         </div>
 
@@ -580,7 +574,11 @@ function CheckoutCapturePage() {
                   Edit
                 </button>
               </div>
-              <InspectionFormSummary form={inspectionForm} showClover={usesClover} />
+              <InspectionFormSummary
+                form={inspectionForm}
+                showClover={usesClover}
+                hideResult
+              />
             </section>
             {photosNeeded && (
               <section className="space-y-2">

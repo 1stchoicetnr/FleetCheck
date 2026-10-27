@@ -20,7 +20,10 @@ import {
   inferPowertrain,
   inspectionFormFlagsReport,
   Powertrain,
+  reviewStatusForLight,
+  shouldRefreshAppResult,
   validateInspectionForm,
+  withAppResult,
 } from "@/lib/inspection-form";
 import { earlierReports } from "@/lib/report-priors";
 import { cleanDamageNote, reportHasPhotoDamage, resolveDamageNote } from "@/lib/photo-flags";
@@ -591,21 +594,26 @@ export async function createReport(
     });
   }
   const plate = displayPlate(input.plate || vehicle.plate || input.unitNumber);
+  const stamped = withAppResult({
+    ...inspection.form,
+    inspectedAt: inspection.form.inspectedAt || now,
+  });
   const report: CheckoutReport = {
     id: generateId(),
     ...input,
     vehicleId: vehicle.id,
     unitNumber: input.unitNumber || vehicle.unitNumber,
     plate,
-    inspectionForm: {
-      ...inspection.form,
-      inspectedAt: inspection.form.inspectedAt || now,
-    },
+    inspectionForm: stamped,
     photos: [],
     status: "complete",
     completedAt: now,
-    reviewStatus: "pending",
-    flagged: inspectionFormFlagsReport(inspection.form),
+    reviewStatus: reviewStatusForLight(
+      stamped.trafficLight === "red" || stamped.trafficLight === "yellow"
+        ? stamped.trafficLight
+        : "green"
+    ),
+    flagged: inspectionFormFlagsReport(stamped),
     synced: true,
     createdAt: now,
     signatureDataUrl: input.signatureDataUrl,
@@ -626,6 +634,32 @@ export async function createReport(
     console.error("[alerts] checkout report alerts failed:", err);
   });
   return saved;
+}
+
+function reportWithPhotos(
+  existing: CheckoutReport,
+  photos: VehiclePhoto[]
+): CheckoutReport {
+  const form = existing.inspectionForm;
+  const refresh = shouldRefreshAppResult(form, existing.reviewedBy);
+  const stamped = form && refresh ? withAppResult(form, photos) : form;
+  const light = stamped?.trafficLight;
+  const reviewStatus =
+    refresh && (light === "green" || light === "yellow" || light === "red")
+      ? reviewStatusForLight(light)
+      : existing.reviewStatus;
+  return {
+    ...existing,
+    photos,
+    inspectionForm: stamped,
+    reviewStatus,
+    flagged:
+      reviewStatus === "conditional" ||
+      reviewStatus === "fail" ||
+      !!(existing.newDamageNotes && existing.newDamageNotes.trim()) ||
+      reportHasPhotoDamage({ photos }) ||
+      inspectionFormFlagsReport(stamped),
+  };
 }
 
 export async function addReportPhoto(
@@ -653,14 +687,7 @@ export async function addReportPhoto(
   };
   const photos = existing.photos.filter((p) => p.angle !== angle);
   photos.push(photo);
-  const updated: CheckoutReport = {
-    ...existing,
-    photos,
-    flagged:
-      existing.flagged ||
-      reportHasPhotoDamage({ photos }) ||
-      inspectionFormFlagsReport(existing.inspectionForm),
-  };
+  const updated = reportWithPhotos(existing, photos);
   const saved = mode === "postgres" ? await pgPutReport(orgId, updated) : await localPutReport(updated);
   if (flags?.flaggedDamage) {
     void recordCheckoutAlerts(orgId, saved).catch((err) => {
@@ -706,14 +733,7 @@ export async function addReportPhotos(
     if (idx >= 0) photos[idx] = photo;
     else photos.push(photo);
   }
-  const updated: CheckoutReport = {
-    ...existing,
-    photos,
-    flagged:
-      existing.flagged ||
-      reportHasPhotoDamage({ photos }) ||
-      inspectionFormFlagsReport(existing.inspectionForm),
-  };
+  const updated = reportWithPhotos(existing, photos);
   const saved = mode === "postgres" ? await pgPutReport(orgId, updated) : await localPutReport(updated);
   if (stored.some((photo) => photo.flaggedDamage)) {
     void recordCheckoutAlerts(orgId, saved).catch((err) => {
@@ -753,16 +773,7 @@ export async function patchReportPhotoFlags(
         }
       : p
   );
-  const updated: CheckoutReport = {
-    ...existing,
-    photos,
-    flagged:
-      existing.reviewStatus === "conditional" ||
-      existing.reviewStatus === "fail" ||
-      !!(existing.newDamageNotes && existing.newDamageNotes.trim()) ||
-      reportHasPhotoDamage({ photos }) ||
-      inspectionFormFlagsReport(existing.inspectionForm),
-  };
+  const updated = reportWithPhotos(existing, photos);
   const saved = mode === "postgres" ? await pgPutReport(orgId, updated) : await localPutReport(updated);
   if (flags.flaggedDamage && !wasFlagged) {
     void recordCheckoutAlerts(orgId, saved).catch((err) => {
@@ -882,8 +893,23 @@ export async function reviewReport(
   if (!existing) {
     throw new SharedBackendError("Checkout report not found", 404);
   }
+  const officeLight =
+    input.reviewStatus === "pass"
+      ? "green"
+      : input.reviewStatus === "conditional"
+        ? "yellow"
+        : input.reviewStatus === "fail"
+          ? "red"
+          : existing.inspectionForm?.trafficLight;
   const updated: CheckoutReport = {
     ...existing,
+    inspectionForm: existing.inspectionForm
+      ? {
+          ...existing.inspectionForm,
+          trafficLight: officeLight,
+          resultSource: "office",
+        }
+      : existing.inspectionForm,
     reviewStatus: input.reviewStatus,
     reviewNotes: input.reviewNotes,
     newDamageNotes: input.newDamageNotes,

@@ -9,21 +9,18 @@ import {
   cloverSerialOf,
   DAMAGE_SIDES,
   DamageSide,
+  appTrafficLight,
   evSkipsCheck,
   INSPECTION_CHECK_ITEMS,
   FuelGauge,
   InspectionFieldKey,
   ISSUE_FLAG_ITEMS,
   Powertrain,
-  precheckNote,
-  suggestedTrafficLight,
-  TRAFFIC_LIGHT_ITEMS,
   TREAD_LEVEL_ITEMS,
   TREAD_TIRE_ITEMS,
   TreadLevel,
   TreadTireId,
   toggleDamageMark,
-  TrafficLight,
   UNIT_NUMBER_LABEL,
   validateInspectionForm,
 } from "@/lib/inspection-form";
@@ -105,8 +102,8 @@ export function InspectionFormFields({
     includeClover: showClover,
   });
   const missing = new Set(showErrors ? validation.missing : []);
-  const suggested = suggestedTrafficLight(synced);
   const tread = asTreadByTire(synced.treadByTire, synced.treadLevel);
+  const parked = appTrafficLight(synced) === "red";
 
   const update = (next: CheckoutInspectionForm) => {
     onChange(applyPowertrainToForm(next, powertrain));
@@ -116,17 +113,6 @@ export function InspectionFormFields({
     update({
       ...synced,
       treadByTire: { ...tread, [tire]: level },
-    });
-  };
-
-  const setTrafficLight = (trafficLight: TrafficLight) => {
-    update({
-      ...synced,
-      trafficLight,
-      issueFlags:
-        trafficLight === "red"
-          ? { ...synced.issueFlags, needsRepair: true }
-          : synced.issueFlags,
     });
   };
 
@@ -495,96 +481,12 @@ export function InspectionFormFields({
         </div>
       </div>
 
-      <div
-        className="space-y-2"
-        data-precheck-field={
-          fieldError("trafficNote") ? "trafficNote" : "trafficLight"
-        }
-      >
-        <h3 className="text-base font-bold text-gray-900">Traffic light</h3>
-        <p className="text-sm text-gray-600">
-          Suggested:{" "}
-          <span className="font-semibold">
-            {TRAFFIC_LIGHT_ITEMS.find((item) => item.id === suggested)?.label}
-          </span>{" "}
-          — {TRAFFIC_LIGHT_ITEMS.find((item) => item.id === suggested)?.action}
+      {parked && (
+        <p className="text-sm text-red-800 bg-red-50 rounded-xl px-3 py-2">
+          Park it. This vehicle is not OK to drive. Photos stay blocked. Sign
+          and send the precheck so Office can see it.
         </p>
-        {fieldError("trafficLight") && (
-          <p className="text-sm font-medium text-red-600">
-            Required — pick Green, Yellow, or Red.
-          </p>
-        )}
-        <div className="grid grid-cols-3 gap-2">
-          {TRAFFIC_LIGHT_ITEMS.map((item) => {
-            const selected = synced.trafficLight === item.id;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setTrafficLight(item.id)}
-                className={cn(
-                  "min-h-[72px] rounded-xl border-2 px-2 py-2",
-                  selected
-                    ? item.id === "green"
-                      ? choiceOkClass
-                      : item.id === "yellow"
-                        ? "border-[#b45309] bg-[#fbbf24] text-[#451a03]"
-                        : "border-[#991b1b] bg-[#b91c1c] text-white"
-                    : fieldError("trafficLight")
-                      ? "border-[#f87171] bg-[#1c1c1e] text-[#fecaca]"
-                    : item.id === "green"
-                      ? "border-green-200 bg-green-50 text-green-800"
-                      : item.id === "yellow"
-                        ? "border-amber-200 bg-amber-50 text-amber-900"
-                        : "border-red-200 bg-red-50 text-red-800"
-                )}
-              >
-                <span className="block text-lg font-black">{item.label}</span>
-                <span className="block text-[11px] leading-tight font-semibold">
-                  {item.action}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-        {(synced.trafficLight === "yellow" || synced.trafficLight === "red") && (
-          <input
-            value={synced.trafficNote ?? ""}
-            onChange={(e) =>
-              update({ ...synced, trafficNote: e.target.value })
-            }
-            placeholder={
-              synced.trafficLight === "red"
-                ? "Why is this vehicle parked? Office will see this."
-                : "Short note — then you can drive and take photos."
-            }
-            className={cn(
-              "w-full rounded-xl border-2 px-3 py-2.5 text-sm min-h-[48px]",
-              fieldError("trafficNote")
-                ? "border-red-500 bg-red-50"
-                : "border-gray-300"
-            )}
-          />
-        )}
-        {fieldError("trafficNote") && (
-          <p className="text-sm font-medium text-red-600">
-            {synced.trafficLight === "red"
-              ? "Add a short note for Red — park it."
-              : "Add a short note for Yellow — note & drive."}
-          </p>
-        )}
-        {synced.trafficLight === "red" && (
-          <p className="text-sm text-red-800 bg-red-50 rounded-xl px-3 py-2">
-            Park it. Do not continue to photos. Sign and send this Precheck to
-            Office / repairs.
-          </p>
-        )}
-        {synced.trafficLight === "yellow" && !precheckNote(synced) && (
-          <p className="text-sm text-amber-900 bg-amber-50 rounded-xl px-3 py-2">
-            Yellow needs a short note before photos.
-          </p>
-        )}
-      </div>
+      )}
 
       {showErrors && validation.ok === false && (
         <p className="text-sm text-red-800 bg-red-50 border border-red-200 rounded-xl px-3 py-2">

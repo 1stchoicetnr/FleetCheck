@@ -118,7 +118,7 @@ const PHOTOS_NOTICE = [
   "*Unit #:* Unit 12 · RAD12",
   "*Driver:* Ada Lovelace",
   "*Dispatcher:* Pat",
-  "*Started:* Oct 21, 2026, 2:40 PM",
+  "*Started:* Oct 21, 2026, 12:40 PM PT",
   "*Reason:* Photos still uploading",
 ].join("\n");
 
