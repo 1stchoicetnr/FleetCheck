@@ -16,9 +16,10 @@ import {
 } from "@/lib/photo-flags";
 import { SlackRoute, slackChannelIdForRoute, slackChannelLabel } from "@/lib/slack-config";
 import { CheckoutReport } from "@/lib/types";
+import { repeatedIssues } from "@/lib/repeat-issues";
 import { formatUnitLabel } from "@/lib/utils";
-import { localInsertAlert, localListAlerts } from "./local-store";
-import { pgInsertAlert, pgListAlerts } from "./postgres-store";
+import { localInsertAlert, localListAlerts, localListReports } from "./local-store";
+import { pgInsertAlert, pgListAlerts, pgListVehicleReports } from "./postgres-store";
 import { sharedBackendMode } from "./shared-config";
 import { SharedOfficeAlert } from "./shared-types";
 
@@ -97,23 +98,67 @@ export async function recordCheckoutAlerts(
   orgId: string,
   report: CheckoutReport
 ): Promise<void> {
-  const kinds = checkoutAlertKinds(factsFor(report));
-  if (!kinds.length) return;
   const mode = sharedBackendMode();
   if (mode === "unconfigured") return;
+  const kinds = checkoutAlertKinds(factsFor(report));
+  if (kinds.length) {
+    const existing =
+      mode === "postgres" ? await pgListAlerts(orgId, true) : await localListAlerts(true);
+    const have = new Set(existing.map((alert) => alert.id));
+    const created: SharedOfficeAlert[] = [];
+    for (const kind of kinds) {
+      const id = checkoutAlertId(report.id, kind);
+      if (have.has(id)) continue;
+      const alert: SharedOfficeAlert = {
+        id,
+        type: kind,
+        message: alertMessage(kind, report),
+        vehicleId: report.vehicleId,
+        vehiclePlate: formatUnitLabel(report.unitNumber, report.plate),
+        actorName: report.driverName,
+        reportId: report.id,
+        createdAt: new Date().toISOString(),
+        read: false,
+      };
+      if (mode === "postgres") await pgInsertAlert(orgId, alert);
+      else await localInsertAlert(alert);
+      created.push(alert);
+    }
+    await postRepairSlack(report, created);
+  }
+  await recordRepeatIssues(orgId, report);
+}
+
+/** Same unit, same issue on two or more checks. Office only — this does not post to Slack. */
+async function recordRepeatIssues(orgId: string, report: CheckoutReport): Promise<void> {
+  const mode = sharedBackendMode();
+  if (mode === "unconfigured") return;
+  const history =
+    mode === "postgres"
+      ? await pgListVehicleReports(orgId, report.vehicleId)
+      : (await localListReports()).filter(
+          (item) => item.vehicleId === report.vehicleId && !item.archivedAt
+        );
+  const repeats = repeatedIssues(
+    report,
+    history.filter((item) => item.id !== report.id)
+  );
+  if (!repeats.length) return;
   const existing =
     mode === "postgres" ? await pgListAlerts(orgId, true) : await localListAlerts(true);
-  const have = new Set(existing.map((alert) => alert.id));
-  const created: SharedOfficeAlert[] = [];
-  for (const kind of kinds) {
-    const id = checkoutAlertId(report.id, kind);
-    if (have.has(id)) continue;
+  const unit = formatUnitLabel(report.unitNumber, report.plate);
+  for (const issue of repeats) {
+    const stable = `repeat:${report.vehicleId}:${issue.key}`;
+    const prior = existing.filter((alert) => alert.id === stable || alert.id.startsWith(`${stable}:`));
+    const open = prior.some((alert) => !alert.archivedAt);
+    if (open) continue;
+    const archived = prior.some((alert) => alert.archivedAt);
     const alert: SharedOfficeAlert = {
-      id,
-      type: kind,
-      message: alertMessage(kind, report),
+      id: archived ? `${stable}:${report.id}` : stable,
+      type: "repeat_problem",
+      message: `${issue.label} is open again on ${unit} (${issue.count} checks)`,
       vehicleId: report.vehicleId,
-      vehiclePlate: formatUnitLabel(report.unitNumber, report.plate),
+      vehiclePlate: unit,
       actorName: report.driverName,
       reportId: report.id,
       createdAt: new Date().toISOString(),
@@ -121,7 +166,5 @@ export async function recordCheckoutAlerts(
     };
     if (mode === "postgres") await pgInsertAlert(orgId, alert);
     else await localInsertAlert(alert);
-    created.push(alert);
   }
-  await postRepairSlack(report, created);
 }

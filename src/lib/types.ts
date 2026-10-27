@@ -374,7 +374,8 @@ export type AlertEventType =
   | "status_out_of_service"
   | "known_issue_updated"
   | "check_in_completed"
-  | "check_out_completed";
+  | "check_out_completed"
+  | "repeat_problem";
 
 export interface FleetAlert {
   id: string;
@@ -395,6 +396,7 @@ export const ALERT_TYPE_LABELS: Record<AlertEventType, string> = {
   known_issue_updated: "Known Issue",
   check_in_completed: "Check In",
   check_out_completed: "Check Out",
+  repeat_problem: "Repeat problem",
 };
 
 export interface AppSettings {

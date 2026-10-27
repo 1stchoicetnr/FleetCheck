@@ -84,7 +84,11 @@ export interface CheckoutReviewInput {
 
 export interface SharedOfficeAlert {
   id: string;
-  type: "damage_reported" | "status_needs_work" | "status_out_of_service";
+  type:
+    | "damage_reported"
+    | "status_needs_work"
+    | "status_out_of_service"
+    | "repeat_problem";
   message: string;
   vehicleId: string;
   vehiclePlate: string;

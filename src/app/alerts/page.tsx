@@ -152,6 +152,7 @@ export default function AlertsPage() {
     { key: "damage_reported", label: "Damage" },
     { key: "status_needs_work", label: "Needs Work" },
     { key: "status_out_of_service", label: "Out of Service" },
+    { key: "repeat_problem", label: "Repeat" },
     { key: "known_issue_updated", label: "Known Issue" },
     { key: "check_events", label: "Check In/Out" },
   ];
