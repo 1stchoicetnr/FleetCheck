@@ -3,7 +3,7 @@ import { errorResponse } from "@/lib/server/api-error";
 import { assertCanRemoveUser, removeThrowawayUser } from "@/lib/server/auth-accounts";
 import { fleetScopeFor } from "@/lib/server/fleet-scope";
 import { getUser } from "@/lib/server/org-data";
-import { updatePersonAccess } from "@/lib/server/people-admin";
+import { assertActiveOwnerRemains, updatePersonAccess } from "@/lib/server/people-admin";
 import { assertOwnerAccess, assertPeopleAccess, openAuthDb } from "@/lib/server/request-auth";
 import { isMemberRole } from "@/lib/server/member-role";
 
@@ -59,6 +59,7 @@ export async function DELETE(
     }
     assertCanRemoveUser(id);
     const db = await openAuthDb();
+    await assertActiveOwnerRemains(db, auth.orgId, id, { active: false });
     const existing = await getUser(db, auth.orgId, id);
     const removed = await removeThrowawayUser(
       db,

@@ -4,7 +4,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { AuthError } from "./server/auth-accounts.ts";
 import { insertSession } from "./server/auth-store.ts";
 import { applyManagerRoleMigration, listUserFleetIds, type OrgDb } from "./server/org-data.ts";
-import { updatePersonAccess } from "./server/people-admin.ts";
+import { LAST_OWNER_MESSAGE, updatePersonAccess, assertActiveOwnerRemains } from "./server/people-admin.ts";
 
 const ORG = "org-1st-choice-rad-cab";
 
@@ -196,4 +196,68 @@ test("deactivating a person ends their sessions", async () => {
   assert.equal(sessions.rows.length, 0);
   const user = await db.query(`SELECT active FROM app_users WHERE id = 'user-driver'`);
   assert.equal(user.rows[0]?.active, false);
+});
+
+test("the last active owner cannot be demoted, deactivated, or removed", async () => {
+  const db = new PGlite();
+  await seed(db);
+  const org = runner(db);
+  await assert.rejects(
+    () =>
+      updatePersonAccess(org, {
+        orgId: ORG,
+        userId: "user-owner",
+        actorRole: "owner",
+        actorFleetIds: null,
+        role: "office",
+      }),
+    (err: unknown) => err instanceof AuthError && err.message === LAST_OWNER_MESSAGE
+  );
+  await assert.rejects(
+    () =>
+      updatePersonAccess(org, {
+        orgId: ORG,
+        userId: "user-owner",
+        actorRole: "owner",
+        actorFleetIds: null,
+        active: false,
+      }),
+    (err: unknown) => err instanceof AuthError && err.status === 409
+  );
+  await assert.rejects(
+    () => assertActiveOwnerRemains(org, ORG, "user-owner", { active: false }),
+    (err: unknown) => err instanceof AuthError && err.message === LAST_OWNER_MESSAGE
+  );
+  const still = await db.query(
+    `SELECT u.active, m.role
+     FROM app_users u
+     JOIN org_memberships m ON m.user_id = u.id
+     WHERE u.id = 'user-owner'`
+  );
+  assert.equal(still.rows[0]?.active, true);
+  assert.equal(still.rows[0]?.role, "owner");
+
+  await db.query(
+    `INSERT INTO app_users (id, name, email, role, active, created_at, org_id)
+     VALUES ('user-owner-2', 'Second', 'second@example.com', 'super_admin', true, NOW(), $1)`,
+    [ORG]
+  );
+  await db.query(
+    `INSERT INTO org_memberships (id, org_id, user_id, role, created_at)
+     VALUES ('member-user-owner-2', $1, 'user-owner-2', 'owner', NOW())`,
+    [ORG]
+  );
+  await updatePersonAccess(org, {
+    orgId: ORG,
+    userId: "user-owner",
+    actorRole: "owner",
+    actorFleetIds: null,
+    role: "manager",
+  });
+  const demoted = await db.query(`SELECT role FROM org_memberships WHERE user_id = 'user-owner'`);
+  assert.equal(demoted.rows[0]?.role, "manager");
+  await assert.rejects(
+    () => assertActiveOwnerRemains(org, ORG, "user-owner-2", { active: false }),
+    (err: unknown) => err instanceof AuthError && err.message === LAST_OWNER_MESSAGE
+  );
 });

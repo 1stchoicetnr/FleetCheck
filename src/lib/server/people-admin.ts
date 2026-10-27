@@ -4,6 +4,7 @@ import { isMemberRole, legacyRoleForMember, type MemberRole } from "./member-rol
 import {
   getFleet,
   getUser,
+  listActiveOwnerIds,
   listUserFleetIds,
   replaceUserFleets,
   setMembershipRole,
@@ -12,6 +13,32 @@ import {
 } from "./org-data";
 import type { OrgDb } from "./org-data";
 import { canGrantMemberRole, fleetsStayInside, managerCanSeePerson } from "../role-access";
+
+export const LAST_OWNER_MESSAGE = "The company needs at least one active Owner.";
+
+/** Block a change that would leave the company with no active Owner. */
+export async function assertActiveOwnerRemains(
+  db: OrgDb,
+  orgId: string,
+  userId: string,
+  next: { role?: string; active?: boolean }
+): Promise<void> {
+  const user = await getUser(db, orgId, userId);
+  if (!user) return;
+  const currentRole = (await memberRoleForUser(db, orgId, userId)) || "";
+  const activeNow =
+    currentRole === "owner" &&
+    Boolean(user.active) &&
+    String(user.access_status || "active") === "active";
+  if (!activeNow) return;
+  const nextRole = next.role ?? "owner";
+  const nextActive = next.active ?? true;
+  if (nextRole === "owner" && nextActive) return;
+  const owners = await listActiveOwnerIds(db, orgId);
+  if (!owners.some((id) => id !== userId)) {
+    throw new AuthError(LAST_OWNER_MESSAGE, 409);
+  }
+}
 
 export async function updatePersonAccess(
   db: OrgDb,
@@ -55,6 +82,12 @@ export async function updatePersonAccess(
     if (!canGrantMemberRole(input.actorRole, input.role)) {
       throw new AuthError("Only an owner can grant Owner.", 403);
     }
+  }
+  await assertActiveOwnerRemains(db, input.orgId, input.userId, {
+    role: input.role,
+    active: input.active,
+  });
+  if (input.role !== undefined) {
     await setMembershipRole(db, input.orgId, {
       id: `member-${input.userId}`,
       userId: input.userId,

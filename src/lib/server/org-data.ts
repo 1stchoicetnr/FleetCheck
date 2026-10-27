@@ -1342,6 +1342,20 @@ export async function listUserFleetIds(db: OrgDb, orgId: string, userId: string)
   return rows.map((row) => String(row.fleet_id));
 }
 
+export async function listActiveOwnerIds(db: OrgDb, orgId: string): Promise<string[]> {
+  const rows = await db.query(
+    `SELECT u.id
+     FROM app_users u
+     JOIN org_memberships m ON m.user_id = u.id AND m.org_id = u.org_id
+     WHERE u.org_id = $1
+       AND m.role = 'owner'
+       AND u.active = TRUE
+       AND COALESCE(u.access_status, 'active') = 'active'`,
+    [org(orgId)]
+  );
+  return rows.map((row) => String(row.id));
+}
+
 export async function anyOwnerHasPassword(db: OrgDb, orgId: string) {
   const rows = await db.query(
     `SELECT u.id
