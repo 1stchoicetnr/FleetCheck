@@ -1,4 +1,4 @@
-import { del, put } from "@vercel/blob";
+import { del, get, put } from "@vercel/blob";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { checkoutObjectPath } from "./org-scope";
@@ -66,7 +66,7 @@ export async function persistCheckoutPhoto(
 
   if (hasBlobToken()) {
     const blob = await put(filename, buffer, {
-      access: "public",
+      access: "private",
       contentType: contentType.includes("png")
         ? "image/png"
         : contentType.includes("webp")
@@ -87,6 +87,96 @@ export async function persistCheckoutPhoto(
   throw new Error(
     "Photo storage is not configured. Set BLOB_READ_WRITE_TOKEN on Vercel."
   );
+}
+
+/** Public blob hosts stay readable by URL. Private hosts need the blob token. */
+export function blobAccessKind(url: string): "public" | "private" | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== "https:") return null;
+  const host = parsed.hostname.toLowerCase();
+  if (host.endsWith(".private.blob.vercel-storage.com")) return "private";
+  if (host === "blob.vercel-storage.com" || host.endsWith(".blob.vercel-storage.com")) {
+    return "public";
+  }
+  return null;
+}
+
+export type StoredPhotoBytes = { bytes: Uint8Array; contentType: string };
+
+export type StoredPhotoIo = {
+  fetchPublic: (url: string) => Promise<StoredPhotoBytes>;
+  readPrivate: (url: string) => Promise<StoredPhotoBytes>;
+};
+
+async function streamToBytes(stream: ReadableStream<Uint8Array>): Promise<Uint8Array> {
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const next = await reader.read();
+    if (next.done) break;
+    chunks.push(next.value);
+    total += next.value.byteLength;
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+}
+
+async function fetchPublicPhoto(url: string): Promise<StoredPhotoBytes> {
+  const response = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+  if (!response.ok) throw new Error(`Could not load stored photo (${response.status})`);
+  const contentType = (response.headers.get("content-type") || "image/jpeg").split(";")[0].trim();
+  return { bytes: new Uint8Array(await response.arrayBuffer()), contentType };
+}
+
+async function readPrivateBlob(url: string): Promise<StoredPhotoBytes> {
+  const result = await get(url, { access: "private" });
+  if (!result || result.statusCode !== 200 || !result.stream) {
+    throw new Error("Could not load stored photo");
+  }
+  return {
+    bytes: await streamToBytes(result.stream),
+    contentType: result.blob.contentType || "image/jpeg",
+  };
+}
+
+/**
+ * Read a stored checkout photo.
+ * Public blobs still load by URL so older checks keep working.
+ * Private blobs load with the store token. A public URL that no longer opens
+ * is tried once as a private blob before it fails.
+ */
+export async function readStoredPhotoBytes(
+  url: string,
+  io?: Partial<StoredPhotoIo>
+): Promise<StoredPhotoBytes> {
+  const fetchPublic = io?.fetchPublic ?? fetchPublicPhoto;
+  const readPrivate = io?.readPrivate ?? readPrivateBlob;
+  const kind = blobAccessKind(url);
+  if (kind === "private") return readPrivate(url);
+  if (kind === "public") {
+    try {
+      return await fetchPublic(url);
+    } catch (err) {
+      if (!hasBlobToken() && !io?.readPrivate) throw err;
+      try {
+        return await readPrivate(url);
+      } catch {
+        throw err;
+      }
+    }
+  }
+  return fetchPublic(url);
 }
 
 /** Best-effort removal of a stored checkout photo. Missing files are ignored. */
