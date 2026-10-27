@@ -287,3 +287,29 @@ test("invites are single-use, expiring, and revocable", async () => {
   assert.deepEqual(leftover, []);
   await pg.close();
 });
+
+test("a failed save leaves the invite unused", async () => {
+  const pg = new PGlite();
+  await seedUsers(pg);
+  const db = runner(pg);
+  const invite = await issueLink(db, {
+    orgId: ORG,
+    kind: "invite",
+    role: "driver",
+    email: "retry.driver@example.com",
+    name: "Retry Driver",
+  });
+  const flaky = {
+    async query(text: string, params?: unknown[]) {
+      if (/INSERT INTO app_users/i.test(text)) throw new Error("save failed");
+      return db.query(text, params);
+    },
+  };
+  await assert.rejects(() => acceptLink(flaky, invite.token, "driver-password"));
+  assert.equal((await previewLink(db, invite.token))?.email, "retry.driver@example.com");
+  const created = await acceptLink(db, invite.token, "driver-password");
+  assert.equal(created.email, "retry.driver@example.com");
+  const open = await db.query("SELECT used_at FROM auth_invites WHERE id = $1", [invite.id]);
+  assert.ok(open[0]?.used_at);
+  await pg.close();
+});
