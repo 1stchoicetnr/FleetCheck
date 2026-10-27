@@ -1,3 +1,4 @@
+import { toClientReport } from "@/lib/photo-url";
 import { errorResponse, RequestError } from "@/lib/server/api-error";
 import { slackLinkOrigin } from "@/lib/server/auth-http";
 import { confirmReportSent, getReport } from "@/lib/server/checkout-repo";
@@ -31,7 +32,7 @@ export async function POST(
     const report = await confirmReportSent(auth.orgId, id, {
       appOrigin: slackLinkOrigin(req),
     });
-    return NextResponse.json({ report });
+    return NextResponse.json({ report: toClientReport(report) });
   } catch (err) {
     return errorResponse(err, "Failed to mark the check sent");
   }

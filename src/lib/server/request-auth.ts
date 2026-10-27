@@ -101,6 +101,15 @@ export async function assertCheckoutSubmitter(req: Request): Promise<RequestAuth
   return auth;
 }
 
+/** Lists and photo reads: an approved person, with a shorter message than checkout submit. */
+export async function assertApprovedUser(req: Request): Promise<RequestAuth> {
+  const auth = await resolveRequestAuth(req);
+  if (!auth.userId || !auth.role || !CHECKOUT_ROLES.includes(auth.role)) {
+    throw new AuthError("Sign in required.", 401);
+  }
+  return auth;
+}
+
 export async function assertOwnerAccess(req: Request): Promise<RequestAuth> {
   const auth = await resolveRequestAuth(req);
   if (auth.role === "owner") return auth;
