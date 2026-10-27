@@ -133,8 +133,8 @@ export interface CheckoutReport {
   /** Precheck (paper inspection) completed before the photo walkaround. */
   inspectionForm?: CheckoutInspectionForm;
   photos: VehiclePhoto[];
-  /** Driver finished capture */
-  status: "complete";
+  /** Uploading until required photos are stored. Older rows stay complete. */
+  status: "uploading" | "complete";
   completedAt: string;
   reviewStatus: CheckoutReviewStatus;
   reviewNotes?: string;

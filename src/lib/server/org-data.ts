@@ -480,7 +480,8 @@ export async function backfillHistoricalSent(
 export async function markReportSent(db: OrgDb, orgId: string, id: string, sentAt: string) {
   const rows = await db.query(
     `UPDATE checkout_reports
-     SET sent_at = COALESCE(sent_at, $3)
+     SET sent_at = COALESCE(sent_at, $3),
+         status = CASE WHEN status = 'uploading' THEN 'complete' ELSE status END
      WHERE id = $1 AND org_id = $2
      RETURNING sent_at`,
     [id, org(orgId), sentAt]
@@ -584,6 +585,10 @@ export async function upsertReport(
       signature_data_url = EXCLUDED.signature_data_url,
       signed_at = EXCLUDED.signed_at,
       inspection_form = EXCLUDED.inspection_form,
+      status = CASE
+        WHEN checkout_reports.status = 'complete' THEN checkout_reports.status
+        ELSE EXCLUDED.status
+      END,
       sent_at = COALESCE(EXCLUDED.sent_at, checkout_reports.sent_at)
     WHERE checkout_reports.org_id = EXCLUDED.org_id
     RETURNING id`,
