@@ -79,8 +79,8 @@ test("checkout slack text names the check and links the PDF and photo gallery", 
   assert.match(text, /\*Fuel:\* 3\/4/);
   assert.match(text, /\*Result:\* Conditional/);
   assert.match(text, /\*Time:\* Oct 21, 2026, 12:40 PM PT/);
-  assert.match(text, /LF Fender: scrape/);
-  assert.match(text, /Left: scrape/);
+  assert.match(text, /LF Fender · Ada Lovelace: scrape/);
+  assert.match(text, /Left · Ada Lovelace: scrape/);
   assert.match(text, /\*PDF:\* https:\/\/fleet\.example\.test\/api\/checkout-reports\/cr-sample\/pdf/);
   assert.match(text, /\*Photos:\* https:\/\/fleet\.example\.test\/office\/cr-sample\/photos/);
   assert.equal(text.includes("blob.example"), false);

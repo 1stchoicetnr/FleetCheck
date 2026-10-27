@@ -27,6 +27,7 @@ import {
 import { FUEL_LEVEL_LABELS } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { choiceErrorClass, choiceIssueClass, choiceOkClass } from "@/lib/button-styles";
+import { damageActor } from "@/lib/photo-flags";
 import { VehicleSilhouette } from "./vehicle-silhouette";
 
 function YesNoButtons({
@@ -86,6 +87,7 @@ export function InspectionFormFields({
   form,
   powertrain,
   unitNumber,
+  driverName,
   onChange,
   showErrors = false,
   showClover = false,
@@ -93,6 +95,7 @@ export function InspectionFormFields({
   form: CheckoutInspectionForm;
   powertrain: Powertrain;
   unitNumber?: string;
+  driverName?: string;
   onChange: (next: CheckoutInspectionForm) => void;
   showErrors?: boolean;
   showClover?: boolean;
@@ -409,6 +412,7 @@ export function InspectionFormFields({
         </p>
         <VehicleSilhouette
           marked={synced.damage.marks ?? []}
+          driverName={driverName}
           onToggle={(side: DamageSide) =>
             update(toggleDamageMark(synced, side))
           }
@@ -417,7 +421,9 @@ export function InspectionFormFields({
           <label key={side.id} className="block">
             <span className="block text-sm font-semibold text-gray-800 mb-1">
               {side.label}
-              {synced.damage.marks?.includes(side.id) ? " · marked" : ""}
+              {synced.damage.marks?.includes(side.id)
+                ? ` · ${damageActor(driverName)}`
+                : ""}
             </span>
             <input
               value={synced.damage[side.id] ?? ""}

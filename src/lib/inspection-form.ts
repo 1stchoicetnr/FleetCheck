@@ -1,3 +1,5 @@
+import { damageSideLine } from "./photo-flags";
+
 export type Powertrain = "gas" | "ev";
 
 export type InspectionCheckId =
@@ -583,6 +585,8 @@ export type InspectionValidation =
 export type InspectionFormOptions = {
   /** Rad Cab borrows a Clover reader. Other companies skip the field. */
   includeClover?: boolean;
+  /** Shown on every damage mark. */
+  driverName?: string;
 };
 
 function withoutClover(form: CheckoutInspectionForm): CheckoutInspectionForm {
@@ -846,11 +850,7 @@ export function inspectionFormSummaryLines(
     const marked = form.damage.marks?.includes(side.id);
     const note = form.damage[side.id]?.trim();
     if (marked || note) {
-      lines.push(
-        note
-          ? `${side.label}: ${note}`
-          : `${side.label}: marked`
-      );
+      lines.push(damageSideLine(side.label, note, options?.driverName));
     }
   }
   if (!hasInspectionDamageNotes(form)) {

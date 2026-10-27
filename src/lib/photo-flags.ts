@@ -25,13 +25,31 @@ export function cleanDamageNote(note?: string | null): string | undefined {
   return trimmed.slice(0, DAMAGE_NOTE_MAX);
 }
 
-/** Angle name plus the optional driver/office note. */
+export function damageActor(name?: string | null): string {
+  const trimmed = name?.trim();
+  return trimmed || "Driver";
+}
+
+/** Angle name, the driver who marked it, and the optional note. */
 export function damageFlagText(
-  photo: Pick<VehiclePhoto, "angle" | "damageNote">
+  photo: Pick<VehiclePhoto, "angle" | "damageNote">,
+  driverName?: string | null
 ): string {
   const label = photoAngleLabel(photo.angle);
   const note = cleanDamageNote(photo.damageNote);
-  return note ? `${label}: ${note}` : label;
+  const head = `${label} · ${damageActor(driverName)}`;
+  return note ? `${head}: ${note}` : head;
+}
+
+/** A silhouette side, always named, with the note or the word marked. */
+export function damageSideLine(
+  label: string,
+  note?: string | null,
+  driverName?: string | null
+): string {
+  const head = `${label} · ${damageActor(driverName)}`;
+  const clean = cleanDamageNote(note);
+  return clean ? `${head}: ${clean}` : `${head}: marked`;
 }
 
 /** Empty string clears a note. Omitted keeps the previous note. Unflagging always clears it. */

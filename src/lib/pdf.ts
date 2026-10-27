@@ -498,6 +498,7 @@ export async function generateCheckoutReportPDF(
   if (report.inspectionForm) {
     for (const line of inspectionFormSummaryLines(report.inspectionForm, {
       includeClover: usesClover,
+      driverName: report.driverName,
     })) {
       addWrapped(line);
     }
@@ -529,14 +530,14 @@ export async function generateCheckoutReportPDF(
   const damagedPhotos = report.photos.filter((photo) => isPhotoDamageFlagged(photo));
   if (damagedPhotos.length) {
     addWrapped(
-      `DAMAGE flagged: ${damagedPhotos.map((photo) => damageFlagText(photo)).join("; ")}`
+      `DAMAGE flagged: ${damagedPhotos.map((photo) => damageFlagText(photo, report.driverName)).join("; ")}`
     );
   }
 
   section("Photo index");
   listed.forEach((item, i) => {
     const flagged = item.photo && isPhotoDamageFlagged(item.photo);
-    const title = flagged && item.photo ? damageFlagText(item.photo) : item.label;
+    const title = flagged && item.photo ? damageFlagText(item.photo, report.driverName) : item.label;
     addWrapped(
       `${i + 1}. ${title}${flagged ? " · DAMAGE" : ""} — ${item.photo?.dataUrl ? "included" : "missing"}`
     );
@@ -557,7 +558,7 @@ export async function generateCheckoutReportPDF(
       doc.setFont("helvetica", "bold");
       const flagged = item.photo && isPhotoDamageFlagged(item.photo);
       const caption = `${photoNumber}. ${
-        flagged && item.photo ? damageFlagText(item.photo) : item.label
+        flagged && item.photo ? damageFlagText(item.photo, report.driverName) : item.label
       }${flagged ? " · DAMAGE" : ""}${
         item.photo?.qualityNote ? ` · ${item.photo.qualityNote}` : ""
       }`;

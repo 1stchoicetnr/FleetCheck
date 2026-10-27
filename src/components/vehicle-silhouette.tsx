@@ -1,6 +1,7 @@
 "use client";
 
 import { DamageSide } from "@/lib/inspection-form";
+import { damageActor } from "@/lib/photo-flags";
 import { cn } from "@/lib/utils";
 
 const ZONES: Array<{
@@ -32,20 +33,22 @@ const ZONES: Array<{
 
 export function VehicleSilhouette({
   marked,
+  driverName,
   onToggle,
 }: {
   marked: DamageSide[];
+  driverName?: string;
   onToggle: (side: DamageSide) => void;
 }) {
   const markedSet = new Set(marked);
+  const actor = damageActor(driverName);
   return (
     <div className="space-y-2">
       <p className="text-sm font-semibold text-gray-800">
         Mark damage on the vehicle
       </p>
       <p className="text-xs text-gray-500">
-        Tap front, rear, left, or right — same intent as the paper left/right
-        diagrams. Add a note for that side below.
+        Tap front, rear, left, or right. Marks are saved under {actor}.
       </p>
       <svg
         viewBox="0 0 120 128"
@@ -109,7 +112,7 @@ export function VehicleSilhouette({
               )}
             >
               {zone.label}
-              {on ? " · marked" : ""}
+              {on ? ` · ${actor}` : ""}
             </button>
           );
         })}

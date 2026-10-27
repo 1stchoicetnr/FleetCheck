@@ -18,9 +18,9 @@ function fill(width: number, height: number, paint: (x: number, y: number) => [n
   return pixels;
 }
 
-test("a flat photo is blur and a washed-out photo is glare", () => {
+test("a flat photo is blank and a washed-out photo is glare", () => {
   const blur = fill(16, 16, () => [120, 120, 120]);
-  assert.equal(photoQualityIssue(blur, 16, 16), "blur");
+  assert.equal(photoQualityIssue(blur, 16, 16), "blank");
   const glare = fill(16, 16, (x) => (x < 2 ? [0, 0, 0] : [255, 255, 255]));
   assert.equal(photoQualityIssue(glare, 16, 16), "glare");
   const sharp = fill(16, 16, (x, y) => ((x + y) % 2 === 0 ? [0, 0, 0] : [40, 40, 40]));

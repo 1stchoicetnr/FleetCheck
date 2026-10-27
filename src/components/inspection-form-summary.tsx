@@ -12,6 +12,7 @@ import {
   treadLevelLabel,
   treadSummaryChip,
 } from "@/lib/inspection-form";
+import { damageSideLine } from "@/lib/photo-flags";
 import { cn } from "@/lib/utils";
 
 export function TrafficLightBadge({
@@ -42,12 +43,14 @@ export function InspectionFormSummary({
   compact = false,
   showClover = false,
   hideResult = false,
+  driverName,
 }: {
   form: CheckoutInspectionForm;
   compact?: boolean;
   showClover?: boolean;
   /** Drivers do not see or pick the Pass / Conditional / FAIL result. */
   hideResult?: boolean;
+  driverName?: string;
 }) {
   const flags = activeIssueFlagLabels(form);
   const traffic = form.trafficNote?.trim();
@@ -198,10 +201,7 @@ export function InspectionFormSummary({
           if (!noteText && !marked) return null;
           return (
             <p key={side.id} className="text-red-800">
-              <span className="font-semibold">{side.label}:</span>{" "}
-              {marked ? "marked" : ""}
-              {marked && noteText ? " — " : ""}
-              {noteText}
+              {damageSideLine(side.label, noteText, driverName)}
             </p>
           );
         })}

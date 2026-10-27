@@ -98,7 +98,10 @@ export function CheckoutPhotoComparison({
 
       <div className="grid grid-cols-2 gap-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
         <span>This report</span>
-        <span>Prior ({prior ? formatDate(prior.completedAt) : "—"})</span>
+        <span>
+          Prior
+          {prior ? ` · ${prior.driverName} · ${formatDate(prior.completedAt)}` : ""}
+        </span>
       </div>
 
       <div className="space-y-5">
@@ -122,7 +125,7 @@ export function CheckoutPhotoComparison({
             >
               <p className="text-sm font-semibold text-gray-800 mb-2">
                 {a.label}
-                {damaged ? " · DAMAGE" : ""}
+                {damaged ? ` · DAMAGE · ${current.driverName}` : ""}
                 {damageNote ? ` — ${damageNote}` : ""}
                 {flagged ? " · retake requested" : ""}
               </p>

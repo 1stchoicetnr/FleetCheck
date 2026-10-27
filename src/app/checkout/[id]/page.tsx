@@ -28,6 +28,7 @@ import {
 import {
   fetchCompanies,
   fetchCompanySettings,
+  fetchPriorReports,
   fetchVehicles,
   SharedVehicle,
 } from "@/lib/checkout-api";
@@ -113,6 +114,10 @@ function CheckoutCapturePage() {
   const [phase, setPhase] = useState<"inspect" | "photos" | "review">("inspect");
   const [companySettings, setCompanySettings] = useState<PublicCompanySettings | null>(null);
   const [showPrecheckErrors, setShowPrecheckErrors] = useState(false);
+  const [priorPhotos, setPriorPhotos] = useState<{
+    driverName: string;
+    photos: Partial<Record<PhotoAngle, string>>;
+  } | null>(null);
 
   useCheckoutFeedbackMeta({
     unitId: vehicle?.id,
@@ -129,6 +134,30 @@ function CheckoutCapturePage() {
   useEffect(() => {
     void restoreNaturalOrientation();
   }, []);
+
+  useEffect(() => {
+    const vehicleId = draft?.vehicleId;
+    if (!vehicleId || phase !== "photos") return;
+    let cancelled = false;
+    void fetchPriorReports(vehicleId)
+      .then((reports) => {
+        const prior = [...reports].sort(
+          (a, b) => Date.parse(b.completedAt) - Date.parse(a.completedAt)
+        )[0];
+        if (!prior || cancelled) return;
+        const photos: Partial<Record<PhotoAngle, string>> = {};
+        for (const photo of prior.photos) {
+          if (photo.dataUrl) photos[photo.angle] = photo.dataUrl;
+        }
+        setPriorPhotos({ driverName: prior.driverName, photos });
+      })
+      .catch(() => {
+        if (!cancelled) setPriorPhotos(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [draft?.vehicleId, phase]);
 
   useEffect(() => {
     async function load() {
@@ -576,6 +605,7 @@ function CheckoutCapturePage() {
               </div>
               <InspectionFormSummary
                 form={inspectionForm}
+                driverName={draft.driverName || user?.name}
                 showClover={usesClover}
                 hideResult
               />
@@ -657,6 +687,7 @@ function CheckoutCapturePage() {
               form={inspectionForm}
               powertrain={powertrain}
               unitNumber={vehicle.unitNumber}
+              driverName={draft.driverName || user?.name}
               onChange={setInspectionForm}
               showErrors={showPrecheckErrors}
               showClover={usesClover}
@@ -713,6 +744,9 @@ function CheckoutCapturePage() {
         <GuidedPhotoCapture
           photos={photos}
           photoFlags={photoFlags}
+          driverName={draft.driverName || user?.name}
+          odometer={draft.odometer}
+          prior={priorPhotos}
           steps={steps}
           testingBrowseMode={canSkipPhotosForTesting()}
           testingFinishLabel="Finish preview → Sign"

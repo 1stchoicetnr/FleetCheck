@@ -20,7 +20,8 @@
     "qrcode": "^1.5.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "tailwind-merge": "^2.6.0"
+    "tailwind-merge": "^2.6.0",
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.10",

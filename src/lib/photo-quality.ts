@@ -98,9 +98,14 @@ export async function checkPhotoQuality(
   };
 }
 
-export type PhotoQualityIssue = "blur" | "glare";
+export type PhotoQualityIssue = "dark" | "blank" | "blur" | "glare";
 
-/** Document and odometer shots have to be readable. Other slots skip the check. */
+/** A flat frame, a nearly black frame, or a blurry frame cannot be kept. */
+export function isBlockingPhotoIssue(issue: PhotoQualityIssue | null): boolean {
+  return issue === "dark" || issue === "blank" || issue === "blur";
+}
+
+/** Document and odometer shots also reject glare unless the driver explains it. */
 export function needsSharpPhoto(angle: PhotoAngle): boolean {
   return angle === "odometer_fuel" || angle === "registration" || angle === "insurance";
 }
@@ -109,13 +114,18 @@ export function needsSharpPhoto(angle: PhotoAngle): boolean {
  * Glare is a large washed-out area. Blur is a low Laplacian variance.
  * A sharp, normally lit photo returns null.
  */
+const BLANK_STDDEV = 8;
+const DARK_MEAN = 18;
+
 export function photoQualityIssue(
   pixels: Uint8ClampedArray,
   width: number,
   height: number
 ): PhotoQualityIssue | null {
-  if (width < 3 || height < 3 || pixels.length < width * height * 4) return "blur";
+  if (width < 3 || height < 3 || pixels.length < width * height * 4) return "blank";
   const gray = new Float64Array(width * height);
+  let sum = 0;
+  let sumSq = 0;
   let bright = 0;
   const count = width * height;
   for (let i = 0; i < count; i += 1) {
@@ -123,12 +133,18 @@ export function photoQualityIssue(
     const value =
       0.299 * pixels[offset] + 0.587 * pixels[offset + 1] + 0.114 * pixels[offset + 2];
     gray[i] = value;
+    sum += value;
+    sumSq += value * value;
     if (value >= 245) bright += 1;
   }
+  const mean = sum / count;
+  const stddev = Math.sqrt(Math.max(0, sumSq / count - mean * mean));
+  if (stddev < BLANK_STDDEV) return "blank";
+  if (mean < DARK_MEAN) return "dark";
   if (bright / count >= 0.12) return "glare";
 
-  let sum = 0;
-  let sumSq = 0;
+  let lapSum = 0;
+  let lapSumSq = 0;
   let samples = 0;
   for (let y = 1; y < height - 1; y += 1) {
     for (let x = 1; x < width - 1; x += 1) {
@@ -139,21 +155,23 @@ export function photoQualityIssue(
         gray[index + 1] +
         gray[index + width] -
         4 * gray[index];
-      sum += lap;
-      sumSq += lap * lap;
+      lapSum += lap;
+      lapSumSq += lap * lap;
       samples += 1;
     }
   }
   if (samples === 0) return "blur";
-  const mean = sum / samples;
-  const variance = sumSq / samples - mean * mean;
+  const lapMean = lapSum / samples;
+  const variance = lapSumSq / samples - lapMean * lapMean;
   if (variance < 80) return "blur";
   return null;
 }
 
 export function photoQualityMessage(issue: PhotoQualityIssue): string {
+  if (issue === "dark") return "This photo is too dark. Retake it with more light.";
+  if (issue === "blank") return "This photo looks blank. Retake it.";
   if (issue === "glare") {
     return "This looks washed out by glare. Retake it, or use it and add a note.";
   }
-  return "This looks blurry. Retake it, or use it and add a note.";
+  return "This photo is too blurry. Hold steady and retake it.";
 }

@@ -48,6 +48,7 @@ import { formatDate, formatDateOnly, formatMileage, formatUnitLabel } from "@/li
 import { isVehicleArchived } from "@/lib/vehicle-archive";
 import {
   cleanDamageNote,
+  damageFlagText,
   DAMAGE_NOTE_MAX,
   isPhotoDamageFlagged,
   sortAnglesDamageFirst,
@@ -172,19 +173,13 @@ export default function OfficeReportDetailPage() {
           ? [{
               id: step.angle,
               src: photo.dataUrl,
-              label: `${step.label}${
-                isPhotoDamageFlagged(photo)
-                  ? ` · DAMAGE${
-                      cleanDamageNote(photo.damageNote)
-                        ? ` — ${cleanDamageNote(photo.damageNote)}`
-                        : ""
-                    }`
-                  : ""
-              }`,
+              label: isPhotoDamageFlagged(photo)
+                ? damageFlagText(photo, report?.driverName)
+                : step.label,
             }]
           : [];
       }),
-    [photoMap, gallerySteps]
+    [photoMap, gallerySteps, report?.driverName]
   );
 
   const handleFlagPhoto = async (
@@ -473,6 +468,7 @@ export default function OfficeReportDetailPage() {
               {report.inspectionForm ? (
                 <InspectionFormSummary
                   form={report.inspectionForm}
+                  driverName={report.driverName}
                   showClover={cloverEnabled(companySettings, report.companyId)}
                 />
               ) : (
@@ -543,7 +539,11 @@ export default function OfficeReportDetailPage() {
                       {photo?.dataUrl ? (
                         <OfficePhotoThumb
                           src={photo.dataUrl}
-                          label={`${step.label}${damaged ? " · DAMAGE" : ""}`}
+                          label={
+                            damaged
+                              ? damageFlagText(photo, report.driverName)
+                              : step.label
+                          }
                           onOpen={() => {
                             const next = galleryPhotos.findIndex(
                               (item) => item.id === step.angle
@@ -560,7 +560,7 @@ export default function OfficeReportDetailPage() {
                     <div className="px-2 py-1.5 space-y-1">
                       <p className="text-xs font-semibold text-gray-700">
                         {step.label}
-                        {damaged ? " · DAMAGE" : ""}
+                        {damaged ? ` · DAMAGE · ${report.driverName}` : ""}
                       </p>
                       {damaged && cleanDamageNote(photo?.damageNote) && (
                         <p className="text-[11px] text-red-800 leading-snug">

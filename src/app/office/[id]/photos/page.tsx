@@ -21,7 +21,7 @@ import {
 } from "@/lib/types";
 import { formatUnitLabel } from "@/lib/utils";
 import {
-  cleanDamageNote,
+  damageFlagText,
   isPhotoDamageFlagged,
   photoAngleLabel,
   sortAnglesDamageFirst,
@@ -88,23 +88,23 @@ export default function CheckoutPhotoGalleryPage() {
     const labeled = steps.flatMap((step) => {
       const photo = byAngle.get(step.angle);
       if (!photo?.dataUrl) return [];
-      const note = cleanDamageNote(photo.damageNote);
       const damage = isPhotoDamageFlagged(photo);
       return [{
         id: step.angle,
         src: photo.dataUrl,
-        label: `${step.label}${damage ? ` · DAMAGE${note ? ` — ${note}` : ""}` : ""}`,
+        label: damage ? damageFlagText(photo, report.driverName) : step.label,
       }];
     });
     const listed = new Set(labeled.map((item) => item.id));
     for (const photo of report.photos) {
       if (!photo.dataUrl || listed.has(photo.angle)) continue;
-      const note = cleanDamageNote(photo.damageNote);
       const damage = isPhotoDamageFlagged(photo);
       labeled.push({
         id: photo.angle,
         src: photo.dataUrl,
-        label: `${photoAngleLabel(photo.angle)}${damage ? ` · DAMAGE${note ? ` — ${note}` : ""}` : ""}`,
+        label: damage
+          ? damageFlagText(photo, report.driverName)
+          : photoAngleLabel(photo.angle),
       });
     }
     return labeled;

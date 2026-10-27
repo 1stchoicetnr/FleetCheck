@@ -1,6 +1,6 @@
 import type { CheckoutInspectionForm } from "./inspection-form";
 import { DAMAGE_SIDES } from "./inspection-form";
-import { cleanDamageNote, damageFlagText } from "./photo-flags";
+import { damageFlagText, damageSideLine } from "./photo-flags";
 import type { CheckoutReport, FuelLevel } from "./types";
 import { FUEL_LEVEL_LABELS } from "./types";
 import { formatMileage, formatUnitLabel } from "./utils";
@@ -74,16 +74,20 @@ export function formatCheckoutTime(iso: string): string {
 }
 
 export function checkoutDamageLines(
-  report: Pick<CheckoutReport, "photos" | "inspectionForm">
+  report: Pick<CheckoutReport, "photos" | "inspectionForm"> & {
+    driverName?: string | null;
+  }
 ): string[] {
+  const name = report.driverName;
   const lines = report.photos
     .filter((photo) => photo.flaggedDamage)
-    .map((photo) => damageFlagText(photo));
+    .map((photo) => damageFlagText(photo, name));
   const damage = report.inspectionForm?.damage;
   if (damage) {
     for (const side of DAMAGE_SIDES) {
-      const note = cleanDamageNote(damage[side.id]);
-      if (note) lines.push(`${side.label}: ${note}`);
+      const note = damage[side.id];
+      const marked = damage.marks?.includes(side.id);
+      if (note?.trim() || marked) lines.push(damageSideLine(side.label, note, name));
     }
   }
   return lines;

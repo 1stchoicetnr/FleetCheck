@@ -6,7 +6,6 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
-  Image as ImageIcon,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { ProgressBar } from "./ui/progress-bar";
@@ -16,11 +15,23 @@ import { LiveCameraFrame } from "./live-camera-frame";
 import { PHOTO_ANGLES, PhotoAngle, PhotoStep, walkaroundPhotoSteps } from "@/lib/types";
 import { DAMAGE_NOTE_MAX } from "@/lib/photo-flags";
 import {
+  isBlockingPhotoIssue,
   needsSharpPhoto,
   photoQualityIssue,
   photoQualityMessage,
   type PhotoQualityIssue,
 } from "@/lib/photo-quality";
+import {
+  isLibraryPhoto,
+  LIBRARY_PHOTO_MESSAGE,
+  ODOMETER_UNREADABLE,
+  odometerDigits,
+  odometerMismatchMessage,
+  odometerReadingMatches,
+} from "@/lib/odometer-match";
+import { recognizeOdometerDigits } from "@/lib/odometer-ocr";
+import { damageActor } from "@/lib/photo-flags";
+import { stampPhotoDataUrl } from "@/lib/photo-stamp";
 import { useCheckoutFeedback } from "@/components/checkout-feedback";
 import { primaryButtonClass } from "@/lib/button-styles";
 
@@ -41,6 +52,12 @@ interface GuidedPhotoCaptureProps {
   steps?: PhotoStep[];
   testingFinishLabel?: string;
   allCompleteMessage?: string;
+  driverName?: string;
+  odometer?: string | number;
+  prior?: {
+    driverName: string;
+    photos: Partial<Record<PhotoAngle, string>>;
+  } | null;
 }
 
 export function GuidedPhotoCapture({
@@ -56,11 +73,13 @@ export function GuidedPhotoCapture({
   steps = walkaroundPhotoSteps(PHOTO_ANGLES),
   testingFinishLabel = "Finish preview → Mileage",
   allCompleteMessage = "All photos accepted — moving to mileage...",
+  driverName,
+  odometer,
+  prior,
 }: GuidedPhotoCaptureProps) {
   const requiredPhotos = steps.filter((p) => p.required);
   const acceptedCount = requiredPhotos.filter((p) => photos[p.angle]).length;
   const cameraInputRef = useRef<HTMLInputElement>(null);
-  const galleryInputRef = useRef<HTMLInputElement>(null);
 
   const firstIncompleteIndex = useMemo(() => {
     const idx = requiredPhotos.findIndex((p) => !photos[p.angle]);
@@ -74,6 +93,7 @@ export function GuidedPhotoCapture({
   const [pending, setPending] = useState<{
     dataUrl: string;
     issue: PhotoQualityIssue | null;
+    blockReason?: string;
   } | null>(null);
   const [qualityNote, setQualityNote] = useState("");
 
@@ -107,17 +127,49 @@ export function GuidedPhotoCapture({
 
   const handlePickedFile = async (file: File) => {
     if (!current) return;
+    if (isLibraryPhoto(file.lastModified, Date.now())) {
+      setPickError(LIBRARY_PHOTO_MESSAGE);
+      return;
+    }
     setBusy(true);
     setPickError("");
     try {
       const compressed = await compressImageFile(file);
-      const issue = needsSharpPhoto(current.angle)
-        ? await readPhotoQuality(compressed)
-        : null;
+      const issue = await readPhotoQuality(compressed);
+      if (isBlockingPhotoIssue(issue) && issue) {
+        setQualityNote("");
+        setPending({
+          dataUrl: compressed,
+          issue,
+          blockReason: photoQualityMessage(issue),
+        });
+        return;
+      }
+      const glare =
+        needsSharpPhoto(current.angle) && issue === "glare" ? issue : null;
+      if (current.angle === "odometer_fuel") {
+        let read = "";
+        try {
+          read = await recognizeOdometerDigits(compressed);
+        } catch {
+          read = "";
+        }
+        if (!odometerReadingMatches(odometer ?? "", read)) {
+          setPending({
+            dataUrl: compressed,
+            issue: null,
+            blockReason: odometerDigits(odometer ?? "")
+              ? odometerMismatchMessage(odometer ?? "")
+              : ODOMETER_UNREADABLE,
+          });
+          return;
+        }
+      }
+      const stamped = await stampPhotoDataUrl(compressed, new Date().toISOString());
       setQualityNote("");
-      setPending({ dataUrl: compressed, issue });
+      setPending({ dataUrl: stamped, issue: glare });
     } catch {
-      setPickError("Couldn't use that photo. Try Take photo again.");
+      setPickError("Could not use that photo. Try the camera again.");
     } finally {
       setBusy(false);
     }
@@ -125,6 +177,7 @@ export function GuidedPhotoCapture({
 
   const usePendingPhoto = () => {
     if (!current || !pending) return;
+    if (pending.blockReason) return;
     if (pending.issue && !qualityNote.trim()) return;
     if (qualityNote.trim()) onQualityNote?.(current.angle, qualityNote.trim());
     const dataUrl = pending.dataUrl;
@@ -150,11 +203,6 @@ export function GuidedPhotoCapture({
   const openNativeCamera = () => {
     if (!current || value || busy) return;
     cameraInputRef.current?.click();
-  };
-
-  const openGallery = () => {
-    if (!current || value || busy) return;
-    galleryInputRef.current?.click();
   };
 
   const retakeAccepted = () => {
@@ -227,17 +275,27 @@ export function GuidedPhotoCapture({
             {pending ? (
               <div className="p-4 space-y-4">
                 <p className="text-2xl font-bold text-white text-center">
-                  Is this the {current.label.toLowerCase()}?
+                  {pending.blockReason
+                    ? "Retake this photo"
+                    : `Is this the ${current.label.toLowerCase()}?`}
                 </p>
-                <div className="relative rounded-xl overflow-hidden border-2 border-[#5c5c64] bg-black flex items-center justify-center min-h-[180px] max-h-[min(55vh,360px)]">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={pending.dataUrl}
-                    alt={current.label}
-                    className="w-full h-full max-h-[min(55vh,360px)] object-contain"
+                <div className="flex items-start gap-2">
+                  <div className="relative min-w-0 flex-1 rounded-xl overflow-hidden border-2 border-[#5c5c64] bg-black flex items-center justify-center min-h-[140px] max-h-[min(42vh,280px)]">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={pending.dataUrl}
+                      alt={current.label}
+                      className="w-full h-full max-h-[min(42vh,280px)] object-contain"
+                    />
+                  </div>
+                  <PriorDriverPhoto
+                    url={prior?.photos[current.angle]}
+                    driverName={prior?.driverName}
                   />
                 </div>
-                {pending.issue && (
+                {pending.blockReason ? (
+                  <p className="text-sm font-semibold text-amber-200">{pending.blockReason}</p>
+                ) : pending.issue ? (
                   <div className="space-y-2">
                     <p className="text-sm font-semibold text-amber-200">
                       {photoQualityMessage(pending.issue)}
@@ -256,28 +314,40 @@ export function GuidedPhotoCapture({
                       />
                     </label>
                   </div>
-                )}
-                <div className="grid grid-cols-2 gap-2">
+                ) : null}
+                {pending.blockReason ? (
                   <Button
                     variant="outline"
                     size="lg"
-                    className="border-red-400/50 text-red-300 bg-red-950/30 hover:bg-red-950/50"
+                    className="w-full border-red-400/50 text-red-300 bg-red-950/30 hover:bg-red-950/50"
                     onClick={retakePending}
                   >
                     Retake
                   </Button>
-                  <Button
-                    size="lg"
-                    onClick={usePendingPhoto}
-                    disabled={Boolean(pending.issue && !qualityNote.trim())}
-                  >
-                    Use photo
-                  </Button>
-                </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      variant="outline"
+                      size="lg"
+                      className="border-red-400/50 text-red-300 bg-red-950/30 hover:bg-red-950/50"
+                      onClick={retakePending}
+                    >
+                      Retake
+                    </Button>
+                    <Button
+                      size="lg"
+                      onClick={usePendingPhoto}
+                      disabled={Boolean(pending.issue && !qualityNote.trim())}
+                    >
+                      Use photo
+                    </Button>
+                  </div>
+                )}
               </div>
             ) : value ? (
               <div className="p-4 space-y-4">
-                <div className="photo-accepted-frame relative rounded-xl overflow-hidden border-2 border-emerald-500/60 bg-black flex items-center justify-center min-h-[180px] max-h-[min(55vh,360px)]">
+                <div className="flex items-start gap-2">
+                <div className="photo-accepted-frame relative min-w-0 flex-1 rounded-xl overflow-hidden border-2 border-emerald-500/60 bg-black flex items-center justify-center min-h-[140px] max-h-[min(42vh,280px)]">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={value}
@@ -290,9 +360,14 @@ export function GuidedPhotoCapture({
                   </div>
                   {photoFlags?.[current.angle]?.flaggedDamage && (
                     <div className="absolute top-3 right-3 bg-[#b91c1c] text-white rounded-full px-3 py-1.5 text-sm font-semibold shadow">
-                      DAMAGE
+                      DAMAGE · {damageActor(driverName)}
                     </div>
                   )}
+                </div>
+                <PriorDriverPhoto
+                  url={prior?.photos[current.angle]}
+                  driverName={prior?.driverName}
+                />
                 </div>
                 {onFlagDamage && (
                   <button
@@ -350,20 +425,28 @@ export function GuidedPhotoCapture({
               </div>
             ) : (
               <div className="photo-capture-body p-4 space-y-4">
-                {cameraOff ? (
-                  <PhotoExampleCard
-                    angle={current.angle}
-                    label={current.label}
-                    category={current.category}
+                <div className="flex items-start gap-2">
+                  <div className="min-w-0 flex-1">
+                    {cameraOff ? (
+                      <PhotoExampleCard
+                        angle={current.angle}
+                        label={current.label}
+                        category={current.category}
+                      />
+                    ) : (
+                      <LiveCameraFrame
+                        angle={current.angle}
+                        busy={busy}
+                        onCapture={(file) => void handlePickedFile(file)}
+                        onUnavailable={() => setCameraOff(true)}
+                      />
+                    )}
+                  </div>
+                  <PriorDriverPhoto
+                    url={prior?.photos[current.angle]}
+                    driverName={prior?.driverName}
                   />
-                ) : (
-                  <LiveCameraFrame
-                    angle={current.angle}
-                    busy={busy}
-                    onCapture={(file) => void handlePickedFile(file)}
-                    onUnavailable={() => setCameraOff(true)}
-                  />
-                )}
+                </div>
                 <div className="photo-capture-actions space-y-3">
                   {cameraOff && (
                     <p className="photo-capture-hint text-center text-xs text-gray-500">
@@ -400,19 +483,8 @@ export function GuidedPhotoCapture({
                     </button>
                   )}
                   <p className="photo-capture-flash-hint text-center text-xs text-gray-400 leading-snug px-1">
-                    {cameraOff
-                      ? "Dark shot? Use the phone Camera flash on Take photo, or Choose from library."
-                      : "Dark shot? Turn on a light, or choose a photo from the library."}
+                    Live camera only. The time is saved on the photo. Turn on a light if the shot is dark.
                   </p>
-                  <button
-                    type="button"
-                    onClick={openGallery}
-                    disabled={busy}
-                    className="photo-library-btn w-full text-gray-400 text-sm underline py-1 flex items-center justify-center gap-1.5"
-                  >
-                    <ImageIcon className="h-3.5 w-3.5" />
-                    Choose from library
-                  </button>
                 </div>
               </div>
             )}
@@ -492,16 +564,28 @@ export function GuidedPhotoCapture({
           e.target.value = "";
         }}
       />
-      <input
-        ref={galleryInputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) void handlePickedFile(file);
-          e.target.value = "";
-        }}
+    </div>
+  );
+}
+
+function PriorDriverPhoto({
+  url,
+  driverName,
+}: {
+  url?: string;
+  driverName?: string;
+}) {
+  if (!url || !driverName?.trim()) return null;
+  return (
+    <div className="w-[34%] max-w-[128px] shrink-0 space-y-1">
+      <p className="text-[11px] leading-tight font-semibold text-[#d4d4d8]">
+        Previous · {driverName.trim()}
+      </p>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={url}
+        alt={`Previous photo by ${driverName.trim()}`}
+        className="aspect-[4/3] w-full rounded-lg border border-[#3a3a40] object-cover"
       />
     </div>
   );
