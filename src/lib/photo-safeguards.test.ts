@@ -41,9 +41,13 @@ test("dark, blank, and blurry photos are rejected", () => {
   assert.equal(photoQualityIssue(blur, 16, 16), "blur");
 });
 
-test("the odometer photo has to contain the typed mileage", () => {
+test("the odometer photo has to match the full typed mileage", () => {
   assert.equal(odometerReadingMatches(145900, "145900"), true);
-  assert.equal(odometerReadingMatches("145,900", "trip 145900 8"), true);
+  assert.equal(odometerReadingMatches("145,900", "145 900"), true);
+  assert.equal(odometerReadingMatches("0145900", "145,900 mi"), true);
+  assert.equal(odometerReadingMatches("0", "000"), true);
+  assert.equal(odometerReadingMatches("145,900", "trip 145900 8"), false);
+  assert.equal(odometerReadingMatches(145900, "1459001"), false);
   assert.equal(odometerReadingMatches(145900, "14590"), false);
   assert.equal(odometerReadingMatches(145900, ""), false);
   assert.equal(odometerReadingMatches("", "145900"), false);
