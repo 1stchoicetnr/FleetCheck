@@ -8,11 +8,13 @@ import {
   type CompanySettingsPatch,
   type PublicCompanySettings,
 } from "@/lib/company-settings";
+import { checkoutCompletionStatus, missingRequiredPhotos } from "@/lib/checkout-completion";
 import { displayPlate, generateId } from "@/lib/utils";
 import {
   CheckoutReport,
   Company,
   PhotoAngle,
+  PhotoStep,
   VehicleKnownIssue,
   VehiclePhoto,
 } from "@/lib/types";
@@ -443,12 +445,20 @@ export async function confirmReportSent(
   const existing = await getReport(orgId, id);
   if (!existing) throw new SharedBackendError("Checkout report not found", 404);
   if (existing.sentAt) return existing;
+  const settingsDoc = await readStoredCompanySettings(orgId);
+  const steps = photoStepsForCompany(publicCompanySettings(settingsDoc), existing.companyId);
+  if (missingRequiredPhotos(existing, steps).length) {
+    throw new SharedBackendError(
+      "This check still needs its photos before it can be sent.",
+      409
+    );
+  }
   const sentAt = new Date().toISOString();
+  const ready = { ...existing, status: "complete" as const };
   const saved =
     mode === "postgres"
-      ? { ...existing, sentAt: (await pgMarkReportSent(orgId, id, sentAt)) || sentAt }
-      : await localPutReport({ ...existing, sentAt });
-  const settingsDoc = await readStoredCompanySettings(orgId);
+      ? { ...ready, sentAt: (await pgMarkReportSent(orgId, id, sentAt)) || sentAt }
+      : await localPutReport({ ...ready, sentAt });
   const routes = effectiveCheckoutSlack(settingsDoc);
   const webhooks = slackWebhooksFromEnv(slackWebhookOverride(settingsDoc) || undefined);
   if (mode === "postgres") {
@@ -458,7 +468,7 @@ export async function confirmReportSent(
         route: routes[saved.companyId],
         webhooks,
         appOrigin: options?.appOrigin,
-        photoSteps: photoStepsForCompany(publicCompanySettings(settingsDoc), saved.companyId),
+        photoSteps: steps,
       });
     } catch (err) {
       const message =
@@ -598,6 +608,7 @@ export async function createReport(
     ...inspection.form,
     inspectedAt: inspection.form.inspectedAt || now,
   });
+  const photoSteps = photoStepsForCompany(published, input.companyId);
   const report: CheckoutReport = {
     id: generateId(),
     ...input,
@@ -606,7 +617,7 @@ export async function createReport(
     plate,
     inspectionForm: stamped,
     photos: [],
-    status: "complete",
+    status: checkoutCompletionStatus(undefined, { photos: [], inspectionForm: stamped }, photoSteps),
     completedAt: now,
     reviewStatus: reviewStatusForLight(
       stamped.trafficLight === "red" || stamped.trafficLight === "yellow"
@@ -638,7 +649,8 @@ export async function createReport(
 
 function reportWithPhotos(
   existing: CheckoutReport,
-  photos: VehiclePhoto[]
+  photos: VehiclePhoto[],
+  steps: PhotoStep[]
 ): CheckoutReport {
   const form = existing.inspectionForm;
   const refresh = shouldRefreshAppResult(form, existing.reviewedBy);
@@ -652,6 +664,11 @@ function reportWithPhotos(
     ...existing,
     photos,
     inspectionForm: stamped,
+    status: checkoutCompletionStatus(
+      existing.status,
+      { photos, inspectionForm: stamped || existing.inspectionForm },
+      steps
+    ),
     reviewStatus,
     flagged:
       reviewStatus === "conditional" ||
@@ -687,7 +704,11 @@ export async function addReportPhoto(
   };
   const photos = existing.photos.filter((p) => p.angle !== angle);
   photos.push(photo);
-  const updated = reportWithPhotos(existing, photos);
+  const steps = photoStepsForCompany(
+    publicCompanySettings(await readStoredCompanySettings(orgId)),
+    existing.companyId
+  );
+  const updated = reportWithPhotos(existing, photos, steps);
   const saved = mode === "postgres" ? await pgPutReport(orgId, updated) : await localPutReport(updated);
   if (flags?.flaggedDamage) {
     void recordCheckoutAlerts(orgId, saved).catch((err) => {
@@ -733,7 +754,11 @@ export async function addReportPhotos(
     if (idx >= 0) photos[idx] = photo;
     else photos.push(photo);
   }
-  const updated = reportWithPhotos(existing, photos);
+  const steps = photoStepsForCompany(
+    publicCompanySettings(await readStoredCompanySettings(orgId)),
+    existing.companyId
+  );
+  const updated = reportWithPhotos(existing, photos, steps);
   const saved = mode === "postgres" ? await pgPutReport(orgId, updated) : await localPutReport(updated);
   if (stored.some((photo) => photo.flaggedDamage)) {
     void recordCheckoutAlerts(orgId, saved).catch((err) => {
@@ -773,7 +798,11 @@ export async function patchReportPhotoFlags(
         }
       : p
   );
-  const updated = reportWithPhotos(existing, photos);
+  const steps = photoStepsForCompany(
+    publicCompanySettings(await readStoredCompanySettings(orgId)),
+    existing.companyId
+  );
+  const updated = reportWithPhotos(existing, photos, steps);
   const saved = mode === "postgres" ? await pgPutReport(orgId, updated) : await localPutReport(updated);
   if (flags.flaggedDamage && !wasFlagged) {
     void recordCheckoutAlerts(orgId, saved).catch((err) => {

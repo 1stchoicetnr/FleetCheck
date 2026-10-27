@@ -70,7 +70,7 @@ type ReportRow = {
   driver_name: string;
   dispatcher_name: string;
   type: CheckoutReport["type"];
-  status: "complete";
+  status: "uploading" | "complete";
   completed_at: string;
   review_status: CheckoutReviewStatus;
   review_notes: string | null;
@@ -107,7 +107,7 @@ function rowToReport(row: ReportRow): CheckoutReport {
     ...photo,
     dataUrl: photo.dataUrl || "",
   })),
-    status: "complete",
+    status: row.sent_at || row.status !== "uploading" ? "complete" : "uploading",
     completedAt: new Date(row.completed_at).toISOString(),
     reviewStatus: row.review_status,
     reviewNotes: row.review_notes ?? undefined,

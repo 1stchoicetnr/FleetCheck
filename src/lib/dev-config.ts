@@ -1,11 +1,12 @@
-/** Dev/testing helpers — not for production enforcement. */
+function isLocalDevelopment(): boolean {
+  return process.env.NODE_ENV === "development";
+}
+
+/** Photo shortcuts stay on a local dev server. A public flag cannot skip them in production. */
 export function canSkipPhotosForTesting(): boolean {
-  return (
-    process.env.NEXT_PUBLIC_SKIP_PHOTOS === "true" ||
-    process.env.NODE_ENV === "development"
-  );
+  return isLocalDevelopment();
 }
 
 export function shouldAutoSkipPhotos(): boolean {
-  return process.env.NEXT_PUBLIC_SKIP_PHOTOS === "true";
+  return isLocalDevelopment() && process.env.NEXT_PUBLIC_SKIP_PHOTOS === "true";
 }
