@@ -1,6 +1,12 @@
 import { alertSlackLimited, recordAlertSlack } from "@/lib/alert-slack-limit";
 import { errorResponse } from "@/lib/server/api-error";
-import { assertOfficeAccess } from "@/lib/server/request-auth";
+import { AuthError } from "@/lib/server/auth-accounts";
+import { isOfficeRequest } from "@/lib/server/office-pin";
+import {
+  resolveRequestAuth,
+  sessionGrantsOffice,
+  type RequestAuth,
+} from "@/lib/server/request-auth";
 import { NextRequest, NextResponse } from "next/server";
 import {
   SLACK_CHANNEL_DEFAULTS,
@@ -10,7 +16,14 @@ import {
 
 export async function POST(req: NextRequest) {
   try {
-    const auth = await assertOfficeAccess(req);
+    const session = await resolveRequestAuth(req);
+    let auth: RequestAuth = session;
+    if (!sessionGrantsOffice(session)) {
+      if (!(await isOfficeRequest(req))) {
+        throw new AuthError("Sign in required.", 401);
+      }
+      auth = { ...session, role: "office", source: "pin" };
+    }
     const limitKey = auth.userId || "office";
     if (alertSlackLimited(limitKey)) {
       return NextResponse.json(
