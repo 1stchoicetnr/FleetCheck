@@ -16,6 +16,8 @@ import {
 } from "@/lib/photo-flags";
 import { SlackRoute, slackChannelIdForRoute, slackChannelLabel } from "@/lib/slack-config";
 import { CheckoutReport } from "@/lib/types";
+import { postAshleySlackDm } from "@/lib/ashley-slack";
+import { repeatProblemNote } from "@/lib/driver-tally";
 import { repeatedIssues } from "@/lib/repeat-issues";
 import { formatUnitLabel } from "@/lib/utils";
 import { localInsertAlert, localListAlerts, localListReports } from "./local-store";
@@ -129,7 +131,7 @@ export async function recordCheckoutAlerts(
   await recordRepeatIssues(orgId, report);
 }
 
-/** Same unit, same issue on two or more checks. Office only — this does not post to Slack. */
+/** Same unit, same issue on two or more checks. The office queue keeps it, and Ashley gets a direct note. */
 async function recordRepeatIssues(orgId: string, report: CheckoutReport): Promise<void> {
   const mode = sharedBackendMode();
   if (mode === "unconfigured") return;
@@ -166,5 +168,17 @@ async function recordRepeatIssues(orgId: string, report: CheckoutReport): Promis
     };
     if (mode === "postgres") await pgInsertAlert(orgId, alert);
     else await localInsertAlert(alert);
+    await notifyAshleyRepeat(repeatProblemNote(alert.message, report.driverName));
+  }
+}
+
+async function notifyAshleyRepeat(text: string): Promise<void> {
+  try {
+    await postAshleySlackDm(text, {
+      token: process.env.SLACK_BOT_TOKEN,
+      webhookUrl: process.env.SLACK_WEBHOOK_FEEDBACK,
+    });
+  } catch {
+    // The office flag is already saved.
   }
 }

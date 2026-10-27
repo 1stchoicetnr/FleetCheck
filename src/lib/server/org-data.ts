@@ -657,6 +657,58 @@ export async function setFleetSettings(
   );
 }
 
+let driverTallyColumnReady = false;
+
+async function ensureDriverTallyColumn(db: OrgDb) {
+  if (driverTallyColumnReady) return;
+  await db.query(
+    `ALTER TABLE fleet_settings ADD COLUMN IF NOT EXISTS driver_tally_sent JSONB`
+  );
+  driverTallyColumnReady = true;
+}
+
+export async function listDriverTallyChecks(
+  db: OrgDb,
+  orgId: string,
+  start: string,
+  end: string
+) {
+  return db.query(
+    `SELECT r.driver_name, r.review_status, r.company_id, c.name AS company_name
+     FROM checkout_reports r
+     LEFT JOIN companies c ON c.id = r.company_id AND c.org_id = r.org_id
+     WHERE r.org_id = $1
+       AND r.archived_at IS NULL
+       AND r.completed_at >= $2::timestamptz
+       AND r.completed_at < $3::timestamptz`,
+    [org(orgId), start, end]
+  );
+}
+
+export async function readDriverTallySent(db: OrgDb, orgId: string): Promise<string[]> {
+  await ensureDriverTallyColumn(db);
+  const rows = await db.query(
+    `SELECT driver_tally_sent FROM fleet_settings WHERE org_id = $1 LIMIT 1`,
+    [org(orgId)]
+  );
+  const value = rows[0]?.driver_tally_sent;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+  return Object.keys(value as Record<string, unknown>);
+}
+
+export async function markDriverTallySent(db: OrgDb, orgId: string, key: string) {
+  await ensureDriverTallyColumn(db);
+  await db.query(
+    `INSERT INTO fleet_settings (id, allow_driver_add_vehicles, org_id, driver_tally_sent)
+     VALUES ('app', FALSE, $1, jsonb_build_object($2::text, true))
+     ON CONFLICT (id) DO UPDATE SET
+       driver_tally_sent = COALESCE(fleet_settings.driver_tally_sent, '{}'::jsonb)
+         || EXCLUDED.driver_tally_sent
+     WHERE fleet_settings.org_id = EXCLUDED.org_id`,
+    [org(orgId), key]
+  );
+}
+
 export async function readCompanySettings(db: OrgDb, orgId: string) {
   const rows = await db.query(
     "SELECT settings_json FROM fleet_settings WHERE org_id = $1 LIMIT 1",

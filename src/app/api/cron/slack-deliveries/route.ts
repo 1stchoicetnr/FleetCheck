@@ -8,6 +8,7 @@ import {
 import { RAD_CAB_COMPANY_ID } from "@/lib/company-rules";
 import { orgFromSession } from "@/lib/server/org-scope";
 import { pgDb, pgGetReport, pgReadCompanySettings } from "@/lib/server/postgres-store";
+import { runDriverTallies } from "@/lib/server/driver-tally-run";
 import { runSlackDeliveries, slackCronAuth, slackWebhooksFromEnv } from "@/lib/server/slack-delivery";
 import { NextResponse } from "next/server";
 
@@ -33,7 +34,8 @@ async function run(req: Request) {
     const requiredRadCabAngles = photoSteps
       .filter((step) => step.required)
       .map((step) => step.angle);
-    const counts = await runSlackDeliveries(pgDb(), {
+    const db = pgDb();
+    const counts = await runSlackDeliveries(db, {
       orgId,
       getReport: (id) => pgGetReport(orgId, id),
       routes: effectiveCheckoutSlack(doc),
@@ -42,7 +44,20 @@ async function run(req: Request) {
       photoSteps,
       appOrigin: appOrigin(),
     });
-    return NextResponse.json({ ok: true, ...counts });
+    let tallies = 0;
+    try {
+      const tally = await runDriverTallies({
+        db,
+        orgId,
+        token: process.env.SLACK_BOT_TOKEN,
+        webhookUrl: process.env.SLACK_WEBHOOK_FEEDBACK,
+      });
+      tallies = tally.sent;
+    } catch (err) {
+      const message = err instanceof Error ? err.message.replace(/https?:\/\/\S+/g, "").slice(0, 120) : "";
+      console.log(`[driver-tally] status=error error=${message || "failed"}`);
+    }
+    return NextResponse.json({ ok: true, ...counts, tallies });
   } catch (err) {
     const message = err instanceof Error ? err.message.replace(/https?:\/\/\S+/g, "").slice(0, 180) : "";
     console.log(`[slack-delivery] status=error error=${message || "failed"}`);
