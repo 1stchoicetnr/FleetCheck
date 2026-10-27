@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { fetchFleets, type SharedFleet } from "@/lib/checkout-api";
 import { primaryButtonClass, secondaryOutlineButtonClass } from "@/lib/button-styles";
+import { setupLinkHandoff } from "@/lib/setup-link-copy";
 import { RolePicker } from "@/components/role-picker";
 
 type AccessRequest = {
@@ -29,6 +30,7 @@ type Issued = {
   qr: string;
   expiresAt: string;
   label: string;
+  emailed?: boolean;
 };
 
 function reveal(node: HTMLElement | null) {
@@ -53,6 +55,7 @@ export function AccessRequestsPanel({
   const [personRoles, setPersonRoles] = useState<Record<string, string>>({});
   const [personFleets, setPersonFleets] = useState<Record<string, string[]>>({});
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [resetError, setResetError] = useState<{ id: string; message: string } | null>(null);
   const [busy, setBusy] = useState("");
   const [issued, setIssued] = useState<Issued | null>(null);
@@ -121,6 +124,7 @@ export function AccessRequestsPanel({
   const decide = async (request: AccessRequest, action: "approve" | "deny") => {
     setBusy(request.id + action);
     setError("");
+    setNotice("");
     const role = roles[request.id] || "driver";
     const fleetIds = fleetsChosen[request.id] || [];
     if (action === "approve" && fleetIds.length === 0) {
@@ -134,10 +138,35 @@ export function AccessRequestsPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, role, fleetIds }),
       });
-      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        emailed?: boolean;
+        url?: string;
+        qr?: string;
+        expiresAt?: string;
+      };
       if (!res.ok) {
         setError(data.error || "Could not update that request.");
         return;
+      }
+      if (action === "approve" && data.url) {
+        setIssued({
+          personId: request.id,
+          url: data.url,
+          qr: data.qr || "",
+          expiresAt: data.expiresAt || "",
+          label: `Setup link for ${request.name}`,
+          emailed: Boolean(data.emailed),
+        });
+      }
+      if (action === "approve") {
+        setNotice(
+          data.emailed
+            ? `${request.name} was emailed.`
+            : data.url
+              ? ""
+              : `${request.name} is approved. The email was not sent. They can sign in with the password they chose.`
+        );
       }
       await load();
     } catch {
@@ -224,6 +253,7 @@ export function AccessRequestsPanel({
         url?: string;
         qr?: string;
         expiresAt?: string;
+        emailed?: boolean;
         error?: string;
       };
       if (!res.ok || !data.url) {
@@ -238,6 +268,7 @@ export function AccessRequestsPanel({
         url: data.url,
         qr: data.qr || "",
         expiresAt: data.expiresAt || "",
+        emailed: Boolean(data.emailed),
         label: `Password reset for ${person.name}`,
       });
     } catch {
@@ -256,6 +287,11 @@ export function AccessRequestsPanel({
             Approve a request, or reset a password with a one-time setup link.
           </p>
         </div>
+      )}
+      {notice && (
+        <p className="text-sm font-medium text-ink" role="status">
+          {notice}
+        </p>
       )}
       {error && (
         <p className="text-sm font-medium text-red-600" role="alert">
@@ -331,7 +367,7 @@ export function AccessRequestsPanel({
         <section className="space-y-3">
           <h3 className="font-bold text-ink">Reset a password</h3>
           <p className="text-sm text-muted">
-            A reset creates a one-time setup link the admin must pass on. It expires in 7 days and replaces any unused setup link.
+            A reset emails a one-time setup link when email is connected. If it was not emailed, the link stays here to pass on. It expires in 7 days and replaces any unused setup link.
           </p>
           {people.map((person) => {
             const selected = new Set(personFleets[person.id] || person.fleetIds || []);
@@ -416,7 +452,7 @@ export function AccessRequestsPanel({
                 <div ref={reveal} className="space-y-2 rounded-xl border border-line bg-canvas p-3">
                   <p className="font-semibold text-ink">{issued.label}</p>
                   <p className="text-xs text-muted">
-                    Pass this link on. It is not emailed. Expires{" "}
+                    {setupLinkHandoff(Boolean(issued.emailed))}{" "}
                     {issued.expiresAt ? new Date(issued.expiresAt).toLocaleString() : "in 7 days"}.
                     Copy it now. It is not shown again.
                   </p>

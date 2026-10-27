@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { errorResponse } from "@/lib/server/api-error";
 import { AuthError, issueLink } from "@/lib/server/auth-accounts";
 import { inviteQr, publicOrigin } from "@/lib/server/auth-http";
+import { sendAccountMail, setupEmailText } from "@/lib/server/account-mail";
 import { isMemberRole, type MemberRole } from "@/lib/server/member-role";
 import { fleetScopeFor } from "@/lib/server/fleet-scope";
 import { findUserByEmail, getFleet } from "@/lib/server/org-data";
@@ -65,8 +66,13 @@ export async function POST(req: Request) {
     });
     const url = `${publicOrigin(req)}/setup/${link.token}`;
     const qr = await inviteQr(url);
+    const mailed = await sendAccountMail({
+      to: email,
+      subject: "Set up your Inspekt sign-in",
+      text: setupEmailText({ name, url, kind: "invite" }),
+    });
     return NextResponse.json(
-      { id: link.id, url, qr, expiresAt: link.expiresAt, role },
+      { id: link.id, url, qr, expiresAt: link.expiresAt, role, emailed: mailed.emailed },
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch (err) {

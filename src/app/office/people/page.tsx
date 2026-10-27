@@ -8,6 +8,7 @@ import { RolePicker } from "@/components/role-picker";
 import { useAuth } from "@/hooks/use-auth";
 import { fetchFleets, type SharedFleet } from "@/lib/checkout-api";
 import { canManagePeople } from "@/lib/role-access";
+import { setupLinkHandoff } from "@/lib/setup-link-copy";
 import {
   dangerOutlineButtonClass,
   primaryButtonClass,
@@ -44,6 +45,7 @@ type Issued = {
   expiresAt: string;
   label: string;
   personId?: string;
+  emailed?: boolean;
 };
 
 function reveal(node: HTMLElement | null) {
@@ -142,6 +144,7 @@ export default function PeoplePage() {
         expiresAt: data.expiresAt,
         label: `Password reset for ${person.name}`,
         personId: person.id,
+        emailed: Boolean(data.emailed),
       });
       await load();
     } catch {
@@ -175,6 +178,7 @@ export default function PeoplePage() {
         qr: data.qr,
         expiresAt: data.expiresAt,
         label: `Invite for ${name} (${email})`,
+        emailed: Boolean(data.emailed),
       });
       setName("");
       setEmail("");
@@ -302,7 +306,8 @@ export default function PeoplePage() {
             <section className="space-y-3 rounded-2xl border border-gray-200 bg-white p-4">
               <h3 className="font-bold text-gray-900">{issued.label}</h3>
               <p className="text-xs text-gray-500">
-                Expires {new Date(issued.expiresAt).toLocaleString()}. Copy it now. It is not shown again.
+                {setupLinkHandoff(Boolean(issued.emailed))}{" "}
+                {new Date(issued.expiresAt).toLocaleString()}. Copy it now. It is not shown again.
               </p>
               <label htmlFor="issued-url" className="sr-only">
                 Setup or invite link
@@ -487,7 +492,7 @@ export default function PeoplePage() {
                     <div ref={reveal} className="space-y-2 rounded-xl border border-gray-200 bg-gray-50 p-3">
                       <p className="font-semibold text-gray-900">{issued.label}</p>
                       <p className="text-xs text-gray-500">
-                        Pass this link on. It is not emailed. Expires{" "}
+                        {setupLinkHandoff(Boolean(issued.emailed))}{" "}
                         {new Date(issued.expiresAt).toLocaleString()}. Copy it now. It is not shown again.
                       </p>
                       <input

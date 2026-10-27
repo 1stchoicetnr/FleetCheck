@@ -3,6 +3,7 @@ import { errorResponse } from "@/lib/server/api-error";
 import { AuthError, issueLink } from "@/lib/server/auth-accounts";
 import { memberRoleForUser } from "@/lib/server/auth-store";
 import { inviteQr, publicOrigin } from "@/lib/server/auth-http";
+import { sendAccountMail, setupEmailText } from "@/lib/server/account-mail";
 import { isMemberRole, membershipRoleForLegacy, type MemberRole } from "@/lib/server/member-role";
 import { fleetScopeFor } from "@/lib/server/fleet-scope";
 import { ensureMembership, getUser, listUserFleetIds } from "@/lib/server/org-data";
@@ -49,6 +50,11 @@ export async function POST(req: Request) {
     });
     const url = `${publicOrigin(req)}/setup/${link.token}`;
     const qr = await inviteQr(url);
+    const mailed = await sendAccountMail({
+      to: String(user.email),
+      subject: "Choose a new Inspekt password",
+      text: setupEmailText({ name: String(user.name), url, kind: "setup" }),
+    });
     return NextResponse.json(
       {
         id: link.id,
@@ -57,6 +63,7 @@ export async function POST(req: Request) {
         expiresAt: link.expiresAt,
         email: String(user.email),
         name: String(user.name),
+        emailed: mailed.emailed,
       },
       { headers: { "Cache-Control": "no-store" } }
     );
