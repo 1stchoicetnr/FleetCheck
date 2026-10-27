@@ -2,7 +2,7 @@ import { errorResponse } from "@/lib/server/api-error";
 import { NextRequest, NextResponse } from "next/server";
 import { createFleet, listFleets } from "@/lib/server/checkout-repo";
 import { fleetScopeFor } from "@/lib/server/fleet-scope";
-import { assertOwnerAccess, resolveRequestAuth } from "@/lib/server/request-auth";
+import { assertApprovedUser, assertOwnerAccess } from "@/lib/server/request-auth";
 import { parseFleetName, parseFleetType } from "@/lib/fleet-catalog";
 
 export const runtime = "nodejs";
@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   try {
     const includeArchived = req.nextUrl.searchParams.get("includeArchived") === "1";
-    const auth = await resolveRequestAuth(req);
+    const auth = await assertApprovedUser(req);
     let fleets = await listFleets(auth.orgId, { includeArchived });
     if (auth.role === "office" || auth.role === "manager") {
       const scope = await fleetScopeFor(auth);

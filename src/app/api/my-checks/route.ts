@@ -1,3 +1,4 @@
+import { toClientReport } from "@/lib/photo-url";
 import { errorResponse, RequestError } from "@/lib/server/api-error";
 import { listMyReports } from "@/lib/server/checkout-repo";
 import { resolveRequestAuth } from "@/lib/server/request-auth";
@@ -12,7 +13,7 @@ export async function GET(req: Request) {
     if (!auth.name) throw new RequestError("Sign in required", 401);
     const reports = await listMyReports(auth.orgId, auth.name);
     return NextResponse.json(
-      { reports },
+      { reports: reports.map(toClientReport) },
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch (err) {

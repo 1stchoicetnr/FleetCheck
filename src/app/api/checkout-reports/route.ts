@@ -1,3 +1,4 @@
+import { toClientReport } from "@/lib/photo-url";
 import { errorResponse } from "@/lib/server/api-error";
 import { assertDriverMayCheckVehicle } from "@/lib/server/driver-fleets";
 import { vehicleIdsInScope } from "@/lib/server/fleet-scope";
@@ -128,7 +129,7 @@ export async function POST(req: Request) {
       idempotencyKey:
         typeof body.idempotencyKey === "string" ? body.idempotencyKey : undefined,
     });
-    return NextResponse.json({ report }, { status: 201 });
+    return NextResponse.json({ report: toClientReport(report) }, { status: 201 });
   } catch (err) {
     return errorResponse(err, "Failed to create report");
   }

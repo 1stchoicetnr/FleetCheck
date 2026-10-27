@@ -1,3 +1,4 @@
+import { toClientReport } from "@/lib/photo-url";
 import { errorResponse } from "@/lib/server/api-error";
 import { NextResponse } from "next/server";
 import { addReportPhoto, addReportPhotos } from "@/lib/server/checkout-repo";
@@ -77,7 +78,7 @@ export async function POST(
           qualityNote: photo.qualityNote,
         }))
       );
-      return NextResponse.json({ report });
+      return NextResponse.json({ report: toClientReport(report) });
     }
     if (!body.angle || !body.dataUrl) {
       return NextResponse.json(
@@ -113,7 +114,7 @@ export async function POST(
         qualityNote: body.qualityNote,
       }
     );
-    return NextResponse.json({ report });
+    return NextResponse.json({ report: toClientReport(report) });
   } catch (err) {
     return errorResponse(err, "Failed to save photo");
   }

@@ -1,3 +1,4 @@
+import { toClientReport } from "@/lib/photo-url";
 import { errorResponse } from "@/lib/server/api-error";
 import { NextResponse } from "next/server";
 import {
@@ -26,7 +27,7 @@ export async function GET(
     }
     await assertVehicleInScope(auth, report.vehicleId);
     return NextResponse.json(
-      { report },
+      { report: toClientReport(report) },
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch (err) {
@@ -60,7 +61,7 @@ export async function PATCH(
         return NextResponse.json({ error: "Owner access is required." }, { status: 403 });
       }
       const report = await setReportArchived(orgId, id, body.archived);
-      return NextResponse.json({ report });
+      return NextResponse.json({ report: toClientReport(report) });
     }
     if (!body.reviewStatus || !body.reviewedBy) {
       return NextResponse.json(
@@ -75,7 +76,7 @@ export async function PATCH(
       retakeAngles: body.retakeAngles,
       reviewedBy: body.reviewedBy,
     });
-    return NextResponse.json({ report });
+    return NextResponse.json({ report: toClientReport(report) });
   } catch (err) {
     return errorResponse(err, "Failed to save review");
   }
