@@ -19,6 +19,7 @@ import {
 import {
   deliverCheckoutSlack,
   deliverStallSlack,
+  resendCheckoutSlack,
   runSlackDeliveries,
   slackCronAuth,
 } from "./server/slack-delivery.ts";
@@ -638,6 +639,73 @@ test("checks older than 24 hours are marked skipped and a fresh stall still post
   });
   assert.equal(again.stalls, 0);
   assert.equal(hook.calls.length, 1);
+});
+
+test("a fresh sent check with no Slack row is posted, and an older one stays quiet", async () => {
+  const db = new PGlite();
+  await db.exec(SCHEMA);
+  const org = runner(db);
+  const now = Date.parse(STARTED) + 30 * 60 * 60 * 1000;
+  const freshAt = new Date(now - 60 * 60 * 1000).toISOString();
+  await insertReport(db, { id: "cr-fresh-miss", createdAt: freshAt, sentAt: freshAt });
+  await insertReport(db, { id: "cr-old-miss", createdAt: STARTED, sentAt: STARTED });
+  const hook = recorder();
+  const counts = await runSlackDeliveries(org, {
+    orgId: ORG,
+    getReport: async (id) =>
+      report({
+        id,
+        createdAt: id === "cr-fresh-miss" ? freshAt : STARTED,
+        sentAt: id === "cr-fresh-miss" ? freshAt : STARTED,
+      }),
+    routes: {},
+    webhooks: { radcabcr: RAD },
+    requiredRadCabAngles: REQUIRED,
+    fetchImpl: hook.fetchImpl,
+    slackApi: null,
+    now,
+  });
+  assert.equal(counts.sent, 1);
+  assert.equal(hook.calls.length, 1);
+  assert.match(hook.texts[0], /\*Checkout\*/);
+  const rows = await org.query(`SELECT report_id, status FROM slack_deliveries ORDER BY report_id`);
+  assert.deepEqual(
+    rows.map((row) => `${row.report_id}:${row.status}`),
+    ["cr-fresh-miss:sent"]
+  );
+});
+
+test("an owner resend posts a missed check once and does not repeat a sent one", async () => {
+  const db = new PGlite();
+  await db.exec(SCHEMA);
+  const org = runner(db);
+  const missed = report({ id: "cr-resend", createdAt: STARTED, sentAt: STARTED });
+  await db.query(
+    `INSERT INTO slack_deliveries (
+       id, org_id, report_id, kind, status, attempts, last_error
+     ) VALUES (
+       'slack-checkout-cr-resend', $1, $2, 'checkout', 'skipped', 1, 'older than 24h'
+     )`,
+    [ORG, missed.id]
+  );
+  const hook = recorder();
+  const sent = await resendCheckoutSlack(org, missed, {
+    orgId: ORG,
+    webhooks: { radcabcr: RAD },
+    fetchImpl: hook.fetchImpl,
+    slackApi: null,
+  });
+  assert.equal(sent, "sent");
+  assert.equal(hook.calls.length, 1);
+  const again = await resendCheckoutSlack(org, missed, {
+    orgId: ORG,
+    webhooks: { radcabcr: RAD },
+    fetchImpl: async () => {
+      throw new Error("should not post again");
+    },
+    slackApi: null,
+  });
+  assert.equal(again, "already_sent");
 });
 
 test("a failed checkout from the last day still retries", async () => {

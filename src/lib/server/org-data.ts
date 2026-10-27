@@ -1908,6 +1908,67 @@ export async function finishSlackDelivery(
   );
 }
 
+export async function checkoutDeliveryStatus(
+  db: OrgDb,
+  orgId: string,
+  reportId: string
+): Promise<string | null> {
+  const rows = await db.query(
+    `SELECT status
+     FROM slack_deliveries
+     WHERE org_id = $1 AND report_id = $2 AND kind = 'checkout'
+     LIMIT 1`,
+    [org(orgId), reportId]
+  );
+  return rows[0]?.status == null ? null : String(rows[0].status);
+}
+
+/** Let an owner or the daily job try a checkout that never landed. Keeps a thread id. */
+export async function reopenCheckoutDelivery(
+  db: OrgDb,
+  orgId: string,
+  reportId: string
+): Promise<void> {
+  await db.query(
+    `UPDATE slack_deliveries
+     SET status = 'failed',
+         attempts = 1,
+         next_attempt_at = NOW(),
+         last_error = NULL,
+         updated_at = NOW()
+     WHERE org_id = $1 AND report_id = $2 AND kind = 'checkout'
+       AND status <> 'sent'`,
+    [org(orgId), reportId]
+  );
+}
+
+/** Sent Rad Cab checks from the last day that never got a successful Slack post. */
+export async function listRadCabUnpostedCheckouts(
+  db: OrgDb,
+  input: { orgId: string; companyId: string; oldest: string; limit: number }
+): Promise<string[]> {
+  const rows = await db.query(
+    `SELECT r.id
+     FROM checkout_reports r
+     WHERE r.org_id = $1
+       AND r.company_id = $2
+       AND r.archived_at IS NULL
+       AND r.sent_at IS NOT NULL
+       AND r.created_at >= $3::timestamptz
+       AND NOT EXISTS (
+         SELECT 1 FROM slack_deliveries d
+         WHERE d.org_id = r.org_id
+           AND d.report_id = r.id
+           AND d.kind = 'checkout'
+           AND d.status = 'sent'
+       )
+     ORDER BY r.created_at
+     LIMIT $4`,
+    [org(input.orgId), input.companyId, input.oldest, input.limit]
+  );
+  return rows.map((row) => String(row.id));
+}
+
 export async function listDueSlackDeliveries(
   db: OrgDb,
   orgId: string,

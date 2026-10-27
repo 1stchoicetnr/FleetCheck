@@ -399,6 +399,16 @@ export async function flagCheckoutPhoto(
   return data.report;
 }
 
+export async function resendCheckoutToSlack(
+  reportId: string
+): Promise<"sent" | "already_sent" | "failed" | "dead" | "skipped"> {
+  const data = await api<{ status: "sent" | "already_sent" | "failed" | "dead" | "skipped" }>(
+    `/api/checkout-reports/${reportId}/slack`,
+    { method: "POST" }
+  );
+  return data.status;
+}
+
 export async function reviewCheckoutReport(
   reportId: string,
   input: {

@@ -27,6 +27,7 @@ import {
   fetchCompanySettings,
   fetchPriorReports,
   fetchVehicles,
+  resendCheckoutToSlack,
   flagCheckoutPhoto,
   reviewCheckoutReport,
   setCheckoutReportArchived,
@@ -58,6 +59,7 @@ import {
   formatCloverSerial,
   UNIT_NUMBER_LABEL,
 } from "@/lib/inspection-form";
+import { RAD_CAB_COMPANY_ID } from "@/lib/company-rules";
 
 export default function OfficeReportDetailPage() {
   const params = useParams();
@@ -76,6 +78,8 @@ export default function OfficeReportDetailPage() {
   const [newDamageNotes, setNewDamageNotes] = useState("");
   const [retakeAngles, setRetakeAngles] = useState<PhotoAngle[]>([]);
   const [saving, setSaving] = useState(false);
+  const [slackSending, setSlackSending] = useState(false);
+  const [slackNote, setSlackNote] = useState("");
   const [tab, setTab] = useState<"gallery" | "compare">("gallery");
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [downloading, setDownloading] = useState(false);
@@ -371,6 +375,38 @@ export default function OfficeReportDetailPage() {
                   ? ` · Reviewed ${formatDate(report.reviewedAt)} by ${report.reviewedBy}`
                   : ""}
               </p>
+              {user && isOwnerAccount(user) && report.companyId === RAD_CAB_COMPANY_ID && (
+                <div className="space-y-2">
+                  <Button
+                    type="button"
+                    size="lg"
+                    className="w-full"
+                    disabled={slackSending}
+                    onClick={() => {
+                      setSlackSending(true);
+                      setSlackNote("");
+                      void resendCheckoutToSlack(report.id)
+                        .then((status) => {
+                          if (status === "sent") setSlackNote("Posted to Slack.");
+                          else if (status === "already_sent") {
+                            setSlackNote("This check is already in Slack.");
+                          } else setSlackNote("Slack did not accept it. Try again in a minute.");
+                        })
+                        .catch(() => {
+                          setSlackNote("Slack did not accept it. Try again in a minute.");
+                        })
+                        .finally(() => setSlackSending(false));
+                    }}
+                  >
+                    {slackSending ? "Sending…" : "Resend to Slack"}
+                  </Button>
+                  {slackNote && (
+                    <p className="text-sm font-semibold text-ink" role="status">
+                      {slackNote}
+                    </p>
+                  )}
+                </div>
+              )}
               {report.signatureDataUrl && (
                 <div className="rounded-xl border border-gray-300 bg-gray-50 p-2">
                   <p className="text-xs font-semibold text-gray-600 mb-1">

@@ -40,12 +40,15 @@ import {
 } from "../slack-upload";
 import type { CheckoutReport, PhotoStep } from "../types";
 import {
+  checkoutDeliveryStatus,
   claimFailedSlackDelivery,
   claimStuckSlackDelivery,
   finishSlackDelivery,
   insertSlackDelivery,
   listDueSlackDeliveries,
   listRadCabStallCandidates,
+  listRadCabUnpostedCheckouts,
+  reopenCheckoutDelivery,
   saveSlackDeliveryBody,
   type OrgDb,
   type SlackDeliveryKind,
@@ -62,6 +65,15 @@ const OLD_AUTOPOST = "older than 24h";
 
 function deliveryId(kind: SlackDeliveryKind, reportId: string): string {
   return `slack-${kind}-${reportId}`.slice(0, 120);
+}
+
+function slackChannelBlocked(err: unknown): boolean {
+  if (!(err instanceof SlackDeliveryError)) return false;
+  return (
+    err.message === "not_in_channel" ||
+    err.message === "channel_not_found" ||
+    err.message === "is_archived"
+  );
 }
 
 function errorText(err: unknown): string {
@@ -243,8 +255,8 @@ export async function deliverCheckoutSlack(
   const claimed = await claimDelivery(db, options.orgId, report.id, "checkout");
   if (!claimed) return "skipped";
   const slackFetch: SlackHttp = options.slackFetch ?? (fetch as unknown as SlackHttp);
+  let progress = parseSlackThreadProgress(claimed.body);
   try {
-    const progress = parseSlackThreadProgress(claimed.body);
     if (!progress.ts) {
       if (filesWanted && api?.token && api.channelId) {
         const text = checkoutSlackText(report, { appOrigin: options.appOrigin });
@@ -332,6 +344,34 @@ export async function deliverCheckoutSlack(
     logDelivery("checkout", report.id, claimed.attempts, "sent");
     return "sent";
   } catch (err) {
+    if (!progress.ts && url && slackChannelBlocked(err)) {
+      try {
+        await postCheckoutSlack(report, {
+          webhookUrl: url,
+          fetchImpl: options.fetchImpl,
+          appOrigin: options.appOrigin,
+        });
+        await finishSlackDelivery(db, {
+          orgId: options.orgId,
+          reportId: report.id,
+          kind: "checkout",
+          status: "sent",
+          error: "not_in_channel",
+        });
+        logDelivery("checkout", report.id, claimed.attempts, "sent", "webhook fallback");
+        return "sent";
+      } catch (fallbackErr) {
+        return recordFailure(
+          db,
+          options.orgId,
+          report.id,
+          "checkout",
+          claimed.attempts,
+          fallbackErr,
+          options.now ?? Date.now()
+        );
+      }
+    }
     return recordFailure(
       db,
       options.orgId,
@@ -342,6 +382,29 @@ export async function deliverCheckoutSlack(
       options.now ?? Date.now()
     );
   }
+}
+
+/** Owner retry. A check already in Slack is not posted again. */
+export async function resendCheckoutSlack(
+  db: OrgDb,
+  report: CheckoutReport,
+  options: {
+    orgId: string;
+    route?: CheckoutSlackRoute;
+    webhooks: CheckoutSlackWebhooks;
+    appOrigin?: string | null;
+    fetchImpl?: CheckoutFetch;
+    slackApi?: { token: string; channelId: string } | null;
+    slackFetch?: SlackHttp;
+    photoSteps?: PhotoStep[];
+    loadThreadFiles?: (report: CheckoutReport, keys: string[]) => Promise<SlackBinaryFile[]>;
+    now?: number;
+  }
+): Promise<SlackSendStatus | "already_sent"> {
+  const status = await checkoutDeliveryStatus(db, options.orgId, report.id);
+  if (status === "sent") return "already_sent";
+  await reopenCheckoutDelivery(db, options.orgId, report.id);
+  return deliverCheckoutSlack(db, report, options);
 }
 
 export async function deliverStallSlack(
@@ -518,8 +581,35 @@ export async function runSlackDeliveries(
     );
   }
 
-  const newest = new Date(now - STALL_PHOTOS_AFTER_MS).toISOString();
   const freshOldest = new Date(now - SLACK_AUTOPOST_MAX_AGE_MS).toISOString();
+  const unposted = await listRadCabUnpostedCheckouts(db, {
+    orgId: input.orgId,
+    companyId: RAD_CAB_COMPANY_ID,
+    oldest: freshOldest,
+    limit: BATCH,
+  });
+  for (const reportId of unposted) {
+    const report = await input.getReport(reportId);
+    if (!report || report.archivedAt || slackAutopostTooOld(report.createdAt, now)) continue;
+    await reopenCheckoutDelivery(db, input.orgId, report.id);
+    tally(
+      "checkout",
+      await deliverCheckoutSlack(db, report, {
+        orgId: input.orgId,
+        route: input.routes[report.companyId],
+        webhooks: input.webhooks,
+        appOrigin: input.appOrigin,
+        fetchImpl: input.fetchImpl,
+        slackApi: input.slackApi,
+        slackFetch: input.slackFetch,
+        photoSteps: input.photoSteps,
+        loadThreadFiles: input.loadThreadFiles,
+        now,
+      })
+    );
+  }
+
+  const newest = new Date(now - STALL_PHOTOS_AFTER_MS).toISOString();
   const lookbackOldest = new Date(now - STALL_LOOKBACK_MS).toISOString();
   const quiet = await listRadCabStallCandidates(db, {
     orgId: input.orgId,

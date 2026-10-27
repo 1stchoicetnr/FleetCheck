@@ -70,7 +70,8 @@ import { recordCheckoutAlerts } from "./report-alerts";
 import { effectiveCheckoutSlack } from "@/lib/company-settings";
 import { isGenericDriverName } from "@/lib/driver-name";
 import { notifyCheckoutReport } from "./slack-notify";
-import { deliverCheckoutSlack, slackWebhooksFromEnv } from "./slack-delivery";
+import { deliverCheckoutSlack, resendCheckoutSlack, slackWebhooksFromEnv } from "./slack-delivery";
+import { RAD_CAB_COMPANY_ID } from "@/lib/company-rules";
 import { assertIdempotencyKey, isUniqueViolation } from "@/lib/checkout-idempotency";
 import { isStuckUpload, STUCK_UPLOAD_AFTER_MS } from "@/lib/delivery-status";
 import {
@@ -471,6 +472,29 @@ export async function confirmReportSent(
     });
   }
   return saved;
+}
+
+/** Owner action. Does not post again when Slack already has the check. */
+export async function resendReportToSlack(
+  orgId: string,
+  id: string,
+  options?: { appOrigin?: string }
+): Promise<"sent" | "already_sent" | "failed" | "dead" | "skipped"> {
+  const mode = assertConfigured();
+  const existing = await getReport(orgId, id);
+  if (!existing) throw new SharedBackendError("Checkout report not found", 404);
+  if (existing.companyId !== RAD_CAB_COMPANY_ID) return "skipped";
+  if (mode !== "postgres") return "skipped";
+  const settingsDoc = await readStoredCompanySettings(orgId);
+  const routes = effectiveCheckoutSlack(settingsDoc);
+  const webhooks = slackWebhooksFromEnv(slackWebhookOverride(settingsDoc) || undefined);
+  return resendCheckoutSlack(pgDb(), existing, {
+    orgId,
+    route: routes[existing.companyId],
+    webhooks,
+    appOrigin: options?.appOrigin,
+    photoSteps: photoStepsForCompany(publicCompanySettings(settingsDoc), existing.companyId),
+  });
 }
 
 export async function getReport(orgId: string, id: string): Promise<CheckoutReport | undefined> {

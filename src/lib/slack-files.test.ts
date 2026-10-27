@@ -121,6 +121,9 @@ function slackMock(options?: { failPdfCompletes?: number }) {
     const body =
       typeof init.body === "string" ? init.body : `bytes:${init.body?.byteLength ?? 0}`;
     calls.push({ url, body, headers: init.headers });
+    if (url.endsWith("/conversations.join")) {
+      return { ok: true, status: 200, text: async () => JSON.stringify({ ok: true }) };
+    }
     if (url.endsWith("/chat.postMessage")) {
       return {
         ok: true,
@@ -224,6 +227,55 @@ test("Rad Cab posts one message and then the PDF and photos in its thread", asyn
   );
   assert.equal(rows[0]?.status, "sent");
   assert.equal(Number(rows[0]?.attempts), 2);
+});
+
+test("a bot that is not in the channel posts the checkout text by webhook once", async () => {
+  const db = new PGlite();
+  await db.exec(SCHEMA);
+  const calls: string[] = [];
+  const slackFetch: SlackHttp = async (url) => {
+    calls.push(url);
+    if (url.endsWith("/conversations.join")) {
+      return { ok: true, status: 200, text: async () => JSON.stringify({ ok: false, error: "missing_scope" }) };
+    }
+    if (url.endsWith("/chat.postMessage")) {
+      return { ok: true, status: 200, text: async () => JSON.stringify({ ok: false, error: "not_in_channel" }) };
+    }
+    return { ok: false, status: 500, text: async () => "unexpected" };
+  };
+  const status = await deliverCheckoutSlack(runner(db), report({ id: "cr-join" }), {
+    orgId: ORG,
+    webhooks: { radcabcr: RAD, ashleyDm: ASH },
+    slackApi: { token: TOKEN, channelId: CHANNEL },
+    slackFetch,
+    fetchImpl: async (url) => {
+      calls.push(url);
+      return { ok: true, status: 200, text: async () => "ok" };
+    },
+    loadThreadFiles: async () => {
+      throw new Error("files should wait until the bot can post");
+    },
+  });
+  assert.equal(status, "sent");
+  assert.equal(calls.filter((url) => url.endsWith("/chat.postMessage")).length, 1);
+  assert.equal(calls.filter((url) => url === RAD).length, 1);
+  assert.equal(calls.includes(ASH), false);
+  const rows = await runner(db).query(
+    `SELECT status, last_error FROM slack_deliveries WHERE report_id = $1`,
+    ["cr-join"]
+  );
+  assert.equal(rows[0]?.status, "sent");
+  assert.equal(rows[0]?.last_error, "not_in_channel");
+  const again = await deliverCheckoutSlack(runner(db), report({ id: "cr-join" }), {
+    orgId: ORG,
+    webhooks: { radcabcr: RAD },
+    slackApi: { token: TOKEN, channelId: CHANNEL },
+    slackFetch,
+    fetchImpl: async () => {
+      throw new Error("should not post again");
+    },
+  });
+  assert.equal(again, "skipped");
 });
 
 test("other fleets still DM text only, with no PDF or photo files", async () => {

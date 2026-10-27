@@ -56,10 +56,29 @@ async function slackJson(
   return payload as Record<string, unknown>;
 }
 
+/** Public channels let the bot in. A missing scope must not block the post. */
+export async function joinSlackChannel(
+  fetchImpl: SlackHttp,
+  input: { token: string; channel: string }
+): Promise<void> {
+  try {
+    await slackJson(
+      fetchImpl,
+      `${API}/conversations.join`,
+      input.token,
+      JSON.stringify({ channel: input.channel }),
+      "application/json"
+    );
+  } catch (err) {
+    if (err instanceof SlackDeliveryError && err.message === "already_in_channel") return;
+  }
+}
+
 export async function postSlackApiMessage(
   fetchImpl: SlackHttp,
   input: { token: string; channel: string; text: string }
 ): Promise<{ ts: string; channel: string }> {
+  await joinSlackChannel(fetchImpl, input);
   const payload = await slackJson(
     fetchImpl,
     `${API}/chat.postMessage`,
