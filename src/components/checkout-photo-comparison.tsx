@@ -7,7 +7,7 @@ import {
   PhotoLightbox,
 } from "@/components/photo-lightbox";
 import { CheckoutReport, PHOTO_ANGLES, PhotoAngle } from "@/lib/types";
-import { formatDate } from "@/lib/utils";
+import { formatCheckoutTime } from "@/lib/checkout-slack";
 import {
   cleanDamageNote,
   isPhotoDamageFlagged,
@@ -91,7 +91,7 @@ export function CheckoutPhotoComparison({
                 : "bg-white border border-gray-200 text-gray-700"
             }`}
           >
-            Prior {i + 1} · {formatDate(p.completedAt)}
+            Prior {i + 1} · {formatCheckoutTime(p.completedAt)}
           </button>
         ))}
       </div>
@@ -100,7 +100,7 @@ export function CheckoutPhotoComparison({
         <span>This report</span>
         <span>
           Prior
-          {prior ? ` · ${prior.driverName} · ${formatDate(prior.completedAt)}` : ""}
+          {prior ? ` · ${prior.driverName} · ${formatCheckoutTime(prior.completedAt)}` : ""}
         </span>
       </div>
 

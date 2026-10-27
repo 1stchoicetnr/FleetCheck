@@ -24,7 +24,8 @@ import {
   Company,
 } from "@/lib/types";
 import { OFFICE_REPORT_PAGE_SIZE } from "@/lib/office-list";
-import { formatDate, formatMileage, formatUnitLabel } from "@/lib/utils";
+import { formatCheckoutTime } from "@/lib/checkout-slack";
+import { formatMileage, formatUnitLabel } from "@/lib/utils";
 import { isVehicleArchived } from "@/lib/vehicle-archive";
 import { Flag, FileSearch } from "lucide-react";
 import { activeIssueFlagLabels, trafficLightLabel } from "@/lib/inspection-form";
@@ -412,7 +413,7 @@ function OfficeReportsPage() {
                       <div className="flex flex-wrap items-center gap-2">
                         <DeliveryBadge createdAt={report.createdAt} sentAt={report.sentAt} />
                         <p className="text-xs text-gray-400">
-                          Complete {formatDate(report.completedAt)}
+                          Complete {formatCheckoutTime(report.completedAt)}
                         </p>
                       </div>
                       {report.newDamageNotes && (

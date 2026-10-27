@@ -510,7 +510,7 @@ export async function generateCheckoutReportPDF(
   addWrapped(`Status: ${CHECKOUT_REVIEW_LABELS[report.reviewStatus]}`);
   if (report.reviewedAt) {
     addWrapped(
-      `Reviewed: ${formatDate(report.reviewedAt)}${
+      `Reviewed: ${formatCheckoutTime(report.reviewedAt)}${
         report.reviewedBy ? ` by ${report.reviewedBy}` : ""
       }`
     );

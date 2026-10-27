@@ -1,5 +1,5 @@
-import { CheckRecord } from "./types";
-import { formatDate } from "./utils";
+import { formatCheckoutTime } from "./checkout-slack";
+import type { CheckRecord } from "./types";
 
 export interface LastCheckInfo {
   lastCheckAt: string;
@@ -38,5 +38,5 @@ export function getLastCheck(
 
 export function formatLastCheckLine(info: LastCheckInfo): string {
   const action = info.checkType === "check_in" ? "check in" : "check out";
-  return `Last ${action} by ${info.driverName} · ${formatDate(info.lastCheckAt)}`;
+  return `Last ${action} by ${info.driverName} · ${formatCheckoutTime(info.lastCheckAt)}`;
 }

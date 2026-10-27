@@ -10,7 +10,8 @@ import {
   VehicleStatus,
 } from "./types";
 import { getSettings, saveAlert } from "./storage";
-import { generateId, formatDate, formatVehicleSlackLabel } from "./utils";
+import { formatCheckoutTime } from "./checkout-slack";
+import { generateId, formatVehicleSlackLabel } from "./utils";
 import {
   SLACK_CHANNEL_DEFAULTS,
   SlackRoute,
@@ -90,7 +91,7 @@ function formatSlackMessage(payload: AlertPayload, route: SlackChannel): string 
   }
   lines.push(
     `*By:* ${payload.actorName}`,
-    `*Time:* ${formatDate(new Date().toISOString())}`,
+    `*Time:* ${formatCheckoutTime(new Date().toISOString())}`,
     "",
     SLACK_TEST_FOOTER
   );

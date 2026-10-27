@@ -10,6 +10,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { fetchFleets, type SharedFleet } from "@/lib/checkout-api";
 import { peopleForList } from "@/lib/people-list";
 import { canManagePeople } from "@/lib/role-access";
+import { formatCheckoutTime } from "@/lib/checkout-slack";
 import { setupLinkHandoff } from "@/lib/setup-link-copy";
 import {
   dangerOutlineButtonClass,
@@ -374,7 +375,7 @@ export default function PeoplePage() {
               <h3 className="font-bold text-gray-900">{issued.label}</h3>
               <p className="text-xs text-gray-500">
                 {setupLinkHandoff(Boolean(issued.emailed))}{" "}
-                {new Date(issued.expiresAt).toLocaleString()}. Copy it now. It is not shown again.
+                {formatCheckoutTime(issued.expiresAt)}. Copy it now. It is not shown again.
               </p>
               <label htmlFor="issued-url" className="sr-only">
                 Setup or invite link
@@ -583,7 +584,7 @@ export default function PeoplePage() {
                       <p className="font-semibold text-gray-900">{issued.label}</p>
                       <p className="text-xs text-gray-500">
                         {setupLinkHandoff(Boolean(issued.emailed))}{" "}
-                        {new Date(issued.expiresAt).toLocaleString()}. Copy it now. It is not shown again.
+                        {formatCheckoutTime(issued.expiresAt)}. Copy it now. It is not shown again.
                       </p>
                       <input
                         readOnly
@@ -624,7 +625,7 @@ export default function PeoplePage() {
                     {inviteRow.name || inviteRow.email || inviteRow.userId}
                   </p>
                   <p className="text-sm text-gray-600">
-                    {inviteRow.roleTitle} · expires {new Date(inviteRow.expiresAt).toLocaleString()}
+                    {inviteRow.roleTitle} · expires {formatCheckoutTime(inviteRow.expiresAt)}
                   </p>
                 </div>
                 <div className="flex gap-2">
