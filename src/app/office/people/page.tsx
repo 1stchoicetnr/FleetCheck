@@ -3,10 +3,12 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppHeader } from "@/components/app-header";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { OfficePinGate } from "@/components/office-pin-gate";
 import { RolePicker } from "@/components/role-picker";
 import { useAuth } from "@/hooks/use-auth";
 import { fetchFleets, type SharedFleet } from "@/lib/checkout-api";
+import { peopleForList } from "@/lib/people-list";
 import { canManagePeople } from "@/lib/role-access";
 import { setupLinkHandoff } from "@/lib/setup-link-copy";
 import {
@@ -73,6 +75,8 @@ export default function PeoplePage() {
   const [personRoles, setPersonRoles] = useState<Record<string, string>>({});
   const [personFleets, setPersonFleets] = useState<Record<string, string[]>>({});
   const [busy, setBusy] = useState("");
+  const [showInactive, setShowInactive] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<Person | null>(null);
   const markReady = useCallback(() => setReady(true), []);
 
   useEffect(() => {
@@ -306,7 +310,33 @@ export default function PeoplePage() {
     }
   };
 
+  const deleteLogin = async () => {
+    if (!pendingDelete) return;
+    const person = pendingDelete;
+    setBusy("delete");
+    setError("");
+    try {
+      const res = await fetch(`/api/auth/people/${encodeURIComponent(person.id)}`, {
+        method: "DELETE",
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setError(data.error || "Could not delete that login.");
+        return;
+      }
+      setPeople((current) => current.filter((item) => item.id !== person.id));
+      setPendingDelete(null);
+      setNotice("Login deleted.");
+    } catch {
+      setError("Could not delete that login.");
+    } finally {
+      setBusy("");
+    }
+  };
+
   if (loading || !user || !canManagePeople(user)) return null;
+  const visiblePeople = peopleForList(people, showInactive);
+  const inactiveCount = people.filter((person) => !person.active).length;
   const openInvites = invites.filter(
     (inviteRow) =>
       !inviteRow.usedAt &&
@@ -433,8 +463,21 @@ export default function PeoplePage() {
           </section>
 
           <section className="space-y-3">
-            <h3 className="font-bold text-gray-900">People</h3>
-            {people.map((person) => {
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="font-bold text-gray-900">People</h3>
+              <label className="flex min-h-[44px] items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={showInactive}
+                  onChange={(event) => setShowInactive(event.target.checked)}
+                />
+                Show inactive{inactiveCount > 0 ? ` (${inactiveCount})` : ""}
+              </label>
+            </div>
+            {visiblePeople.length === 0 ? (
+              <p className="text-sm text-gray-600">No active people.</p>
+            ) : null}
+            {visiblePeople.map((person) => {
               const selected = personFleets[person.id] || person.fleetIds || [];
               const ownerPerson = person.role === "owner";
               return (
@@ -507,6 +550,16 @@ export default function PeoplePage() {
                         {person.active ? "Deactivate" : "Reactivate"}
                       </button>
                     )}
+                    {includeOwner && person.id !== user.id ? (
+                      <button
+                        type="button"
+                        disabled={busy === "delete"}
+                        onClick={() => setPendingDelete(person)}
+                        className={`min-h-[44px] rounded-xl px-3 text-sm font-semibold ${dangerOutlineButtonClass}`}
+                      >
+                        Delete login
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       disabled={!person.active || busy === person.id || (ownerPerson && !includeOwner)}
@@ -597,6 +650,20 @@ export default function PeoplePage() {
           </section>
         </div>
       </OfficePinGate>
+      <ConfirmDialog
+        open={Boolean(pendingDelete)}
+        title="Delete this login?"
+        body={
+          pendingDelete
+            ? `${pendingDelete.name} will not be able to sign in. This cannot be undone.`
+            : ""
+        }
+        confirmLabel="Delete login"
+        danger
+        busy={busy === "delete"}
+        onConfirm={() => void deleteLogin()}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   );
 }

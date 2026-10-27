@@ -51,6 +51,12 @@ export async function DELETE(
   try {
     const auth = await assertOwnerAccess(req);
     const { id } = await params;
+    if (auth.userId && auth.userId === id) {
+      return NextResponse.json(
+        { error: "You cannot delete your own login." },
+        { status: 403 }
+      );
+    }
     assertCanRemoveUser(id);
     const db = await openAuthDb();
     const existing = await getUser(db, auth.orgId, id);
