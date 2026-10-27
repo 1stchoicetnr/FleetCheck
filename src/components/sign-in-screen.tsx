@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import { BetaNotice } from "@/components/beta-notice";
 import { useAuth } from "@/hooks/use-auth";
 import { INSPEKT_ICON, INSPEKT_NAVY } from "@/lib/brand-mark";
 import type { User } from "@/lib/types";
@@ -158,9 +159,12 @@ export function SignInScreen() {
   };
 
   return (
-    <div className="min-h-screen px-4 py-10" style={{ background: INSPEKT_NAVY }}>
+    <div className="min-h-screen px-4 py-5" style={{ background: INSPEKT_NAVY }}>
       <div className="mx-auto w-full max-w-md">
-        <div className="mb-8 text-center">
+        <div className="mb-4">
+          <BetaNotice tone="dark" />
+        </div>
+        <div className="mb-6 text-center">
           <Image
             src={INSPEKT_ICON}
             unoptimized

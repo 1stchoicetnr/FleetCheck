@@ -79,6 +79,12 @@
  * Landscape / short viewport: keep capture actions + step chips + submit
  * on-screen. Portrait is unchanged (this query requires a short height).
  */
+/* Photo capture already fills the screen. Hide the beta line so it does not push the camera off. */
+.checkout-beta-slot:has(.checkout-photos-phase) .beta-notice-slot,
+.beta-notice-slot:not(:has(.beta-notice)) {
+  display: none;
+}
+
 @media (orientation: landscape) and (max-height: 640px) {
   .checkout-photos-phase {
     height: 100dvh;
