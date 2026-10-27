@@ -3,18 +3,25 @@ export function odometerDigits(value: string | number): string {
   return String(value).replace(/\D/g, "");
 }
 
+/** Drop leading zeros so "0145900" and "145,900" are the same mileage. "0" stays "0". */
+export function odometerMileage(value: string | number): string {
+  const digits = odometerDigits(value);
+  if (!digits) return "";
+  return digits.replace(/^0+/, "") || "0";
+}
+
 /**
- * The typed mileage has to appear in the digits read from the photo.
- * Extra trip digits around it are fine. A missing or different digit is not.
+ * The typed mileage has to be the whole reading from the photo.
+ * Commas, spaces, and leading zeros are ignored. A longer or shorter number is not.
  */
 export function odometerReadingMatches(
   typed: string | number,
   recognized: string
 ): boolean {
-  const want = odometerDigits(typed);
-  const got = odometerDigits(recognized);
-  if (want.length < 1 || got.length < 1) return false;
-  return got.includes(want);
+  const want = odometerMileage(typed);
+  const got = odometerMileage(recognized);
+  if (!want || !got) return false;
+  return want === got;
 }
 
 export function odometerMismatchMessage(typed: string | number): string {
