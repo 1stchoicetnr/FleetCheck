@@ -92,7 +92,11 @@ function selectChecks(rows: WindowCheck[]): { selected: Selected[]; nearby: Wind
   };
 
   const johns = rows.filter(
-    (row) => !row.archived && nameKey(row.driverName).includes("mcdonald") && unitKey(row.unitNumber) === "8"
+    (row) =>
+      row.companyId === "company-rad-cab" &&
+      !row.archived &&
+      nameKey(row.driverName).includes("mcdonald") &&
+      unitKey(row.unitNumber) === "8"
   );
   for (const row of johns) {
     const day = ptDate(row.completedAt);
@@ -100,7 +104,13 @@ function selectChecks(rows: WindowCheck[]): { selected: Selected[]; nearby: Wind
   }
 
   const toms = rows.filter((row) => {
-    return hasWord(row.driverName, "tom") && unitKey(row.unitNumber) === "8" && ptDate(row.completedAt) === "2026-10-24" && !row.archived;
+    return (
+      row.companyId === "company-rad-cab" &&
+      hasWord(row.driverName, "tom") &&
+      unitKey(row.unitNumber) === "8" &&
+      ptDate(row.completedAt) === "2026-10-24" &&
+      !row.archived
+    );
   });
   const tomBeforeKyaw = toms
     .filter((row) => ptMinutes(row.completedAt) < 15 * 60 + 39)
@@ -109,7 +119,13 @@ function selectChecks(rows: WindowCheck[]): { selected: Selected[]; nearby: Wind
 
   const kens = rows.filter((row) => {
     const name = nameKey(row.driverName);
-    return name.includes("taylor") && name.includes("ken") && plateKey(row.plate) === "CNW8934" && ptDate(row.completedAt) === "2026-10-23";
+    return (
+      row.companyId === "company-rad-cab" &&
+      name.includes("taylor") &&
+      name.includes("ken") &&
+      plateKey(row.plate) === "CNW8934" &&
+      ptDate(row.completedAt) === "2026-10-23"
+    );
   });
   const kenPick = [...kens].sort(
     (a, b) => Math.abs(ptMinutes(a.completedAt) - (12 * 60 + 44)) - Math.abs(ptMinutes(b.completedAt) - (12 * 60 + 44))
@@ -123,6 +139,7 @@ function publicRow(row: Selected | WindowCheck) {
   return {
     key: "key" in row ? row.key : undefined,
     id: row.id,
+    companyId: row.companyId,
     unit: row.unitNumber,
     plate: row.plate,
     driver: row.driverName,

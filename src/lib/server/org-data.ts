@@ -2063,7 +2063,7 @@ export async function listRadCabWindowChecks(
   input: { orgId: string; companyId: string; start: string; end: string }
 ) {
   const rows = await db.query(
-    `SELECT r.id, r.unit_number, r.plate, r.driver_name, r.completed_at, r.sent_at,
+    `SELECT r.id, r.company_id, r.unit_number, r.plate, r.driver_name, r.completed_at, r.sent_at,
             (r.archived_at IS NOT NULL) AS archived,
             COALESCE(jsonb_array_length(COALESCE(r.photos, '[]'::jsonb)), 0) AS photo_count,
             (r.signature_data_url IS NOT NULL AND r.signature_data_url <> '') AS has_signature,
@@ -2073,14 +2073,22 @@ export async function listRadCabWindowChecks(
      LEFT JOIN slack_deliveries d
        ON d.org_id = r.org_id AND d.report_id = r.id AND d.kind = 'checkout'
      WHERE r.org_id = $1
-       AND r.company_id = $2
-       AND r.completed_at >= $3::timestamptz
-       AND r.completed_at < $4::timestamptz
+       AND (
+         (
+           r.company_id = $2
+           AND r.completed_at >= $3::timestamptz
+           AND r.completed_at < $4::timestamptz
+         )
+         OR r.driver_name ILIKE '%mcdonald%'
+         OR r.driver_name ILIKE '%mc donald%'
+         OR r.driver_name ILIKE '%john%'
+       )
      ORDER BY r.completed_at`,
     [org(input.orgId), input.companyId, input.start, input.end]
   );
   return rows.map((row) => ({
     id: String(row.id),
+    companyId: String(row.company_id || ""),
     unitNumber: String(row.unit_number || ""),
     plate: String(row.plate || ""),
     driverName: String(row.driver_name || ""),
