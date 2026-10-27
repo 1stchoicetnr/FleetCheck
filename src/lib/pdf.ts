@@ -26,7 +26,6 @@ import {
   isPhotoDamageFlagged,
 } from "./photo-flags";
 import { checkoutDamageLines, formatCheckoutTime, fuelGaugeLabel } from "./checkout-slack";
-import { blobAccessKind, readStoredPhotoBytes } from "./server/photo-store";
 import { companyUsesClover } from "./companies";
 import { INSPEKT_ICON, INSPEKT_NAVY_RGB } from "./brand-mark";
 import {
@@ -134,12 +133,6 @@ async function resolvePdfPhoto(
   proxyUrl?: string
 ): Promise<string> {
   if (src.startsWith("data:")) return src;
-  if (blobAccessKind(src)) {
-    const loaded = await readStoredPhotoBytes(src);
-    return normalizePdfImageDataUrl(
-      `data:${loaded.contentType};base64,${Buffer.from(loaded.bytes).toString("base64")}`
-    );
-  }
   try {
     return await fetchAsDataUrl(src);
   } catch {
