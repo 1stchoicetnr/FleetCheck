@@ -3,9 +3,11 @@ import {
   claimInvite,
   deleteUserSessions,
   getInviteByHash,
+  getInviteById,
   insertInvite,
   insertSession,
   memberRoleForUser,
+  revokeInvite,
   revokeOpenSetupLinks,
   type InviteRow,
 } from "./auth-store";
@@ -160,6 +162,52 @@ export async function issueLink(
     created_at: now.toISOString(),
   });
   return { token, expiresAt, id };
+}
+
+/** Fresh link and expiry. The previous open link is revoked. The token stays out of logs. */
+export async function reissueInvite(
+  db: OrgDb,
+  orgId: string,
+  id: string
+): Promise<{
+  id: string;
+  token: string;
+  expiresAt: string;
+  email: string | null;
+  name: string | null;
+  kind: "setup" | "invite";
+} | null> {
+  const current = await getInviteById(db, orgId, id);
+  if (!current || current.used_at || current.revoked_at) return null;
+  const rawExpires = current.expires_at as string | Date;
+  const expires = rawExpires instanceof Date ? rawExpires.getTime() : Date.parse(String(rawExpires));
+  if (!Number.isFinite(expires) || expires <= Date.now()) return null;
+  if (current.kind !== "setup" && current.kind !== "invite") return null;
+  if (!isMemberRole(current.role)) return null;
+  const fleetIds = String(current.fleet_ids || "")
+    .split(",")
+    .map((fleetId) => fleetId.trim())
+    .filter(Boolean);
+  const fresh = await issueLink(db, {
+    orgId,
+    kind: current.kind,
+    role: current.role,
+    userId: current.user_id,
+    email: current.email,
+    name: current.name,
+    fleetIds,
+  });
+  if (current.kind === "invite") {
+    await revokeInvite(db, orgId, current.id);
+  }
+  return {
+    id: fresh.id,
+    token: fresh.token,
+    expiresAt: fresh.expiresAt,
+    email: current.email,
+    name: current.name,
+    kind: current.kind,
+  };
 }
 
 export async function previewLink(db: OrgDb, token: string) {

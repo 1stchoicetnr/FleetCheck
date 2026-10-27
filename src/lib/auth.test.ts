@@ -8,6 +8,7 @@ import {
   checkPassword,
   issueLink,
   previewLink,
+  reissueInvite,
   removeThrowawayUser,
   AuthError,
 } from "./server/auth-accounts.ts";
@@ -245,6 +246,23 @@ test("invites are single-use, expiring, and revocable", async () => {
   });
   assert.equal(await revokeInvite(db, ORG, revoked.id), true);
   assert.equal(await previewLink(db, revoked.token), null);
+
+  const open = await issueLink(db, {
+    orgId: ORG,
+    kind: "invite",
+    role: "driver",
+    email: "resend-throwaway@example.com",
+    name: "Resend Throwaway",
+    fleetIds: ["fleet-rad-cab"],
+  });
+  const again = await reissueInvite(db, ORG, open.id);
+  assert.ok(again);
+  assert.notEqual(again?.id, open.id);
+  assert.ok(Date.parse(again?.expiresAt || "") > Date.parse(open.expiresAt));
+  assert.equal(await previewLink(db, open.token), null);
+  assert.equal((await previewLink(db, again?.token || ""))?.email, "resend-throwaway@example.com");
+  await db.query("DELETE FROM auth_invites WHERE email = $1", ["resend-throwaway@example.com"]);
+  assert.equal(await previewLink(db, again?.token || ""), null);
   await assert.rejects(() => acceptLink(db, revoked.token, "long-enough-password"));
 
   const taken = await issueLink(db, {

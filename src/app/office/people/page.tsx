@@ -63,6 +63,7 @@ export default function PeoplePage() {
   const [invites, setInvites] = useState<Invite[]>([]);
   const [fleets, setFleets] = useState<SharedFleet[]>([]);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [resetError, setResetError] = useState<{ id: string; message: string } | null>(null);
   const [issued, setIssued] = useState<Issued | null>(null);
   const [name, setName] = useState("");
@@ -195,6 +196,7 @@ export default function PeoplePage() {
   const revoke = async (id: string) => {
     setBusy(id);
     setError("");
+    setNotice("");
     try {
       const res = await fetch(`/api/auth/invites/${encodeURIComponent(id)}`, { method: "DELETE" });
       const data = (await res.json().catch(() => ({}))) as { error?: string };
@@ -205,6 +207,36 @@ export default function PeoplePage() {
       await load();
     } catch {
       setError("Could not revoke that link.");
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const resend = async (inviteRow: Invite) => {
+    setBusy(`${inviteRow.id}:resend`);
+    setError("");
+    setNotice("");
+    try {
+      const res = await fetch(`/api/auth/invites/${encodeURIComponent(inviteRow.id)}`, {
+        method: "POST",
+      });
+      const data = (await res.json().catch(() => ({}))) as Issued & { error?: string };
+      if (!res.ok || !data.url) {
+        setError(data.error || "Could not resend that link.");
+        return;
+      }
+      const who = inviteRow.name || inviteRow.email || "them";
+      setIssued({
+        url: data.url,
+        qr: data.qr,
+        expiresAt: data.expiresAt,
+        label: `New link for ${who}`,
+        emailed: Boolean(data.emailed),
+      });
+      setNotice("New link issued. The previous link no longer works.");
+      await load();
+    } catch {
+      setError("Could not resend that link.");
     } finally {
       setBusy("");
     }
@@ -296,6 +328,11 @@ export default function PeoplePage() {
             </p>
           </div>
 
+          {notice && (
+            <p className="text-sm font-medium text-gray-900" role="status">
+              {notice}
+            </p>
+          )}
           {error && (
             <p className="text-sm font-medium text-red-600" role="alert">
               {error}
@@ -537,14 +574,24 @@ export default function PeoplePage() {
                     {inviteRow.roleTitle} · expires {new Date(inviteRow.expiresAt).toLocaleString()}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  disabled={busy === inviteRow.id}
-                  onClick={() => void revoke(inviteRow.id)}
-                  className={`min-h-[44px] rounded-xl px-3 text-sm font-semibold ${dangerOutlineButtonClass}`}
-                >
-                  Revoke
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={busy === `${inviteRow.id}:resend` || busy === inviteRow.id}
+                    onClick={() => void resend(inviteRow)}
+                    className={`min-h-[44px] rounded-xl px-3 text-sm font-semibold ${secondaryOutlineButtonClass}`}
+                  >
+                    {busy === `${inviteRow.id}:resend` ? "Sending…" : "Resend"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy === inviteRow.id || busy === `${inviteRow.id}:resend`}
+                    onClick={() => void revoke(inviteRow.id)}
+                    className={`min-h-[44px] rounded-xl px-3 text-sm font-semibold ${dangerOutlineButtonClass}`}
+                  >
+                    Revoke
+                  </button>
+                </div>
               </article>
             ))}
           </section>
