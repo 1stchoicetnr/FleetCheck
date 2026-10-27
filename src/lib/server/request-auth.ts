@@ -1,3 +1,4 @@
+import { CHECKOUT_ACCOUNT_MESSAGE } from "../checkout-account";
 import { getUser } from "./org-data";
 import { orgFromSession } from "./org-scope";
 import { assertOfficePin, isOfficeRequest } from "./office-pin";
@@ -89,6 +90,17 @@ export async function assertOfficeAccess(req: Request): Promise<RequestAuth> {
 }
 
 /** Owner session, or the office PIN while no owner has a password. */
+const CHECKOUT_ROLES: MemberRole[] = ["driver", "office", "manager", "owner"];
+
+/** Create, photo, and sent calls: signed-in Driver, Office, Manager, or Owner only. */
+export async function assertCheckoutSubmitter(req: Request): Promise<RequestAuth> {
+  const auth = await resolveRequestAuth(req);
+  if (!auth.userId || !auth.role || !CHECKOUT_ROLES.includes(auth.role)) {
+    throw new AuthError(CHECKOUT_ACCOUNT_MESSAGE, 401);
+  }
+  return auth;
+}
+
 export async function assertOwnerAccess(req: Request): Promise<RequestAuth> {
   const auth = await resolveRequestAuth(req);
   if (auth.role === "owner") return auth;

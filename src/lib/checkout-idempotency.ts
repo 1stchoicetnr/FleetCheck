@@ -122,7 +122,8 @@ export function isPermanentOutboxError(
   status: number | undefined,
   message: string
 ): boolean {
-  if (status === 408 || status === 429) return false;
+  if (status === 401 || status === 408 || status === 429) return false;
+  if (message.includes("Sign in first")) return false;
   if (status && status >= 400 && status < 500) return true;
   return /idempotency key is invalid|missing required|signature image is invalid|unknown photo angle/i.test(
     message

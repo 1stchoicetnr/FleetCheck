@@ -2,6 +2,7 @@ import { errorResponse } from "@/lib/server/api-error";
 import { assertDriverMayCheckVehicle } from "@/lib/server/driver-fleets";
 import { vehicleIdsInScope } from "@/lib/server/fleet-scope";
 import {
+  assertCheckoutSubmitter,
   assertOfficeAccess,
   canViewArchivedRecords,
   resolveRequestAuth,
@@ -66,7 +67,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: Request) {
   try {
-    const auth = await resolveRequestAuth(req);
+    const auth = await assertCheckoutSubmitter(req);
     const orgId = auth.orgId;
     const body = (await req.json()) as {
       companyId?: string;

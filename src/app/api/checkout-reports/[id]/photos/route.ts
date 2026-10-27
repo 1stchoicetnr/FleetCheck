@@ -3,7 +3,10 @@ import { NextResponse } from "next/server";
 import { addReportPhoto, addReportPhotos } from "@/lib/server/checkout-repo";
 import { getReport } from "@/lib/server/checkout-repo";
 import { isOfficeRequest } from "@/lib/server/office-pin";
-import { resolveRequestAuth, sessionGrantsOffice } from "@/lib/server/request-auth";
+import {
+  assertCheckoutSubmitter,
+  sessionGrantsOffice,
+} from "@/lib/server/request-auth";
 import { RequestError } from "@/lib/server/api-error";
 import { assertPhotoDataUrl } from "@/lib/server/photo-store";
 import { PHOTO_ANGLES, PhotoAngle } from "@/lib/types";
@@ -19,7 +22,7 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    const auth = await resolveRequestAuth(req);
+    const auth = await assertCheckoutSubmitter(req);
     const orgId = auth.orgId;
     const office = sessionGrantsOffice(auth) || (await isOfficeRequest(req));
     const body = (await req.json()) as {

@@ -3,6 +3,8 @@
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { AppHeader } from "@/components/app-header";
+import { CheckoutAccountBanner } from "@/components/checkout-account-notice";
+import { CHECKOUT_ACCOUNT_MESSAGE } from "@/lib/checkout-account";
 import { Button } from "@/components/ui/button";
 import { GuidedPhotoCapture } from "@/components/guided-photo-capture";
 import { SignaturePad } from "@/components/signature-pad";
@@ -122,9 +124,8 @@ function CheckoutCapturePage() {
   });
 
   useEffect(() => {
-    if (!loading && !user) router.replace("/");
     if (user && !canStartCheckout(user.role)) router.replace("/dashboard");
-  }, [user, loading, router]);
+  }, [user, router]);
 
   useEffect(() => {
     void restoreNaturalOrientation();
@@ -264,7 +265,11 @@ function CheckoutCapturePage() {
   };
 
   const handleSubmit = useCallback(async () => {
-    if (!user || !draft || !vehicle) return;
+    if (!draft || !vehicle) return;
+    if (!user) {
+      setSubmitError(CHECKOUT_ACCOUNT_MESSAGE);
+      return;
+    }
     if (isGenericDriverName(user.name)) {
       setSubmitError("Your signed-in name can't be a placeholder like Driver. Ask Office for a real name.");
       return;
@@ -351,7 +356,7 @@ function CheckoutCapturePage() {
     photosReady,
   ]);
 
-  if (loading || !user || !draft || (!vehicle && !loadError)) {
+  if (loading || !draft || (!vehicle && !loadError)) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <p className="animate-pulse text-brand-600 font-semibold">
@@ -386,8 +391,9 @@ function CheckoutCapturePage() {
             {draft.model}
           </p>
           <p className="text-sm text-gray-500">
-            The check and its photos stay on this phone and upload when the signal
-            comes back. Submitting again will not create a second report.
+            {submitError.includes("Sign in first")
+              ? "The check and its photos stay on this phone. Sign in, then submit again. It will not create a second report."
+              : "The check and its photos stay on this phone and upload when the signal comes back. Submitting again will not create a second report."}
           </p>
           {submitError && <p className="text-sm text-red-600 font-medium">{submitError}</p>}
           <Button size="lg" className="w-full" onClick={() => router.push("/my-checks")}>
@@ -467,6 +473,7 @@ function CheckoutCapturePage() {
         title={`${draft.type === "check_out" ? "Check out" : "Check in"} · ${formatUnitLabel(vehicle.unitNumber, vehicle.plate)}`}
         backHref="/checkout"
       />
+      {!user && <CheckoutAccountBanner />}
       <div className="checkout-photos-content max-w-lg mx-auto px-4 py-4 flex-1 w-full space-y-4">
         <div className="checkout-unit-card bg-white rounded-2xl border border-gray-200 p-4 text-sm space-y-1">
           <p className="font-semibold text-gray-900">
@@ -478,7 +485,7 @@ function CheckoutCapturePage() {
           </p>
           <p className="text-gray-500">
             Date {formatDateOnly(new Date().toISOString())}{" "}
-            · {user.name}
+            · {draft.driverName || user?.name || "Driver"}
             {draft.dispatcherName.trim() ? ` · Dispatcher ${draft.dispatcherName}` : ""}
           </p>
           <p className="text-gray-500">
@@ -558,7 +565,7 @@ function CheckoutCapturePage() {
               <p>{company?.name ?? "Company"} · {formatUnitLabel(vehicle.unitNumber, vehicle.plate)}</p>
               <p>{draft.year} {draft.make} {draft.model} · {Number(draft.odometer).toLocaleString()} mi</p>
               <p>
-                {draft.type === "check_in" ? "Check in" : "Check out"} · {user.name}
+                {draft.type === "check_in" ? "Check in" : "Check out"} · {draft.driverName || user?.name || "Driver"}
                 {draft.dispatcherName.trim() ? ` · Dispatcher ${draft.dispatcherName}` : ""}
               </p>
               <p>
@@ -616,7 +623,7 @@ function CheckoutCapturePage() {
               </div>
               {signatureDataUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={signatureDataUrl} alt={`Signature of ${user.name}`} className="h-24 w-full object-contain bg-gray-50 rounded-lg border border-gray-200" />
+                <img src={signatureDataUrl} alt={`Signature of ${draft.driverName || user?.name || "driver"}`} className="h-24 w-full object-contain bg-gray-50 rounded-lg border border-gray-200" />
               ) : (
                 <p className="text-sm text-red-600">Signature is missing.</p>
               )}
@@ -667,7 +674,7 @@ function CheckoutCapturePage() {
                     Driver signature
                   </h3>
                   <p className="text-xs text-gray-500 mt-1">
-                    Signing as {user.name}
+                    Signing as {draft.driverName || user?.name || "the signed-in driver"}
                   </p>
                 </div>
                 <SignaturePad
@@ -789,7 +796,7 @@ function CheckoutCapturePage() {
                 on the report and PDF.
               </p>
               <p className="text-xs text-gray-500 mt-1">
-                Signing as {user.name}
+                Signing as {draft.driverName || user?.name || "the signed-in driver"}
               </p>
             </div>
             <SignaturePad

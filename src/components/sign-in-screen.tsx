@@ -25,12 +25,13 @@ function homeFor(user: User): string {
   return "/dashboard";
 }
 
-const GALLERY_RETURN = /^\/office\/[A-Za-z0-9_-]+\/photos$/;
+const SAFE_RETURN =
+  /^\/(?:checkout(?:\/[A-Za-z0-9_-]+)?|office\/[A-Za-z0-9_-]+\/photos)$/;
 
 function afterSignIn(user: User): string {
   if (typeof window === "undefined") return homeFor(user);
   const next = new URLSearchParams(window.location.search).get("next");
-  return next && GALLERY_RETURN.test(next) ? next : homeFor(user);
+  return next && SAFE_RETURN.test(next) ? next : homeFor(user);
 }
 
 export function SignInScreen() {

@@ -3,6 +3,8 @@
 import { FormEvent, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AppHeader } from "@/components/app-header";
+import { CheckoutAccountNotice } from "@/components/checkout-account-notice";
+import { CHECKOUT_ACCOUNT_MESSAGE } from "@/lib/checkout-account";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -86,9 +88,8 @@ function CheckoutStartPage() {
   const inspectionDate = formatDateOnly(new Date().toISOString());
 
   useEffect(() => {
-    if (!loading && !user) router.replace("/");
     if (user && !canStartCheckout(user.role)) router.replace("/dashboard");
-  }, [user, loading, router]);
+  }, [user, router]);
 
   useEffect(() => {
     if (user) setDriverName(user.name);
@@ -254,7 +255,10 @@ function CheckoutStartPage() {
 
   const handleStart = async (e: FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!user) {
+      setError(CHECKOUT_ACCOUNT_MESSAGE);
+      return;
+    }
     const fieldErrors: string[] = [];
     if (!odometer.trim() || isNaN(Number(odometer))) fieldErrors.push("odometer");
     if (isGenericDriverName(user.name)) fieldErrors.push("driverName");
@@ -381,7 +385,15 @@ function CheckoutStartPage() {
     }
   };
 
-  if (loading || !user) return null;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-pulse text-brand-600">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!user) return <CheckoutAccountNotice />;
 
   return (
     <div className="min-h-screen bg-gray-50">
