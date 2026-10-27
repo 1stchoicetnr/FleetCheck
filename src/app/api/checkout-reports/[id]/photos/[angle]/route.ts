@@ -1,4 +1,5 @@
 import { errorResponse } from "@/lib/server/api-error";
+import { blobAccessKind, readStoredPhotoBytes } from "@/lib/server/photo-store";
 import { photoViewKind, storedPhotoFetchTarget, toClientReport } from "@/lib/photo-url";
 import { NextResponse } from "next/server";
 import {
@@ -50,6 +51,16 @@ export async function GET(
       return new NextResponse(new Uint8Array(buffer), {
         headers: {
           "Content-Type": contentType,
+          "Cache-Control": "private, max-age=60",
+        },
+      });
+    }
+
+    if (blobAccessKind(photo.dataUrl)) {
+      const loaded = await readStoredPhotoBytes(photo.dataUrl);
+      return new NextResponse(new Uint8Array(loaded.bytes), {
+        headers: {
+          "Content-Type": loaded.contentType,
           "Cache-Control": "private, max-age=60",
         },
       });

@@ -5,6 +5,7 @@ import {
 } from "../slack-files";
 import type { SlackBinaryFile } from "../slack-upload";
 import type { CheckoutReport, PhotoStep } from "../types";
+import { blobAccessKind, readStoredPhotoBytes } from "./photo-store";
 import { checkoutReportPdfBytes } from "./pdf-runtime";
 
 function extension(contentType: string): string {
@@ -41,6 +42,15 @@ async function loadRemote(url: string): Promise<{ bytes: Uint8Array; contentType
 async function loadPhoto(src: string): Promise<{ bytes: Uint8Array; contentType: string }> {
   const inline = dataUrlBytes(src);
   if (inline) return inline;
+  if (blobAccessKind(src)) {
+    try {
+      return await readStoredPhotoBytes(src);
+    } catch (err) {
+      const name = err instanceof Error ? err.name : "";
+      if (name === "TimeoutError" || name === "AbortError") throw new SlackDeliveryError("timeout");
+      throw new SlackDeliveryError("network");
+    }
+  }
   if (src.startsWith("http://") || src.startsWith("https://")) return loadRemote(src);
   throw new SlackDeliveryError("file missing");
 }
