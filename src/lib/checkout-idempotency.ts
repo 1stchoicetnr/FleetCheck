@@ -153,6 +153,18 @@ export function scheduleOutboxFailure(
   };
 }
 
+/** A Retry tap sends the waiting check now, including one that had stopped. */
+export function releaseOutboxForRetry(
+  item: CheckoutOutboxItem,
+  nowIso: string
+): CheckoutOutboxItem {
+  return {
+    ...item,
+    permanent: false,
+    nextAttemptAt: nowIso,
+  };
+}
+
 /** A fresh tap submits the latest photos but keeps the server row from the first try. */
 export function mergeOutboxAttempt(
   previous: CheckoutOutboxItem | undefined,

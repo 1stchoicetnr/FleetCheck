@@ -16,8 +16,17 @@ export function deliveryView(input: {
   sentAt?: string | null;
   /** Still only on this phone. The office row does not exist yet. */
   localOnly?: boolean;
+  /** Create or photo upload has not finished. Never show this as sent. */
+  unfinished?: boolean;
   now?: number;
 }): DeliveryView {
+  if (input.unfinished) {
+    return {
+      state: "stuck",
+      label: "Didn't finish uploading",
+      at: input.createdAt,
+    };
+  }
   if (input.localOnly) {
     return { state: "saved", label: "Saved on phone", at: input.createdAt };
   }

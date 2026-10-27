@@ -7,6 +7,7 @@ import {
   idempotencyKeyForDraft,
   mergeOutboxAttempt,
   OutboxPhoto,
+  releaseOutboxForRetry,
 } from "./checkout-idempotency";
 import {
   deleteCheckoutDraft,
@@ -51,6 +52,16 @@ function transport() {
       return markCheckoutSent(reportId);
     },
   };
+}
+
+/** Send waiting checks now. A stopped upload is released so Retry can try again. */
+export async function retryCheckoutOutbox(): Promise<number> {
+  const now = new Date().toISOString();
+  const items = await listCheckoutOutbox();
+  for (const item of items) {
+    await saveCheckoutOutboxItem(releaseOutboxForRetry(item, now));
+  }
+  return flushCheckoutOutbox();
 }
 
 /** Send every due outbox item. Returns how many checks are still waiting. */

@@ -377,29 +377,29 @@ function CheckoutCapturePage() {
   }
 
   if (savedOnPhone && !completed) {
+    const needsSignIn = submitError.includes("Sign in first");
     return (
       <div className="min-h-screen bg-gray-50">
-        <AppHeader title="Saved on this phone" backHref="/dashboard" />
-        <div className="max-w-lg mx-auto px-4 py-12 text-center space-y-5">
-          <div className="bg-amber-100 rounded-full p-6 inline-flex">
-            <Check className="h-12 w-12 text-amber-700" />
+        <AppHeader title="Didn't finish uploading" backHref="/dashboard" />
+        <div className="max-w-lg mx-auto px-4 py-8 space-y-4">
+          <div className="rounded-2xl border-2 border-amber-500 bg-amber-50 px-4 py-4 text-amber-950 space-y-3">
+            <h2 className="text-xl font-bold">This check didn't finish uploading</h2>
+            <p className="text-sm">
+              {formatUnitLabel(vehicle.unitNumber, vehicle.plate)} — {draft.year} {draft.make}{" "}
+              {draft.model}
+            </p>
+            <p className="text-sm leading-relaxed">
+              {needsSignIn
+                ? "It is still on this phone. Sign in, then retry. That will not create a second report."
+                : "It is still on this phone, including any photos that are still waiting. Retry will not create a second report."}
+            </p>
+            {submitError && <p className="text-sm font-medium">{submitError}</p>}
+            <Button size="lg" className="w-full" onClick={() => void handleSubmit()} disabled={submitting}>
+              {submitting ? "Retrying…" : "Retry"}
+            </Button>
           </div>
-          <h2 className="text-2xl font-bold text-gray-900">Saved on this phone</h2>
-          <p className="text-gray-600">
-            {formatUnitLabel(vehicle.unitNumber, vehicle.plate)} — {draft.year} {draft.make}{" "}
-            {draft.model}
-          </p>
-          <p className="text-sm text-gray-500">
-            {submitError.includes("Sign in first")
-              ? "The check and its photos stay on this phone. Sign in, then submit again. It will not create a second report."
-              : "The check and its photos stay on this phone and upload when the signal comes back. Submitting again will not create a second report."}
-          </p>
-          {submitError && <p className="text-sm text-red-600 font-medium">{submitError}</p>}
-          <Button size="lg" className="w-full" onClick={() => router.push("/my-checks")}>
+          <Button size="lg" variant="secondary" className="w-full" onClick={() => router.push("/my-checks")}>
             My recent checks
-          </Button>
-          <Button size="lg" variant="secondary" className="w-full" onClick={() => router.push("/dashboard")}>
-            Back to dashboard
           </Button>
         </div>
       </div>

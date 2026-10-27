@@ -22,6 +22,7 @@ interface CheckRow {
   createdAt: string;
   sentAt?: string;
   localOnly?: boolean;
+  unfinished?: boolean;
   archivedAt?: string;
 }
 
@@ -50,13 +51,17 @@ export default function MyChecksPage() {
         remote = [];
       }
       const byId = new Map<string, CheckRow>();
+      const waitingIds = new Set<string>();
       for (const item of outbox) {
+        waitingIds.add(item.id);
+        if (item.serverReportId) waitingIds.add(item.serverReportId);
         byId.set(item.serverReportId || item.id, {
           id: item.serverReportId || item.id,
           title: formatUnitLabel(item.unitNumber, item.plate),
           detail: `${item.year} ${item.make} ${item.model}`,
           createdAt: item.createdAt,
           localOnly: !item.serverReportId,
+          unfinished: true,
         });
       }
       for (const report of local) {
@@ -71,6 +76,7 @@ export default function MyChecksPage() {
         });
       }
       for (const report of remote) {
+        if (waitingIds.has(report.id)) continue;
         byId.set(report.id, {
           id: report.id,
           title: formatUnitLabel(report.unitNumber, report.plate),
@@ -123,8 +129,9 @@ export default function MyChecksPage() {
               </div>
               <DeliveryBadge
                 createdAt={row.createdAt}
-                sentAt={row.sentAt}
+                sentAt={row.unfinished ? undefined : row.sentAt}
                 localOnly={row.localOnly}
+                unfinished={row.unfinished}
               />
             </div>
           </div>

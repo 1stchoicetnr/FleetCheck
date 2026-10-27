@@ -9,6 +9,7 @@ import {
   idempotencyKeyForDraft,
   IDEMPOTENCY_KEY_RE,
   isPermanentOutboxError,
+  releaseOutboxForRetry,
   isUniqueViolation,
   mergeOutboxAttempt,
   pendingOutboxPhotos,
@@ -70,6 +71,32 @@ test("retries wait longer and a client error stops the loop", () => {
   assert.equal(failureDelay(9, false), 15 * 60_000);
   assert.equal(isPermanentOutboxError(400, "Missing required checkout fields"), true);
   assert.equal(isPermanentOutboxError(401, "Sign in first. Ask the office to add you."), false);
+  const released = releaseOutboxForRetry(
+    {
+      id: "chk-abcdefgh",
+      draftId: "draft",
+      attempts: 3,
+      permanent: true,
+      nextAttemptAt: "2099-01-01T00:00:00.000Z",
+      createdAt: "2026-10-21T00:00:00.000Z",
+      uploadedTokens: {},
+      companyId: "c",
+      vehicleId: "v",
+      unitNumber: "1",
+      year: 2020,
+      make: "Ford",
+      model: "Transit",
+      odometer: 1,
+      driverName: "Ada",
+      dispatcherName: "Pat",
+      type: "check_out",
+      signatureDataUrl: "data:image/png;base64,aa",
+      photos: [],
+    },
+    "2026-10-27T00:00:00.000Z"
+  );
+  assert.equal(released.permanent, false);
+  assert.equal(released.nextAttemptAt, "2026-10-27T00:00:00.000Z");
   assert.equal(isPermanentOutboxError(403, "Sign in first."), false);
   assert.equal(isPermanentOutboxError(503, "unavailable"), false);
   assert.equal(isPermanentOutboxError(undefined, "Failed to fetch"), false);

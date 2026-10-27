@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { flushCheckoutOutbox } from "@/lib/checkout-outbox";
+import { flushCheckoutOutbox, retryCheckoutOutbox } from "@/lib/checkout-outbox";
 import { getPendingSyncCount, syncPendingRecords } from "@/lib/storage";
 
 export function useOnlineStatus() {
@@ -24,6 +24,7 @@ export function useOnlineStatus() {
 
 export function usePendingSync() {
   const [count, setCount] = useState(0);
+  const [retrying, setRetrying] = useState(false);
   const online = useOnlineStatus();
 
   useEffect(() => {
@@ -41,7 +42,17 @@ export function usePendingSync() {
     };
   }, [online]);
 
-  return count;
+  const retry = async () => {
+    setRetrying(true);
+    try {
+      const pending = online ? await retryCheckoutOutbox() : await getPendingSyncCount();
+      setCount(pending);
+    } finally {
+      setRetrying(false);
+    }
+  };
+
+  return { count, retry, retrying, online };
 }
 
 interface SpeechRecognitionResultEvent {

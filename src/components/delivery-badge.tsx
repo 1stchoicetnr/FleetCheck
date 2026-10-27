@@ -12,12 +12,14 @@ export function DeliveryBadge({
   createdAt,
   sentAt,
   localOnly,
+  unfinished,
 }: {
   createdAt: string;
   sentAt?: string | null;
   localOnly?: boolean;
+  unfinished?: boolean;
 }) {
-  const view = deliveryView({ createdAt, sentAt, localOnly });
+  const view = deliveryView({ createdAt, sentAt, localOnly, unfinished });
   return (
     <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${TONE[view.state]}`}>
       {view.label}

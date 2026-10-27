@@ -32,6 +32,17 @@ test("checks from before the sent column existed stay sent", () => {
   );
 });
 
+test("a check that is still uploading does not look sent", () => {
+  const view = deliveryView({
+    createdAt: created,
+    sentAt: "2026-10-20T20:05:00.000Z",
+    unfinished: true,
+    now,
+  });
+  assert.equal(view.state, "stuck");
+  assert.equal(view.label, "Didn't finish uploading");
+});
+
 test("an office row with no sent time is flagged once it sits too long", () => {
   assert.equal(deliveryView({ createdAt: created, now: Date.parse(created) + 1000 }).state, "uploading");
   assert.equal(deliveryView({ createdAt: created, now }).state, "stuck");
