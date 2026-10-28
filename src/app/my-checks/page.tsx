@@ -6,7 +6,9 @@ import { useRouter } from "next/navigation";
 import { AppHeader } from "@/components/app-header";
 import { DeliveryBadge } from "@/components/delivery-badge";
 import { useAuth } from "@/hooks/use-auth";
-import { fetchMyChecks } from "@/lib/checkout-api";
+import { fetchMyChecks, markCheckoutSent } from "@/lib/checkout-api";
+import { driverUploadMessage } from "@/lib/delivery-status";
+import { retryCheckoutOutbox } from "@/lib/checkout-outbox";
 import {
   getCheckoutReports,
   listCheckoutOutbox,
@@ -31,6 +33,9 @@ export default function MyChecksPage() {
   const router = useRouter();
   const [rows, setRows] = useState<CheckRow[]>([]);
   const [ready, setReady] = useState(false);
+  const [finishing, setFinishing] = useState("");
+  const [finishNote, setFinishNote] = useState("");
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
     if (!loading && !user) router.replace("/");
@@ -71,7 +76,7 @@ export default function MyChecksPage() {
           title: formatUnitLabel(report.unitNumber, report.plate),
           detail: `${report.year} ${report.make} ${report.model}`,
           createdAt: report.createdAt,
-          sentAt: report.sentAt || report.completedAt,
+          sentAt: report.sentAt,
           archivedAt: report.archivedAt,
         });
       }
@@ -104,7 +109,7 @@ export default function MyChecksPage() {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [user]);
+  }, [user, reload]);
 
   if (loading || !user) return null;
 
@@ -114,7 +119,13 @@ export default function MyChecksPage() {
       <div className="max-w-lg mx-auto px-4 py-6 space-y-3">
         <p className="text-sm text-gray-600">
           Each check is saved on this phone, then uploaded, then marked sent.
+          Finish sending keeps trying without changing the check.
         </p>
+        {finishNote && (
+          <p className="text-sm font-semibold text-gray-800" role="status">
+            {finishNote}
+          </p>
+        )}
         {ready && rows.length === 0 && (
           <p className="text-sm text-gray-500 bg-white rounded-2xl border border-gray-200 p-4">
             No checks yet. Start a checkout report and it will show up here.
@@ -134,6 +145,31 @@ export default function MyChecksPage() {
                 unfinished={row.unfinished}
               />
             </div>
+            {(row.unfinished || !row.sentAt) && (
+              <button
+                type="button"
+                className="mt-3 w-full min-h-[44px] rounded-xl bg-accent text-sm font-semibold text-[#052e16]"
+                disabled={finishing === row.id}
+                onClick={() => {
+                  setFinishing(row.id);
+                  setFinishNote("");
+                  const run = row.unfinished
+                    ? retryCheckoutOutbox().then(() => undefined)
+                    : markCheckoutSent(row.id).then(() => undefined);
+                  void run
+                    .then(() => {
+                      setFinishNote("Trying again. Stay on this page until it says Sent.");
+                      setReload((value) => value + 1);
+                    })
+                    .catch((err: Error) => {
+                      setFinishNote(driverUploadMessage(err.message || "Could not finish sending."));
+                    })
+                    .finally(() => setFinishing(""));
+                }}
+              >
+                {finishing === row.id ? "Sending…" : "Finish sending"}
+              </button>
+            )}
           </div>
         ))}
         <Link href="/checkout" className="block text-center text-sm font-semibold text-brand-700 underline">

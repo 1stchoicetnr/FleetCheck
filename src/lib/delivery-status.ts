@@ -45,6 +45,20 @@ export function deliveryView(input: {
   return { state: "uploading", label: "Uploading", at: input.createdAt };
 }
 
+/** Plain text for a driver when sending stops. */
+export function driverUploadMessage(message: string): string {
+  if (/needs its photos/i.test(message)) {
+    return "Photos are still saving. This phone will keep trying.";
+  }
+  if (/only send your own|only add photos/i.test(message)) {
+    return "This check is under another name. Ask the office to mark it sent.";
+  }
+  if (/closed/i.test(message)) {
+    return "Ask the office to mark this check sent. New photos stay closed.";
+  }
+  return message;
+}
+
 export function isStuckUpload(
   report: { createdAt: string; sentAt?: string | null; archivedAt?: string | null },
   now = Date.now()

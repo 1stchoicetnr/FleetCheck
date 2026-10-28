@@ -20,6 +20,7 @@ import {
 } from "./storage";
 import type { CheckoutReport, CheckoutType, PhotoAngle } from "./types";
 import type { CheckoutInspectionForm } from "./inspection-form";
+import { driverUploadMessage } from "./delivery-status";
 import { compressUploadPhoto } from "./utils";
 
 let flushing: Promise<number> | null = null;
@@ -126,25 +127,37 @@ export async function submitCheckoutFromDraft(input: {
     string,
   ][];
   input.onProgress?.("Preparing photos", 5);
-  const photos: OutboxPhoto[] = [];
-  for (let index = 0; index < entries.length; index += 1) {
-    const [angle, dataUrl] = entries[index];
-    const compressed = dataUrl.startsWith("data:")
-      ? await compressUploadPhoto(dataUrl)
-      : dataUrl;
-    const flags = input.photoFlags?.[angle];
-    photos.push({
-      angle,
-      dataUrl: compressed,
-      capturedAt,
-      flaggedDamage: flags?.flaggedDamage,
-      damageNote: flags?.damageNote,
-      qualityNote: flags?.qualityNote,
-    });
-    input.onProgress?.(
-      `Preparing photos ${index + 1}/${entries.length}`,
-      Math.round(5 + ((index + 1) / Math.max(entries.length, 1)) * 25)
-    );
+  const photos: OutboxPhoto[] = new Array(entries.length);
+  let prepared = 0;
+  let cursor = 0;
+  const workers = Math.min(3, entries.length);
+  async function prepareOne(): Promise<void> {
+    for (;;) {
+      const index = cursor;
+      cursor += 1;
+      if (index >= entries.length) return;
+      const [angle, dataUrl] = entries[index];
+      const compressed = dataUrl.startsWith("data:")
+        ? await compressUploadPhoto(dataUrl)
+        : dataUrl;
+      const flags = input.photoFlags?.[angle];
+      photos[index] = {
+        angle,
+        dataUrl: compressed,
+        capturedAt,
+        flaggedDamage: flags?.flaggedDamage,
+        damageNote: flags?.damageNote,
+        qualityNote: flags?.qualityNote,
+      };
+      prepared += 1;
+      input.onProgress?.(
+        `Preparing photos ${prepared}/${entries.length}`,
+        Math.round(5 + (prepared / Math.max(entries.length, 1)) * 25)
+      );
+    }
+  }
+  if (workers > 0) {
+    await Promise.all(Array.from({ length: workers }, () => prepareOne()));
   }
 
   const now = new Date().toISOString();
@@ -225,6 +238,6 @@ export async function submitCheckoutFromDraft(input: {
   return {
     state: "saved",
     pending: await getPendingSyncCount(),
-    error: result.item.lastError,
+    error: result.item.lastError ? driverUploadMessage(result.item.lastError) : undefined,
   };
 }

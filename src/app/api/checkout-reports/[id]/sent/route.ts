@@ -14,8 +14,6 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const DRIVER_WINDOW_MS = 6 * 60 * 60 * 1000;
-
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -37,10 +35,7 @@ export async function POST(
     ) {
       throw new RequestError("You can only send your own check.", 403);
     }
-    const created = Date.parse(existing.createdAt);
-    if (!office && (!Number.isFinite(created) || Date.now() - created > DRIVER_WINDOW_MS)) {
-      throw new RequestError("This checkout is closed. Ask the office.", 403);
-    }
+    // Age does not block this. New photos still close after 6 hours.
     const report = await confirmReportSent(auth.orgId, id, {
       appOrigin: slackLinkOrigin(req),
     });
