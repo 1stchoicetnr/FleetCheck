@@ -23,6 +23,7 @@ import { isCheckoutFlagged } from "@/lib/storage";
 import {
   deleteCheckoutReport,
   fetchCheckoutReport,
+  markCheckoutSent,
   fetchCompanies,
   fetchCompanySettings,
   fetchPriorReports,
@@ -81,6 +82,8 @@ export default function OfficeReportDetailPage() {
   const [retakeAngles, setRetakeAngles] = useState<PhotoAngle[]>([]);
   const [saving, setSaving] = useState(false);
   const [slackSending, setSlackSending] = useState(false);
+  const [markSending, setMarkSending] = useState(false);
+  const [markNote, setMarkNote] = useState("");
   const [slackNote, setSlackNote] = useState("");
   const [tab, setTab] = useState<"gallery" | "compare">("gallery");
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
@@ -371,6 +374,44 @@ export default function OfficeReportDetailPage() {
                   ? ` · Reviewed ${formatCheckoutTime(report.reviewedAt)} by ${report.reviewedBy}`
                   : ""}
               </p>
+              {user && canReviewCheckout(user.role) && !report.sentAt && (
+                <div className="space-y-2">
+                  <Button
+                    type="button"
+                    size="lg"
+                    className="w-full"
+                    disabled={markSending}
+                    onClick={() => {
+                      setMarkSending(true);
+                      setMarkNote("");
+                      void markCheckoutSent(report.id)
+                        .then((updated) => {
+                          setReport((current) =>
+                            current
+                              ? { ...current, sentAt: updated.sentAt, status: updated.status }
+                              : current
+                          );
+                          setMarkNote("Marked sent. The result was not changed.");
+                        })
+                        .catch((err: Error) => {
+                          setMarkNote(err.message || "Could not mark this check sent.");
+                        })
+                        .finally(() => setMarkSending(false));
+                    }}
+                  >
+                    {markSending ? "Saving…" : "Mark sent"}
+                  </Button>
+                  <p className="text-xs text-gray-500">
+                    Records that the upload finished. Photos, mileage, and the pass or fail result stay as they are.
+                    If Slack does not have it yet, it is posted once.
+                  </p>
+                  {markNote && (
+                    <p className="text-sm font-semibold text-ink" role="status">
+                      {markNote}
+                    </p>
+                  )}
+                </div>
+              )}
               {user && isOwnerAccount(user) && report.companyId === RAD_CAB_COMPANY_ID && (
                 <div className="space-y-2">
                   <Button

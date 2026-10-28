@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { deliveryView, isStuckUpload, STUCK_UPLOAD_AFTER_MS } from "./delivery-status.ts";
+import {
+  deliveryView,
+  driverUploadMessage,
+  isStuckUpload,
+  STUCK_UPLOAD_AFTER_MS,
+} from "./delivery-status.ts";
 
 const created = "2026-10-20T20:00:00.000Z";
 const now = Date.parse(created) + STUCK_UPLOAD_AFTER_MS + 1;
@@ -49,4 +54,6 @@ test("an office row with no sent time is flagged once it sits too long", () => {
   assert.equal(isStuckUpload({ createdAt: created, sentAt: created }, now), false);
   assert.equal(isStuckUpload({ createdAt: created, archivedAt: created }, now), false);
   assert.equal(isStuckUpload({ createdAt: created }, now), true);
+  assert.match(driverUploadMessage("This check still needs its photos before it can be sent."), /keep trying/);
+  assert.match(driverUploadMessage("You can only send your own check."), /another name/);
 });

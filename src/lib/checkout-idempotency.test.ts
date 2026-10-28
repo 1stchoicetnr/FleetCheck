@@ -71,6 +71,11 @@ test("retries wait longer and a client error stops the loop", () => {
   assert.equal(failureDelay(9, false), 15 * 60_000);
   assert.equal(isPermanentOutboxError(400, "Missing required checkout fields"), true);
   assert.equal(isPermanentOutboxError(401, "Sign in first. Ask the office to add you."), false);
+  assert.equal(
+    isPermanentOutboxError(409, "This check still needs its photos before it can be sent."),
+    false
+  );
+  assert.equal(isPermanentOutboxError(403, "You can only send your own check."), true);
   const released = releaseOutboxForRetry(
     {
       id: "chk-abcdefgh",

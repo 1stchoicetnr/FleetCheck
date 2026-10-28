@@ -33,6 +33,7 @@ import {
   SharedVehicle,
 } from "@/lib/checkout-api";
 import { submitCheckoutFromDraft } from "@/lib/checkout-outbox";
+import { driverUploadMessage } from "@/lib/delivery-status";
 import { isGenericDriverName } from "@/lib/driver-name";
 import {
   CheckoutDraft,
@@ -359,7 +360,7 @@ function CheckoutCapturePage() {
       if (result.state === "sent") setCompleted(result.report);
       else {
         setSavedOnPhone(true);
-        if (result.error) setSubmitError(result.error);
+        if (result.error) setSubmitError(driverUploadMessage(result.error));
       }
     } catch (err) {
       setSavedOnPhone(true);

@@ -113,6 +113,9 @@ test("old checks are marked sent once, and a new upload stays open", async () =>
   const first = await orgData.markReportSent(data, "org-a", "new-1", "2026-10-20T20:05:00.000Z");
   const second = await orgData.markReportSent(data, "org-a", "new-1", "2026-10-20T21:00:00.000Z");
   assert.equal(new Date(String(first?.sent_at)).toISOString(), "2026-10-20T20:05:00.000Z");
+  const markedRow = await orgData.getReport(data, "org-a", "new-1");
+  assert.equal(markedRow?.review_status, "pending");
+  assert.match(JSON.stringify(markedRow?.photos), /keep-me/);
   assert.equal(new Date(String(second?.sent_at)).toISOString(), "2026-10-20T20:05:00.000Z");
   const stuck = await orgData.countStuckUploads(data, "org-a", "2026-10-20T20:30:00.000Z");
   assert.equal(stuck, 0);
