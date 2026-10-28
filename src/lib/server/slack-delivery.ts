@@ -384,6 +384,10 @@ export async function deliverCheckoutSlack(
   }
 }
 
+export async function slackCheckoutStatus(db: OrgDb, orgId: string, reportId: string) {
+  return checkoutDeliveryStatus(db, orgId, reportId);
+}
+
 /** Owner retry. A check already in Slack is not posted again. */
 export async function resendCheckoutSlack(
   db: OrgDb,

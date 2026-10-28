@@ -124,11 +124,14 @@ function OfficeReportsPage() {
       if (document.visibilityState === "visible") loadOffice(0, true);
     };
     const onFocus = () => loadOffice(0, true);
+    const onPageShow = () => loadOffice(0, true);
     document.addEventListener("visibilitychange", onVis);
     window.addEventListener("focus", onFocus);
+    window.addEventListener("pageshow", onPageShow);
     return () => {
       document.removeEventListener("visibilitychange", onVis);
       window.removeEventListener("focus", onFocus);
+      window.removeEventListener("pageshow", onPageShow);
     };
   }, [officeReady, loadOffice]);
 

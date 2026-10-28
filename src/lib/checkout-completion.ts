@@ -15,6 +15,16 @@ export function missingRequiredPhotos(
   return steps.filter((step) => step.required && !stored.has(step.angle)).map((step) => step.angle);
 }
 
+/** Drivers cannot be marked sent while a required photo is missing. Office can record sent anyway. */
+export function sentBlockedByMissingPhotos(office: boolean, missingCount: number): boolean {
+  return !office && missingCount > 0;
+}
+
+/** Slack already has this checkout. Recording sent time must not post it again. */
+export function slackAlreadyHasCheckout(status: string | null | undefined): boolean {
+  return status === "sent";
+}
+
 /** A finished check stays finished. A new check stays uploading until the required photos are stored. */
 export function checkoutCompletionStatus(
   existingStatus: CheckoutReport["status"] | undefined,

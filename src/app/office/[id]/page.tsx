@@ -8,6 +8,7 @@ import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { OfficePinGate } from "@/components/office-pin-gate";
 import { ReviewStatusBadge } from "@/components/review-status-badge";
+import { DeliveryBadge } from "@/components/delivery-badge";
 import { CheckoutPhotoComparison } from "@/components/checkout-photo-comparison";
 import {
   LightboxPhoto,
@@ -84,6 +85,7 @@ export default function OfficeReportDetailPage() {
   const [slackSending, setSlackSending] = useState(false);
   const [markSending, setMarkSending] = useState(false);
   const [markNote, setMarkNote] = useState("");
+  const [markError, setMarkError] = useState("");
   const [slackNote, setSlackNote] = useState("");
   const [tab, setTab] = useState<"gallery" | "compare">("gallery");
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
@@ -368,12 +370,25 @@ export default function OfficeReportDetailPage() {
                   <TrafficLightBadge form={report.inspectionForm} />
                 </div>
               )}
-              <p className="text-xs text-gray-400">
-                Complete {formatCheckoutTime(report.completedAt)}
-                {report.reviewedAt
-                  ? ` · Reviewed ${formatCheckoutTime(report.reviewedAt)} by ${report.reviewedBy}`
-                  : ""}
-              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <DeliveryBadge createdAt={report.createdAt} sentAt={report.sentAt} />
+                <p className="text-xs text-gray-400">
+                  Complete {formatCheckoutTime(report.completedAt)}
+                  {report.reviewedAt
+                    ? ` · Reviewed ${formatCheckoutTime(report.reviewedAt)} by ${report.reviewedBy}`
+                    : ""}
+                </p>
+              </div>
+              {markError && (
+                <p className="rounded-xl bg-red-100 px-3 py-2 text-sm font-semibold text-red-900" role="alert">
+                  {markError}
+                </p>
+              )}
+              {markNote && (
+                <p className="rounded-xl bg-emerald-100 px-3 py-2 text-sm font-semibold text-emerald-950" role="status">
+                  {markNote}
+                </p>
+              )}
               {user && canReviewCheckout(user.role) && !report.sentAt && (
                 <div className="space-y-2">
                   <Button
@@ -384,17 +399,29 @@ export default function OfficeReportDetailPage() {
                     onClick={() => {
                       setMarkSending(true);
                       setMarkNote("");
+                      setMarkError("");
                       void markCheckoutSent(report.id)
-                        .then((updated) => {
+                        .then(async (updated) => {
+                          const fresh = await fetchCheckoutReport(report.id);
+                          const sentAt = fresh?.sentAt || updated.sentAt;
+                          if (!sentAt) {
+                            setMarkError("The sent time was not saved. Try again.");
+                            return;
+                          }
                           setReport((current) =>
                             current
-                              ? { ...current, sentAt: updated.sentAt, status: updated.status }
+                              ? {
+                                  ...(fresh ?? current),
+                                  sentAt,
+                                  status: fresh?.status || updated.status,
+                                }
                               : current
                           );
                           setMarkNote("Marked sent. The result was not changed.");
                         })
-                        .catch((err: Error) => {
-                          setMarkNote(err.message || "Could not mark this check sent.");
+                        .catch((err: unknown) => {
+                          const message = err instanceof Error ? err.message : "";
+                          setMarkError(message || "Could not mark this check sent.");
                         })
                         .finally(() => setMarkSending(false));
                     }}
@@ -405,11 +432,6 @@ export default function OfficeReportDetailPage() {
                     Records that the upload finished. Photos, mileage, and the pass or fail result stay as they are.
                     If Slack does not have it yet, it is posted once.
                   </p>
-                  {markNote && (
-                    <p className="text-sm font-semibold text-ink" role="status">
-                      {markNote}
-                    </p>
-                  )}
                 </div>
               )}
               {user && isOwnerAccount(user) && report.companyId === RAD_CAB_COMPANY_ID && (
