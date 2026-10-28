@@ -9,7 +9,12 @@ import {
   type PublicCompanySettings,
 } from "@/lib/company-settings";
 import { reportBelongsToDriver } from "@/lib/checkout-access";
-import { checkoutCompletionStatus, missingRequiredPhotos } from "@/lib/checkout-completion";
+import {
+  checkoutCompletionStatus,
+  missingRequiredPhotos,
+  sentBlockedByMissingPhotos,
+  slackAlreadyHasCheckout,
+} from "@/lib/checkout-completion";
 import { displayPlate, generateId } from "@/lib/utils";
 import {
   CheckoutReport,
@@ -76,7 +81,12 @@ import { recordCheckoutAlerts } from "./report-alerts";
 import { effectiveCheckoutSlack } from "@/lib/company-settings";
 import { isGenericDriverName } from "@/lib/driver-name";
 import { notifyCheckoutReport } from "./slack-notify";
-import { deliverCheckoutSlack, resendCheckoutSlack, slackWebhooksFromEnv } from "./slack-delivery";
+import {
+  deliverCheckoutSlack,
+  resendCheckoutSlack,
+  slackCheckoutStatus,
+  slackWebhooksFromEnv,
+} from "./slack-delivery";
 import { RAD_CAB_COMPANY_ID } from "@/lib/company-rules";
 import { assertIdempotencyKey, isUniqueViolation } from "@/lib/checkout-idempotency";
 import { isStuckUpload, STUCK_UPLOAD_AFTER_MS } from "@/lib/delivery-status";
@@ -445,7 +455,7 @@ export async function listMyReports(
 export async function confirmReportSent(
   orgId: string,
   id: string,
-  options?: { appOrigin?: string }
+  options?: { appOrigin?: string; office?: boolean }
 ): Promise<CheckoutReport> {
   const mode = assertConfigured();
   const existing = await getReport(orgId, id);
@@ -453,7 +463,9 @@ export async function confirmReportSent(
   if (existing.sentAt) return existing;
   const settingsDoc = await readStoredCompanySettings(orgId);
   const steps = photoStepsForCompany(publicCompanySettings(settingsDoc), existing.companyId);
-  if (missingRequiredPhotos(existing, steps).length) {
+  const missing = missingRequiredPhotos(existing, steps);
+  if (sentBlockedByMissingPhotos(Boolean(options?.office), missing.length)) {
+    console.log(`[checkout-sent] report=${id} result=needs-photos`);
     throw new SharedBackendError(
       "This check still needs its photos before it can be sent.",
       409
@@ -461,27 +473,36 @@ export async function confirmReportSent(
   }
   const sentAt = new Date().toISOString();
   const ready = { ...existing, status: "complete" as const };
+  const written = mode === "postgres" ? await pgMarkReportSent(orgId, id, sentAt) : sentAt;
+  if (mode === "postgres" && !written) {
+    throw new SharedBackendError("Could not save the sent time.", 500);
+  }
   const saved =
     mode === "postgres"
-      ? { ...ready, sentAt: (await pgMarkReportSent(orgId, id, sentAt)) || sentAt }
+      ? { ...ready, sentAt: written || sentAt }
       : await localPutReport({ ...ready, sentAt });
   const routes = effectiveCheckoutSlack(settingsDoc);
   const webhooks = slackWebhooksFromEnv(slackWebhookOverride(settingsDoc) || undefined);
+  const alreadyPosted =
+    mode === "postgres" &&
+    slackAlreadyHasCheckout(await slackCheckoutStatus(pgDb(), orgId, id));
   if (mode === "postgres") {
-    try {
-      await deliverCheckoutSlack(pgDb(), saved, {
-        orgId,
-        route: routes[saved.companyId],
-        webhooks,
-        appOrigin: options?.appOrigin,
-        photoSteps: steps,
-      });
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message.replace(/https?:\/\/\S+/g, "").slice(0, 180) : "";
-      console.log(
-        `[slack-delivery] kind=checkout report=${saved.id} attempt=0 status=retry error=${message || "delivery"}`
-      );
+    if (!alreadyPosted) {
+      try {
+        await deliverCheckoutSlack(pgDb(), saved, {
+          orgId,
+          route: routes[saved.companyId],
+          webhooks,
+          appOrigin: options?.appOrigin,
+          photoSteps: steps,
+        });
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message.replace(/https?:\/\/\S+/g, "").slice(0, 180) : "";
+        console.log(
+          `[slack-delivery] kind=checkout report=${saved.id} attempt=0 status=retry error=${message || "delivery"}`
+        );
+      }
     }
   } else {
     void notifyCheckoutReport(saved, {

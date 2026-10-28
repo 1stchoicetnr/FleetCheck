@@ -3,6 +3,8 @@ import test from "node:test";
 import {
   checkoutCompletionStatus,
   missingRequiredPhotos,
+  sentBlockedByMissingPhotos,
+  slackAlreadyHasCheckout,
 } from "./checkout-completion.ts";
 import { PHOTO_ANGLES, type PhotoStep } from "./types.ts";
 
@@ -76,4 +78,13 @@ test("a red precheck can be complete without photos", () => {
       "complete"
     );
   });
+});
+
+test("office can record sent without photos, and slack is not posted twice", () => {
+  assert.equal(sentBlockedByMissingPhotos(false, 2), true);
+  assert.equal(sentBlockedByMissingPhotos(true, 2), false);
+  assert.equal(sentBlockedByMissingPhotos(false, 0), false);
+  assert.equal(slackAlreadyHasCheckout("sent"), true);
+  assert.equal(slackAlreadyHasCheckout("failed"), false);
+  assert.equal(slackAlreadyHasCheckout(null), false);
 });

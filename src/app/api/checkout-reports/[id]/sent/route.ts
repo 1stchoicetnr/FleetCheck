@@ -36,9 +36,13 @@ export async function POST(
       throw new RequestError("You can only send your own check.", 403);
     }
     // Age does not block this. New photos still close after 6 hours.
+    // Office can record sent even if a required photo is missing, and a checkout
+    // already in Slack is not posted again.
     const report = await confirmReportSent(auth.orgId, id, {
       appOrigin: slackLinkOrigin(req),
+      office,
     });
+    console.log(`[checkout-sent] report=${id} result=saved`);
     return NextResponse.json({ report: toClientReport(report) });
   } catch (err) {
     return errorResponse(err, "Failed to mark the check sent");
