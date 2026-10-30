@@ -33,7 +33,6 @@ export function AppHeader({
     setMenuOpen(false);
   }, [pathname]);
   const onDashboard = pathname === "/dashboard" || title === "Dashboard";
-  const onCheckout = pathname.startsWith("/checkout");
 
   const shouldShowBack = showBack ?? (!!title && !onDashboard);
   const roleLabel = user?.roleTitle || (user ? ROLE_LABELS[user.role] : "");
@@ -94,7 +93,7 @@ export function AppHeader({
           </div>
         </div>
 
-        {onCheckout && <CheckoutFeedbackButton />}
+        {user && <CheckoutFeedbackButton />}
 
         {!onDashboard && (
           <button
