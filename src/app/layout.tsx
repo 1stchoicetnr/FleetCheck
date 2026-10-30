@@ -8,6 +8,7 @@ import { OfflineBanner } from "@/components/offline-banner";
 import { NavTiming } from "@/components/nav-timing";
 import { FirstTour } from "@/components/first-tour";
 import { PhoneFleetSync } from "@/components/phone-fleet-sync";
+import { CheckoutFeedbackProvider } from "@/components/checkout-feedback";
 import { appleStartupImages } from "@/lib/apple-startup-images";
 import { INSPEKT_NAVY } from "@/lib/brand-mark";
 
@@ -54,13 +55,15 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${inter.className} min-h-screen`}>
         <AuthProvider>
-          <ServiceWorkerRegister />
-          <NavTiming />
-          <OrientationUnlock />
-          <OfflineBanner />
-          <FirstTour />
-          <PhoneFleetSync />
-          <main className="min-h-screen safe-bottom">{children}</main>
+          <CheckoutFeedbackProvider>
+            <ServiceWorkerRegister />
+            <NavTiming />
+            <OrientationUnlock />
+            <OfflineBanner />
+            <FirstTour />
+            <PhoneFleetSync />
+            <main className="min-h-screen safe-bottom">{children}</main>
+          </CheckoutFeedbackProvider>
         </AuthProvider>
       </body>
     </html>
