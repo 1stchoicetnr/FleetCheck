@@ -6,6 +6,8 @@ import { Input } from "./ui/input";
 import { verifyOfficePinRemote } from "@/lib/checkout-api";
 import { isOfficeUnlocked, unlockOffice } from "@/lib/office-auth";
 import { Lock } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/hooks/use-auth";
 
 export function OfficePinGate({
   children,
@@ -14,44 +16,28 @@ export function OfficePinGate({
   children: ReactNode;
   onUnlocked?: () => void;
 }) {
+  const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
   const [ready, setReady] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [checking, setChecking] = useState(false);
 
+  // Reuse the session AuthProvider already loaded instead of fetching it
+  // again on every office screen (that extra round trip ran before any data
+  // could load, so each screen change waited on it).
   useEffect(() => {
-    let cancelled = false;
-    async function openGate() {
-      try {
-        const res = await fetch("/api/auth/session", { cache: "no-store" });
-        if (res.ok) {
-          const data = (await res.json()) as { user?: { roleTitle?: string } | null };
-          const title = data.user?.roleTitle;
-          if (
-            !cancelled &&
-            (title === "Owner" || title === "Manager" || title === "Office")
-          ) {
-            setUnlocked(true);
-            setReady(true);
-            onUnlocked?.();
-            return;
-          }
-        }
-      } catch {
-        // Fall through to the PIN. Demo roles still use it.
-      }
-      if (cancelled) return;
-      const open = isOfficeUnlocked();
-      setUnlocked(open);
-      setReady(true);
-      if (open) onUnlocked?.();
-    }
-    void openGate();
-    return () => {
-      cancelled = true;
-    };
-  }, [onUnlocked]);
+    if (authLoading) return;
+    const title = user?.roleTitle;
+    const open =
+      title === "Owner" || title === "Manager" || title === "Office"
+        ? true
+        : isOfficeUnlocked();
+    setUnlocked(open);
+    setReady(true);
+    if (open) onUnlocked?.();
+  }, [authLoading, user, onUnlocked]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -68,7 +54,7 @@ export function OfficePinGate({
     onUnlocked?.();
     const next = new URLSearchParams(window.location.search).get("next");
         if (next && /^\/(admin|alerts|reports|vehicles|office|settings)(\/|$)/.test(next)) {
-          window.location.assign(next);
+          router.push(next);
         }
   };
 

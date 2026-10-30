@@ -73,9 +73,23 @@ export async function fetchSharedStatus() {
   return api<{ mode: string; production: boolean }>("/api/shared-health");
 }
 
+// Company list rarely changes; reuse it briefly so every screen change
+// does not refetch it. Concurrent callers share one request.
+const COMPANIES_TTL_MS = 60_000;
+let companiesCache: { at: number; value: Promise<Company[]> } | null = null;
+
 export async function fetchCompanies(): Promise<Company[]> {
-  const data = await api<{ companies: Company[] }>("/api/companies");
-  return data.companies;
+  if (companiesCache && Date.now() - companiesCache.at < COMPANIES_TTL_MS) {
+    return companiesCache.value;
+  }
+  const value = api<{ companies: Company[] }>("/api/companies").then(
+    (data) => data.companies
+  );
+  companiesCache = { at: Date.now(), value };
+  value.catch(() => {
+    if (companiesCache?.value === value) companiesCache = null;
+  });
+  return value;
 }
 
 export async function fetchFleets(options?: {
