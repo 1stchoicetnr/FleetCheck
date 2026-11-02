@@ -77,3 +77,12 @@ export function sortAnglesDamageFirst<T extends { angle: PhotoAngle }>(
     return items.indexOf(a) - items.indexOf(b);
   });
 }
+
+/** Photos saved with an "Odometer check: ..." quality note (driver used the photo despite a mismatch). */
+export function odometerMismatchNotes(
+  photos: Array<Pick<VehiclePhoto, "angle" | "qualityNote">> | undefined
+): string[] {
+  return (photos ?? [])
+    .map((photo) => cleanDamageNote(photo.qualityNote))
+    .filter((note): note is string => !!note && /^odometer check:/i.test(note));
+}
