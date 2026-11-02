@@ -94,6 +94,8 @@ export function GuidedPhotoCapture({
     dataUrl: string;
     issue: PhotoQualityIssue | null;
     blockReason?: string;
+    /** Soft warning: driver may still use the photo; it is flagged for office review. */
+    warning?: string;
   } | null>(null);
   const [qualityNote, setQualityNote] = useState("");
 
@@ -155,10 +157,14 @@ export function GuidedPhotoCapture({
           read = "";
         }
         if (!odometerReadingMatches(odometer ?? "", read)) {
+          // Never hard-block: phone OCR misreads odometers often. Warn, let the
+          // driver retake or continue, and flag the photo for office review.
+          const stampedOdo = await stampPhotoDataUrl(compressed, new Date().toISOString());
+          setQualityNote("");
           setPending({
-            dataUrl: compressed,
+            dataUrl: stampedOdo,
             issue: null,
-            blockReason: odometerDigits(odometer ?? "")
+            warning: odometerDigits(odometer ?? "")
               ? odometerMismatchMessage(odometer ?? "")
               : ODOMETER_UNREADABLE,
           });
@@ -179,7 +185,10 @@ export function GuidedPhotoCapture({
     if (!current || !pending) return;
     if (pending.blockReason) return;
     if (pending.issue && !qualityNote.trim()) return;
-    if (qualityNote.trim()) onQualityNote?.(current.angle, qualityNote.trim());
+    const note = pending.warning
+      ? [`Odometer check: ${pending.warning}`, qualityNote.trim()].filter(Boolean).join(" Driver note: ")
+      : qualityNote.trim();
+    if (note) onQualityNote?.(current.angle, note);
     const dataUrl = pending.dataUrl;
     setPending(null);
     setQualityNote("");
@@ -295,6 +304,24 @@ export function GuidedPhotoCapture({
                 </div>
                 {pending.blockReason ? (
                   <p className="text-sm font-semibold text-amber-200">{pending.blockReason}</p>
+                ) : pending.warning ? (
+                  <div className="space-y-2">
+                    <p className="text-sm font-semibold text-amber-200">{pending.warning}</p>
+                    <p className="text-xs text-[#c4c4cc]">
+                      You can still use this photo. The office will review the mileage.
+                    </p>
+                    <label className="block space-y-1.5">
+                      <span className="text-sm font-semibold text-[#e4e4e7]">Note (optional)</span>
+                      <textarea
+                        value={qualityNote}
+                        maxLength={DAMAGE_NOTE_MAX}
+                        rows={2}
+                        onChange={(event) => setQualityNote(event.target.value)}
+                        placeholder="For example, the photo is clear and shows the mileage I typed."
+                        className="w-full rounded-xl border border-[#5c5c64] bg-[#1c1c1e] px-3 py-2 text-sm text-white placeholder:text-[#8b8b93]"
+                      />
+                    </label>
+                  </div>
                 ) : pending.issue ? (
                   <div className="space-y-2">
                     <p className="text-sm font-semibold text-amber-200">

@@ -29,11 +29,11 @@ export function odometerMismatchMessage(typed: string | number): string {
   const shown = want
     ? Number(want).toLocaleString("en-US")
     : "the mileage you typed";
-  return `The odometer photo does not match ${shown}. Retake a clear photo of that mileage.`;
+  return `The odometer photo does not match ${shown}. Retake a clear photo, or use it if the mileage is right.`;
 }
 
 export const ODOMETER_UNREADABLE =
-  "Could not read the mileage in this photo. Retake a closer, steady shot of the odometer.";
+  "Could not read the mileage in this photo. Retake a closer, steady shot, or use it if the mileage shows.";
 
 /** A file older than this was already on the phone. Live camera files are new. */
 export const LIBRARY_PHOTO_MAX_AGE_MS = 3 * 60 * 1000;
