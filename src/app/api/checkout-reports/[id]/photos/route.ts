@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 import {
   addReportPhoto,
   addReportPhotos,
-  confirmReportSent,
+  finishReportIfComplete,
 } from "@/lib/server/checkout-repo";
 import { slackLinkOrigin } from "@/lib/server/auth-http";
 import { CheckoutReport } from "@/lib/types";
@@ -24,24 +24,23 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
- * Once the last required photo lands, record the sent time here on the server.
- * Before this, sent was only recorded by a second call from the phone. If the
- * driver closed the app or lost signal after the photos finished, the check sat
- * "Complete" with no sent time and Office showed it as Stuck after 30 minutes.
+ * Once the last required photo lands, record the sent time here on the server
+ * and post to Slack. Decided from the photos stored in the database, not the
+ * status flag on the upload result, so whichever request lands the last photo
+ * finishes the check. Old-app phones never send the "sent" step at all.
  */
 async function finishIfComplete(
   req: Request,
   orgId: string,
   report: CheckoutReport
 ): Promise<CheckoutReport> {
-  if (report.sentAt || report.archivedAt || report.status !== "complete") return report;
+  if (report.sentAt || report.archivedAt) return report;
   try {
-    const sent = await confirmReportSent(orgId, report.id, {
+    const result = await finishReportIfComplete(orgId, report.id, {
       appOrigin: slackLinkOrigin(req),
-      office: false,
+      source: "upload",
     });
-    console.log(`[checkout-sent] report=${report.id} result=saved-on-upload`);
-    return sent;
+    return result.action === "send" && result.report ? result.report : report;
   } catch (err) {
     console.log(
       `[checkout-sent] report=${report.id} result=upload-finish-failed ${

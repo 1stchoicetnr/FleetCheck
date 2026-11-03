@@ -90,6 +90,7 @@ import {
 import { RAD_CAB_COMPANY_ID } from "@/lib/company-rules";
 import { assertIdempotencyKey, isUniqueViolation } from "@/lib/checkout-idempotency";
 import { photoStepsForClient, stuckReason, sweepShouldPostSlack } from "@/lib/legacy-checkout";
+import { finishDecision, type FinishDecision } from "@/lib/checkout-finish";
 import { HISTORICAL_SENT_BEFORE, isStuckUpload, STUCK_UPLOAD_AFTER_MS } from "@/lib/delivery-status";
 import {
   pgAssertFleetInOrg,
@@ -529,6 +530,37 @@ export async function confirmReportSent(
     });
   }
   return saved;
+}
+
+/**
+ * Record sent and post to Slack once the check holds every required photo,
+ * reading the row fresh from the database. Safe to call from every request
+ * that touches a check: it does nothing while photos are missing or once the
+ * check is sent, and Slack posting is claimed once per check.
+ */
+export async function finishReportIfComplete(
+  orgId: string,
+  id: string,
+  options?: { appOrigin?: string; source?: string }
+): Promise<{ action: FinishDecision["action"]; report?: CheckoutReport }> {
+  const source = options?.source ?? "server";
+  const report = await getReport(orgId, id);
+  if (!report) return { action: "skip" };
+  const settingsDoc = await readStoredCompanySettings(orgId);
+  const decision = finishDecision(
+    report,
+    photoStepsForCompany(publicCompanySettings(settingsDoc), report.companyId)
+  );
+  if (decision.action === "skip") return { action: "skip", report };
+  if (decision.action === "wait") {
+    console.log(
+      `[checkout-finish] report=${id} source=${source} result=waiting missing=${decision.missing.length} angles=${decision.missing.join(",")}`
+    );
+    return { action: "wait", report };
+  }
+  const sent = await confirmReportSent(orgId, id, { appOrigin: options?.appOrigin, office: false });
+  console.log(`[checkout-finish] report=${id} source=${source} result=sent`);
+  return { action: "send", report: sent };
 }
 
 const SWEEP_AFTER_MS = 5 * 60 * 1000;
