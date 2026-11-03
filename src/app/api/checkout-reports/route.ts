@@ -12,16 +12,23 @@ import { after, NextRequest, NextResponse } from "next/server";
 import { slackLinkOrigin } from "@/lib/server/auth-http";
 import { sweepUnsentSoon } from "@/lib/server/unsent-sweep";
 import {
-  confirmReportSent,
   createReport,
+  finishReportIfComplete,
   listReportPage,
 } from "@/lib/server/checkout-repo";
 import { OfficeListStatus } from "@/lib/office-list";
+import { pollFinish } from "@/lib/checkout-finish";
 import type { CheckoutInspectionForm } from "@/lib/inspection-form";
 import { CheckoutType } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// Old-app creates keep watching for their photos after answering (see POST).
+export const maxDuration = 60;
+
+/** About 50 seconds: an old-app phone uploads 26 photos in 7 batches. */
+const OLD_APP_WATCH_TRIES = 10;
+const OLD_APP_WATCH_DELAY_MS = 5_000;
 
 const LIST_STATUSES = new Set([
   "all",
@@ -136,26 +143,58 @@ export async function POST(req: NextRequest) {
       idempotencyKey:
         typeof body.idempotencyKey === "string" ? body.idempotencyKey : undefined,
     });
+    const origin = slackLinkOrigin(req);
     if (!body.idempotencyKey) {
-      // Old cached app (before Oct 20). It never sends the "sent" step, so the
-      // server finishes the check itself and tells the phone to reload.
+      // Old cached app (before Oct 20). It creates the check with no photos,
+      // uploads them in later requests, and never sends the "sent" step. Each
+      // upload finishes the check when the last photo lands; as a backstop this
+      // request keeps checking for a short while after it answers the phone.
       let finished = report;
-      if (report.status === "complete" && !report.sentAt) {
-        try {
-          finished = await confirmReportSent(orgId, report.id, {
-            appOrigin: slackLinkOrigin(req),
-            office: false,
+      try {
+        const now = await finishReportIfComplete(orgId, report.id, {
+          appOrigin: origin,
+          source: "create-old-app",
+        });
+        if (now.report) finished = now.report;
+        if (now.action === "wait") {
+          after(async () => {
+            const result = await pollFinish(
+              async () =>
+                (await finishReportIfComplete(orgId, report.id, {
+                  appOrigin: origin,
+                  source: "create-old-app-watch",
+                })).action,
+              { tries: OLD_APP_WATCH_TRIES, delayMs: OLD_APP_WATCH_DELAY_MS }
+            ).catch((err) => {
+              console.log(
+                `[checkout-legacy] report=${report.id} result=watch-failed ${err instanceof Error ? err.message : String(err)}`
+              );
+              return null;
+            });
+            if (result) {
+              console.log(
+                `[checkout-legacy] report=${report.id} result=watch-${result.action} tries=${result.tries}`
+              );
+            }
           });
-        } catch (err) {
-          console.log(
-            `[checkout-legacy] report=${report.id} result=sent-failed ${err instanceof Error ? err.message : String(err)}`
-          );
         }
+      } catch (err) {
+        console.log(
+          `[checkout-legacy] report=${report.id} result=sent-failed ${err instanceof Error ? err.message : String(err)}`
+        );
       }
       console.log(`[checkout-legacy] report=${report.id} result=created-old-app`);
       return NextResponse.json(
         { report: toClientReport(finished), reload: true },
         { status: 201, headers: { "X-Inspekt-Reload": "1" } }
+      );
+    }
+    if (report.status === "complete" && !report.sentAt) {
+      // A red precheck needs no photos. Finish it now in case the phone drops off.
+      after(() =>
+        finishReportIfComplete(orgId, report.id, { appOrigin: origin, source: "create" })
+          .then(() => undefined)
+          .catch(() => undefined)
       );
     }
     return NextResponse.json({ report: toClientReport(report) }, { status: 201 });
