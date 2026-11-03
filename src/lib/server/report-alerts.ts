@@ -5,16 +5,18 @@ import {
   checkoutAlertKinds,
   CheckoutAlertKind,
 } from "@/lib/checkout-alert-rules";
+import { hasInspectionDamageNotes } from "@/lib/inspection-form";
+import { reportHasPhotoDamage } from "@/lib/photo-flags";
 import {
-  activeIssueFlagLabels,
-  hasInspectionDamageNotes,
-} from "@/lib/inspection-form";
-import {
-  cleanDamageNote,
-  photoAngleLabel,
-  reportHasPhotoDamage,
-} from "@/lib/photo-flags";
-import { SlackRoute, slackChannelIdForRoute, slackChannelLabel } from "@/lib/slack-config";
+  alertDamageDetails,
+  alertDetailParts,
+  BELL_SLACK_USER,
+  officeCheckUrl,
+  repairSlackText,
+  sendRepairSlack,
+} from "@/lib/alert-details";
+import { checkoutAppOrigin } from "@/lib/checkout-slack";
+import { SlackRoute, slackChannelIdForRoute } from "@/lib/slack-config";
 import { CheckoutReport } from "@/lib/types";
 import { postAshleySlackDm } from "@/lib/ashley-slack";
 import { repeatProblemNote } from "@/lib/driver-tally";
@@ -41,14 +43,7 @@ function alertMessage(kind: CheckoutAlertKind, report: CheckoutReport): string {
   const unit = formatUnitLabel(report.unitNumber, report.plate);
   if (kind === "status_needs_work") return `${unit} needs repair`;
   if (kind === "status_out_of_service") return `${unit} marked out of service`;
-  const details = [
-    ...activeIssueFlagLabels(report.inspectionForm),
-    ...report.photos.filter((photo) => photo.flaggedDamage).map((photo) => {
-      const label = photoAngleLabel(photo.angle);
-      const note = cleanDamageNote(photo.damageNote);
-      return note ? `${label} (${note})` : label;
-    }),
-  ];
+  const details = alertDetailParts(alertDamageDetails(report));
   return details.length
     ? `Damage reported on ${unit}: ${details.join(", ")}`
     : `Damage reported on ${unit}`;
@@ -69,27 +64,27 @@ async function postRepairSlack(
 ): Promise<void> {
   if (!alerts.length || !postsRepairSlack(report.companyId)) return;
   const route = repairRoute(report.companyId);
-  const url = repairWebhook(route);
-  if (!url) return;
   const unit = formatUnitLabel(report.unitNumber, report.plate);
-  const text = [
-    `*Inspekt alert* (${slackChannelLabel(route)})`,
-    `*Unit:* ${unit}`,
-    `*Vehicle:* ${report.year} ${report.make} ${report.model}`,
-    `*Driver:* ${report.driverName}`,
-    ...alerts.map((alert) => `*${alert.type.replace(/_/g, " ")}:* ${alert.message}`),
-    `*Office id:* \`${report.id}\``,
-  ].join("\n");
+  const origin = checkoutAppOrigin(process.env.APP_ORIGIN || process.env.NEXT_PUBLIC_APP_URL);
+  const text = repairSlackText({
+    unit,
+    vehicle: `${report.year} ${report.make} ${report.model}`,
+    driverName: report.driverName,
+    alertLines: alerts
+      .filter((alert) => alert.type !== "damage_reported")
+      .map((alert) => `*${alert.type.replace(/_/g, " ")}:* ${alert.message}`),
+    details: alertDamageDetails(report),
+    checkUrl: officeCheckUrl(origin, report.id),
+  });
   try {
-    await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        text,
-        username: "Inspekt",
-        channel: slackChannelIdForRoute(route),
-      }),
+    const result = await sendRepairSlack({
+      text,
+      channelId: slackChannelIdForRoute(route),
+      token: process.env.SLACK_BOT_TOKEN,
+      webhookUrl: repairWebhook(route),
+      dmUserId: route === "rad_cab" ? BELL_SLACK_USER : null,
     });
+    console.info("[alerts] repair slack", report.id, result);
   } catch (err) {
     console.error("[alerts] slack post failed:", err);
   }

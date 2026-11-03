@@ -252,6 +252,13 @@ export interface OfficeAlert {
   createdAt: string;
   read: boolean;
   archivedAt?: string;
+  /** Damage details read from the linked check. */
+  details?: {
+    issueFlags: string[];
+    photos: { angle: string; label: string; note?: string; src?: string }[];
+    notes: string[];
+    marks: string[];
+  };
 }
 
 export async function fetchOfficeAlerts(options?: {
