@@ -594,6 +594,11 @@ export type InspectionFormOptions = {
   includeClover?: boolean;
   /** Shown on every damage mark. */
   driverName?: string;
+  /**
+   * The app requires a reason on every Issue item. The server passes false so
+   * cached submissions from older app versions (free-text note only) still save.
+   */
+  requireIssueReason?: boolean;
 };
 
 function withoutClover(form: CheckoutInspectionForm): CheckoutInspectionForm {
@@ -630,7 +635,11 @@ export function validateInspectionForm(
     if (evSkipsCheck(item.id, powertrain) || state.result === "na") continue;
     if (state.result !== "ok" && state.result !== "not_ok") {
       missing.push(item.id);
-    } else if (state.result === "not_ok" && !asCheckReason(state.reason)) {
+    } else if (
+      state.result === "not_ok" &&
+      options?.requireIssueReason !== false &&
+      !asCheckReason(state.reason)
+    ) {
       missing.push(item.id);
     }
   }
@@ -716,10 +725,29 @@ export function checkIssueReasonLabel(reason?: string | null): string {
   return CHECK_ISSUE_REASONS.find((item) => item.id === reason)?.label ?? "";
 }
 
+/** "Headlights: Issue — Not working — left bulb out" for each issue item. Old checks show "Issue". */
+export function checkIssueLines(form?: CheckoutInspectionForm | null): string[] {
+  if (!form?.checks) return [];
+  const lines: string[] = [];
+  for (const item of INSPECTION_CHECK_ITEMS) {
+    const state = form.checks[item.id];
+    if (state?.result !== "not_ok") continue;
+    const reason = checkIssueReasonLabel(state.reason);
+    const note = state.note?.trim();
+    lines.push(
+      `${item.label}: Issue${reason ? ` — ${reason}` : ""}${note ? ` — ${note}` : ""}`
+    );
+  }
+  return lines;
+}
+
 export function formatCheckResult(state: InspectionCheckState): string {
   if (state.result === "na" || state.na) return "N/A";
   if (state.result === "ok" || state.checked) return "OK";
-  if (state.result === "not_ok") return checkIssueReasonLabel(state.reason) || "Issue";
+  if (state.result === "not_ok") {
+    const reason = checkIssueReasonLabel(state.reason);
+    return reason ? `Issue — ${reason}` : "Issue";
+  }
   return "Not answered";
 }
 

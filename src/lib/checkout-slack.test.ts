@@ -175,3 +175,15 @@ test("a webhook timeout is a delivery error", async () => {
     (err: unknown) => err instanceof SlackDeliveryError && err.message === "timeout"
   );
 });
+
+test("Slack post lists each checklist issue with its reason and note", () => {
+  const r = report();
+  r.inspectionForm!.checks.headlights = {
+    result: "not_ok",
+    reason: "not_working",
+    note: "left bulb",
+  };
+  const text = checkoutSlackText(r, { appOrigin: ORIGIN });
+  assert.match(text, /\*Check issue:\* Headlights: Issue — Not working — left bulb/);
+  assert.doesNotMatch(checkoutSlackText(report(), { appOrigin: ORIGIN }), /Check issue/);
+});

@@ -1,5 +1,5 @@
 import type { CheckoutInspectionForm } from "./inspection-form";
-import { DAMAGE_SIDES } from "./inspection-form";
+import { DAMAGE_SIDES, checkIssueLines } from "./inspection-form";
 import { damageFlagText, damageSideLine, odometerMismatchNotes } from "./photo-flags";
 import type { CheckoutReport, FuelLevel } from "./types";
 import { FUEL_LEVEL_LABELS } from "./types";
@@ -163,6 +163,7 @@ export function checkoutSlackText(
     `*Result:* ${checkoutResultLabel(report)}`,
     `*Time:* ${formatCheckoutTime(report.completedAt)}`,
     ...odometerMismatchNotes(report.photos).map((note) => `*Odometer mismatch:* ${note}`),
+    ...checkIssueLines(report.inspectionForm).map((line) => `*Check issue:* ${line}`),
   ];
   const tail = `*PDF:* ${links.pdf}\n*Photos:* ${links.photos}`;
   return fitCheckoutSlack(head, checkoutDamageLines(report), tail);

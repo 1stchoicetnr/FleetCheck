@@ -349,7 +349,11 @@ export function InspectionFormFields({
                         },
                       })
                     }
-                    placeholder="Optional note"
+                    placeholder={
+                      state.reason === "other"
+                        ? "What's wrong? (add a short note)"
+                        : "Optional note"
+                    }
                     className="w-full rounded-xl border-2 border-gray-200 px-3 py-2.5 text-sm min-h-[44px]"
                   />
                 </div>
