@@ -265,6 +265,7 @@ export default function AlertsPage() {
                       )}
                     </div>
                     <CardTitle className="text-sm mt-1">{alert.message}</CardTitle>
+                    <AlertDetailsBlock alert={alert} />
                     <p className="text-sm text-gray-600 mt-1">
                       {alert.vehiclePlate} · {alert.actorName}
                     </p>
@@ -273,6 +274,13 @@ export default function AlertsPage() {
                     </p>
                   </div>
                 </div>
+                {alert.reportId && (
+                  <Link href={`/office/${encodeURIComponent(alert.reportId)}`} className="block">
+                    <Button size="sm" className="w-full">
+                      Open check
+                    </Button>
+                  </Link>
+                )}
                 {!alert.read && (
                   <Button
                     size="sm"
@@ -342,6 +350,42 @@ export default function AlertsPage() {
           if (!busy) setPending(null);
         }}
       />
+    </div>
+  );
+}
+
+function AlertDetailsBlock({ alert }: { alert: ListedAlert }) {
+  const d = alert.details;
+  if (!d) return null;
+  const lines = [
+    ...d.issueFlags,
+    ...d.photos.map((p) => (p.note ? `${p.label} photo: ${p.note}` : `${p.label} photo flagged`)),
+    ...d.notes,
+    ...(d.notes.length === 0 && d.marks.length ? [`Marked: ${d.marks.join(", ")}`] : []),
+  ];
+  if (!lines.length) return null;
+  const thumbs = d.photos.filter((p) => p.src).slice(0, 3);
+  return (
+    <div className="mt-2 space-y-2">
+      <ul className="text-sm text-gray-800 list-disc pl-5 space-y-0.5">
+        {lines.map((line) => (
+          <li key={line}>{line}</li>
+        ))}
+      </ul>
+      {thumbs.length > 0 && (
+        <div className="flex gap-2">
+          {thumbs.map((p) => (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              key={p.angle}
+              src={p.src}
+              alt={`${p.label} damage photo`}
+              loading="lazy"
+              className="h-16 w-20 object-cover rounded-lg border border-gray-200"
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
