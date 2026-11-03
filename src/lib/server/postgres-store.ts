@@ -803,10 +803,11 @@ export async function pgListUnsentReportIds(
   orgId: string,
   olderThan: string,
   newerThan: string,
-  limit: number
+  limit: number,
+  noSlackNewerThan?: string
 ): Promise<string[]> {
   await pgMigrateAndSeed();
-  return orgData.listUnsentReportIds(orgDb(), orgId, olderThan, newerThan, limit);
+  return orgData.listUnsentReportIds(orgDb(), orgId, olderThan, newerThan, limit, noSlackNewerThan);
 }
 
 export async function pgCountStuckUploads(orgId: string, olderThan: string): Promise<number> {

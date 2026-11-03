@@ -31,10 +31,13 @@ test("speed samples keep a median for loads and screen changes", () => {
 
 test("the service worker cache version moved forward and caches the shell", () => {
   const sw = readFileSync(path.join(import.meta.dirname, "../../public/sw.js"), "utf8");
-  assert.match(sw, /const CACHE_NAME = "inspekt-v6"/);
-  assert.match(sw, /SHELL_CACHE = "inspekt-shell-v6"/);
-  assert.match(sw, /STATIC_CACHE = "inspekt-static-v6"/);
-  assert.doesNotMatch(sw, /inspekt-v5/);
+  assert.match(sw, /const CACHE_NAME = "inspekt-v7-" \+ BUILD/);
+  assert.match(sw, /SHELL_CACHE = "inspekt-shell-v7-" \+ BUILD/);
+  assert.match(sw, /STATIC_CACHE = "inspekt-static-v7-" \+ BUILD/);
+  assert.doesNotMatch(sw, /inspekt-v6"/);
+  assert.match(sw, /self\.skipWaiting\(\)/);
+  assert.match(sw, /clients\.claim\(\)/);
+  assert.match(sw, /client\.navigate/);
   assert.match(sw, /request\.mode === "navigate"/);
   assert.match(sw, /_next\/static/);
   assert.match(sw, /isApi/);

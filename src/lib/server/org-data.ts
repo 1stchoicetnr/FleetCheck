@@ -571,18 +571,30 @@ export async function listUnsentReportIds(
   orgId: string,
   olderThan: string,
   newerThan: string,
-  limit: number
+  limit: number,
+  /** Older checks back to here are included only when Slack has no checkout post for them. */
+  noSlackNewerThan: string = newerThan
 ): Promise<string[]> {
   const rows = await db.query(
-    `SELECT id FROM checkout_reports
-     WHERE org_id = $1
-       AND archived_at IS NULL
-       AND sent_at IS NULL
-       AND created_at < $2
-       AND created_at > $3
-     ORDER BY created_at DESC
+    `SELECT r.id FROM checkout_reports r
+     WHERE r.org_id = $1
+       AND r.archived_at IS NULL
+       AND r.sent_at IS NULL
+       AND r.created_at < $2
+       AND (
+         r.created_at > $3
+         OR (
+           r.created_at > $5
+           AND NOT EXISTS (
+             SELECT 1 FROM slack_deliveries d
+             WHERE d.org_id = r.org_id AND d.report_id = r.id
+               AND d.kind = 'checkout' AND d.status = 'sent'
+           )
+         )
+       )
+     ORDER BY r.created_at DESC
      LIMIT $4`,
-    [org(orgId), olderThan, newerThan, limit]
+    [org(orgId), olderThan, newerThan, limit, noSlackNewerThan]
   );
   return rows.map((row) => String(row.id));
 }

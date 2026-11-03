@@ -414,7 +414,11 @@ function OfficeReportsPage() {
                         </p>
                       )}
                       <div className="flex flex-wrap items-center gap-2">
-                        <DeliveryBadge createdAt={report.createdAt} sentAt={report.sentAt} />
+                        <DeliveryBadge
+                          createdAt={report.createdAt}
+                          sentAt={report.sentAt}
+                          reason={report.deliveryNote}
+                        />
                         <p className="text-xs text-gray-400">
                           Complete {formatCheckoutTime(report.completedAt)}
                         </p>

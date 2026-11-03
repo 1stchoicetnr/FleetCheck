@@ -1,6 +1,9 @@
-const CACHE_NAME = "inspekt-v6";
-const SHELL_CACHE = "inspekt-shell-v6";
-const STATIC_CACHE = "inspekt-static-v6";
+// Registered as /sw.js?v=<build>. A new build means a new worker and fresh caches,
+// so phones cannot keep running an old app version.
+const BUILD = new URL(self.location.href).searchParams.get("v") || "0";
+const CACHE_NAME = "inspekt-v7-" + BUILD;
+const SHELL_CACHE = "inspekt-shell-v7-" + BUILD;
+const STATIC_CACHE = "inspekt-static-v7-" + BUILD;
 const CURRENT_CACHES = [CACHE_NAME, SHELL_CACHE, STATIC_CACHE];
 
 function isApi(url) {
@@ -59,13 +62,23 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches
-      .keys()
-      .then((keys) =>
-        Promise.all(keys.filter((key) => !CURRENT_CACHES.includes(key)).map((key) => caches.delete(key)))
-      )
-      .then(() => self.clients.claim())
+    (async () => {
+      const keys = await caches.keys();
+      const stale = keys.filter((key) => !CURRENT_CACHES.includes(key));
+      await Promise.all(stale.map((key) => caches.delete(key)));
+      await self.clients.claim();
+      // Old app versions had no reload-on-update code. If we just replaced an
+      // older worker, reload open pages so they pick up the new app.
+      if (stale.length > 0) {
+        const windows = await self.clients.matchAll({ type: "window" });
+        await Promise.all(windows.map((client) => client.navigate(client.url).catch(() => undefined)));
+      }
+    })()
   );
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") self.skipWaiting();
 });
 
 self.addEventListener("fetch", (event) => {
