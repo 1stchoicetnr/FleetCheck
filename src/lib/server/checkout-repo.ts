@@ -726,6 +726,7 @@ export async function createReport(
   const published = publicCompanySettings(settingsDoc);
   const inspection = validateInspectionForm(input.inspectionForm, powertrain, {
     includeClover: usesClover(published, input.companyId),
+    requireIssueReason: false,
   });
   if (!inspection.ok) {
     throw new SharedBackendError(inspection.error, 400);
