@@ -412,7 +412,9 @@ export async function listReportPage(
               'angle', elem.value->>'angle',
               'capturedAt', elem.value->>'capturedAt',
               'flaggedDamage', CASE WHEN elem.value->>'flaggedDamage' = 'true' THEN true ELSE NULL END,
-              'damageNote', NULLIF(btrim(COALESCE(elem.value->>'damageNote', '')), '')
+              'damageNote', NULLIF(btrim(COALESCE(elem.value->>'damageNote', '')), ''),
+              'qualityNote', CASE WHEN btrim(COALESCE(elem.value->>'qualityNote', '')) ILIKE 'odometer check:%'
+                THEN left(btrim(elem.value->>'qualityNote'), 500) ELSE NULL END
             )
           )
           FROM jsonb_array_elements(COALESCE(photos, '[]'::jsonb)) AS elem

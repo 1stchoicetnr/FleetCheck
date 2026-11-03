@@ -12,6 +12,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { canReviewCheckout, isOwnerAccount } from "@/lib/fleet-config";
 import { canReviewAccessRequests, settingsSections } from "@/lib/home-menu";
 import { isCheckoutFlagged } from "@/lib/storage";
+import { odometerMismatchNotes } from "@/lib/photo-flags";
 import {
   fetchCheckoutReports,
   fetchCompanies,
@@ -369,6 +370,11 @@ function OfficeReportsPage() {
                           {flagged && (
                             <span className="text-[11px] font-semibold text-red-300">
                               Flagged
+                            </span>
+                          )}
+                          {odometerMismatchNotes(report.photos).length > 0 && (
+                            <span className="rounded-full border border-amber-500/40 bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-300">
+                              Odometer mismatch
                             </span>
                           )}
                           {report.archivedAt && (

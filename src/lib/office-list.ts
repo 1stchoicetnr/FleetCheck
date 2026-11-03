@@ -1,5 +1,5 @@
 import { inspectionFormFlagsReport } from "./inspection-form.ts";
-import { cleanDamageNote } from "./photo-flags.ts";
+import { cleanDamageNote, odometerMismatchNotes } from "./photo-flags.ts";
 import type { CheckoutReport, CheckoutReviewStatus } from "./types.ts";
 
 export function isOfficeReportFlagged(report: CheckoutReport): boolean {
@@ -47,7 +47,7 @@ export function officeReportPage(query: { limit?: number; offset?: number }): {
   };
 }
 
-/** List rows keep damage flags and notes, not photo bytes or the signature. */
+/** List rows keep damage flags, notes and odometer-mismatch notes, not photo bytes or the signature. */
 export function toOfficeListReport(report: CheckoutReport): CheckoutReport {
   const next: CheckoutReport = {
     ...report,
@@ -56,6 +56,7 @@ export function toOfficeListReport(report: CheckoutReport): CheckoutReport {
       capturedAt: photo.capturedAt,
       flaggedDamage: photo.flaggedDamage || undefined,
       damageNote: cleanDamageNote(photo.damageNote),
+      qualityNote: odometerMismatchNotes([photo])[0],
       dataUrl: "",
     })),
   };
