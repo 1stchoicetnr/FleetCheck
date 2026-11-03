@@ -414,7 +414,8 @@ export async function listReportPage(orgId: string, query: OfficeListQuery) {
   const { limit, offset } = officeReportPage(query);
   if (mode === "postgres") {
     const status = query.status && query.status !== "all" ? query.status : null;
-    const page = await pgListReportPage(orgId, {
+    const olderThan = new Date(Date.now() - STUCK_UPLOAD_AFTER_MS).toISOString();
+    const [page, stuck] = await Promise.all([pgListReportPage(orgId, {
       includeArchived: query.includeArchived,
       companyId: query.companyId,
       vehicleId: query.vehicleId,
@@ -422,8 +423,7 @@ export async function listReportPage(orgId: string, query: OfficeListQuery) {
       limit,
       offset,
       vehicleIds: query.vehicleIds,
-    });
-    const olderThan = new Date(Date.now() - STUCK_UPLOAD_AFTER_MS).toISOString();
+    }), pgCountStuckUploads(orgId, olderThan)]);
     const published = page.reports.some((report) => !report.sentAt)
       ? publicCompanySettings(await readStoredCompanySettings(orgId))
       : null;
@@ -435,7 +435,7 @@ export async function listReportPage(orgId: string, query: OfficeListQuery) {
           : undefined;
         return toOfficeListReport(reason ? { ...report, deliveryNote: reason } : report);
       }),
-      stuck: await pgCountStuckUploads(orgId, olderThan),
+      stuck,
       limit,
       offset,
     };

@@ -134,9 +134,52 @@ function rowToReport(row: ReportRow): CheckoutReport {
 }
 
 let migrated = false;
+let migrating: Promise<void> | null = null;
 
+/**
+ * Bump this whenever pgMigrateAndSeed changes (new table, column, index, seed
+ * or one-time fix). While the database already has this version, a new server
+ * instance skips the ~100 one-by-one setup queries and makes one quick check.
+ */
+export const SCHEMA_VERSION = "2026-11-02.1";
+
+async function schemaIsCurrent(): Promise<boolean> {
+  try {
+    const rows = (await sqlClient().query(
+      "SELECT value FROM app_meta WHERE key = 'schema_version'"
+    )) as Array<{ value?: string }>;
+    return rows[0]?.value === SCHEMA_VERSION;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Runs once per server instance. Requests that arrive together on a cold
+ * instance share one run instead of each doing the full setup.
+ */
 export async function pgMigrateAndSeed(): Promise<void> {
   if (migrated) return;
+  if (!migrating) {
+    migrating = (async () => {
+      if (!(await schemaIsCurrent())) {
+        await runMigrateAndSeed();
+        const sql = sqlClient();
+        await sql`CREATE TABLE IF NOT EXISTS app_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`;
+        await sql`
+          INSERT INTO app_meta (key, value) VALUES ('schema_version', ${SCHEMA_VERSION})
+          ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+        `;
+      }
+      migrated = true;
+    })().finally(() => {
+      migrating = null;
+    });
+  }
+  await migrating;
+}
+
+async function runMigrateAndSeed(): Promise<void> {
   const sql = sqlClient();
   await sql`
     CREATE TABLE IF NOT EXISTS companies (
@@ -421,8 +464,6 @@ export async function pgMigrateAndSeed(): Promise<void> {
       `[manager-role] office memberships left as office: ${managerRole.officeCount}`
     );
   }
-
-  migrated = true;
 }
 
 export async function pgAssertFleetInOrg(orgId: string, fleetId: string): Promise<void> {

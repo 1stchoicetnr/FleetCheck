@@ -386,7 +386,7 @@ export async function listReportPage(
   ];
   const limitSlot = 6 + vehicleParams.length;
   const offsetSlot = limitSlot + 1;
-  const counts = await db.query(
+  const countsQuery = db.query(
     `SELECT
       (COUNT(*) FILTER (WHERE ${STATUS_MATCH}))::int AS total,
       (COUNT(*) FILTER (
@@ -399,7 +399,7 @@ export async function listReportPage(
       ${vehicleSql}`,
     params
   );
-  const rows = await db.query(
+  const rowsQuery = db.query(
     `SELECT
       id, company_id, vehicle_id, unit_number, plate, year, make, model, odometer,
       driver_name, dispatcher_name, type, status, completed_at, review_status,
@@ -428,6 +428,8 @@ export async function listReportPage(
     OFFSET $${offsetSlot}`,
     [...params, query.limit, query.offset]
   );
+  // Neon's HTTP driver runs these in parallel, so one round trip instead of two.
+  const [counts, rows] = await Promise.all([countsQuery, rowsQuery]);
   return { counts: counts[0] ?? {}, rows };
 }
 
