@@ -154,6 +154,8 @@ export interface CheckoutReport {
   signedAt?: string;
   /** Set when the phone submitted this check. Retries reuse it. */
   idempotencyKey?: string;
+  /** Office only: why an unsent check is stuck, e.g. "Old app · never sent". Not stored. */
+  deliveryNote?: string;
   /** Set when the phone finished uploading. Empty means Office is still waiting. */
   sentAt?: string;
   /** ISO timestamp when Office archived this report. Absent = visible in the default list. */

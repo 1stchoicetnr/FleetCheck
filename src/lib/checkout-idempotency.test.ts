@@ -308,3 +308,46 @@ test("photo byte estimate skips a second compress only for a modest jpeg", () =>
   assert.equal(alreadyUploadReady("data:image/png;base64,AAAA"), false);
   assert.equal(alreadyUploadReady(`data:image/jpeg;base64,${"A".repeat(600_000)}`), false);
 });
+
+test("when the server is missing photos at send, the phone uploads every photo again", async () => {
+  let stored = sampleItem({ serverReportId: "report-1" });
+  stored = {
+    ...stored,
+    uploadedTokens: Object.fromEntries(
+      stored.photos.map((photo) => [photo.angle, photoToken(photo.dataUrl)])
+    ),
+  };
+  const uploaded: string[] = [];
+  let sendCalls = 0;
+  const transport = {
+    async create() {
+      throw new Error("should not create");
+    },
+    async upload(_id: string, photos: Array<{ angle: string }>) {
+      uploaded.push(...photos.map((photo) => photo.angle));
+      return { id: "report-1" } as never;
+    },
+    async markSent() {
+      sendCalls += 1;
+      if (sendCalls === 1) {
+        const err = new Error("This check still needs its photos before it can be sent.") as Error & {
+          status: number;
+        };
+        err.status = 409;
+        throw err;
+      }
+      return { id: "report-1", sentAt: "2026-11-02T00:00:00.000Z" } as never;
+    },
+  };
+  const first = await deliverOutboxItem(stored, transport, async (item) => {
+    stored = item;
+  });
+  assert.equal(first.done, false);
+  assert.equal(stored.permanent, false);
+  assert.deepEqual(stored.uploadedTokens, {});
+  const second = await deliverOutboxItem(stored, transport, async (item) => {
+    stored = item;
+  }, Date.parse(stored.nextAttemptAt));
+  assert.equal(second.done, true);
+  assert.deepEqual(uploaded.sort(), stored.photos.map((photo) => photo.angle).sort());
+});

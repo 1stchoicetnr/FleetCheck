@@ -13,13 +13,17 @@ export function DeliveryBadge({
   sentAt,
   localOnly,
   unfinished,
+  reason,
 }: {
   createdAt: string;
   sentAt?: string | null;
   localOnly?: boolean;
   unfinished?: boolean;
+  /** Specific reason shown instead of the generic "Stuck" label. */
+  reason?: string;
 }) {
-  const view = deliveryView({ createdAt, sentAt, localOnly, unfinished });
+  const base = deliveryView({ createdAt, sentAt, localOnly, unfinished });
+  const view = base.state === "stuck" && reason ? { ...base, label: `Stuck · ${reason}` } : base;
   return (
     <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${TONE[view.state]}`}>
       {view.label}

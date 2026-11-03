@@ -8,8 +8,11 @@ import {
   canViewArchivedRecords,
   resolveRequestAuth,
 } from "@/lib/server/request-auth";
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
+import { slackLinkOrigin } from "@/lib/server/auth-http";
+import { sweepUnsentSoon } from "@/lib/server/unsent-sweep";
 import {
+  confirmReportSent,
   createReport,
   listReportPage,
 } from "@/lib/server/checkout-repo";
@@ -55,6 +58,9 @@ export async function GET(req: NextRequest) {
       offset: params.has("offset") ? Number(params.get("offset")) : undefined,
     });
     const dur = (performance.now() - started).toFixed(1);
+    // Safety net: mark sent any finished check the phone never confirmed.
+    const origin = slackLinkOrigin(req);
+    after(() => sweepUnsentSoon(auth.orgId, origin) ?? undefined);
     return NextResponse.json(page, {
       headers: {
         "Cache-Control": "no-store",
@@ -66,7 +72,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
     const auth = await assertCheckoutSubmitter(req);
     const orgId = auth.orgId;
@@ -130,6 +136,28 @@ export async function POST(req: Request) {
       idempotencyKey:
         typeof body.idempotencyKey === "string" ? body.idempotencyKey : undefined,
     });
+    if (!body.idempotencyKey) {
+      // Old cached app (before Oct 20). It never sends the "sent" step, so the
+      // server finishes the check itself and tells the phone to reload.
+      let finished = report;
+      if (report.status === "complete" && !report.sentAt) {
+        try {
+          finished = await confirmReportSent(orgId, report.id, {
+            appOrigin: slackLinkOrigin(req),
+            office: false,
+          });
+        } catch (err) {
+          console.log(
+            `[checkout-legacy] report=${report.id} result=sent-failed ${err instanceof Error ? err.message : String(err)}`
+          );
+        }
+      }
+      console.log(`[checkout-legacy] report=${report.id} result=created-old-app`);
+      return NextResponse.json(
+        { report: toClientReport(finished), reload: true },
+        { status: 201, headers: { "X-Inspekt-Reload": "1" } }
+      );
+    }
     return NextResponse.json({ report: toClientReport(report) }, { status: 201 });
   } catch (err) {
     return errorResponse(err, "Failed to create report");

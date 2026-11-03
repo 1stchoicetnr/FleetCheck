@@ -132,6 +132,12 @@ export function isPermanentOutboxError(
   );
 }
 
+/** Mark-sent was refused because a required photo is not on the server. */
+export function serverIsMissingPhotos(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : "";
+  return errorStatus(err) === 409 && /needs its photos/i.test(message);
+}
+
 export function errorStatus(err: unknown): number | undefined {
   if (!err || typeof err !== "object" || !("status" in err)) return undefined;
   const status = (err as { status?: unknown }).status;
@@ -229,7 +235,12 @@ export async function deliverOutboxItem(
     }
     return { done: true, item: current, report };
   } catch (err) {
-    const failed = scheduleOutboxFailure(current, err, now);
+    let failed = scheduleOutboxFailure(current, err, now);
+    if (serverIsMissingPhotos(err)) {
+      // The server does not have every photo this phone thinks it sent.
+      // Send them all again next time. A photo upload replaces by angle.
+      failed = { ...failed, uploadedTokens: {} };
+    }
     await save(failed);
     return { done: false, item: failed };
   }

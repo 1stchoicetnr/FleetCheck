@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect } from "react";
+import { isStaleBuild } from "@/lib/build-version";
+
+const BUILD_ID = process.env.NEXT_PUBLIC_BUILD_ID || "dev";
 
 export function ServiceWorkerRegister() {
   useEffect(() => {
@@ -26,11 +29,31 @@ export function ServiceWorkerRegister() {
     navigator.serviceWorker.addEventListener("controllerchange", onControllerChange);
 
     navigator.serviceWorker
-      .register("/sw.js", { updateViaCache: "none" })
+      .register(`/sw.js?v=${encodeURIComponent(BUILD_ID)}`, { updateViaCache: "none" })
       .then((registration) => registration.update())
       .catch(() => {});
 
+    // Reload when the server is on a newer build than this page.
+    const checkVersion = () => {
+      fetch("/api/version", { cache: "no-store" })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data: { build?: string } | null) => {
+          if (!isStaleBuild(BUILD_ID, data?.build)) return;
+          const key = `inspekt-reload-${data?.build}`;
+          if (sessionStorage.getItem(key)) return;
+          sessionStorage.setItem(key, "1");
+          window.location.reload();
+        })
+        .catch(() => {});
+    };
+    checkVersion();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") checkVersion();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
     return () => {
+      document.removeEventListener("visibilitychange", onVisible);
       navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange);
     };
   }, []);

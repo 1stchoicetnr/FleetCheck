@@ -9,6 +9,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { OfficePinGate } from "@/components/office-pin-gate";
 import { ReviewStatusBadge } from "@/components/review-status-badge";
 import { DeliveryBadge } from "@/components/delivery-badge";
+import { legacyMissingNotes, stuckReason } from "@/lib/legacy-checkout";
 import { CheckoutPhotoComparison } from "@/components/checkout-photo-comparison";
 import {
   LightboxPhoto,
@@ -372,7 +373,19 @@ export default function OfficeReportDetailPage() {
                 </div>
               )}
               <div className="flex flex-wrap items-center gap-2">
-                <DeliveryBadge createdAt={report.createdAt} sentAt={report.sentAt} />
+                <DeliveryBadge
+                  createdAt={report.createdAt}
+                  sentAt={report.sentAt}
+                  reason={stuckReason(report, steps)}
+                />
+                {legacyMissingNotes(report, steps).map((note) => (
+                  <span
+                    key={note}
+                    className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-900"
+                  >
+                    {note}
+                  </span>
+                ))}
                 <p className="text-xs text-gray-400">
                   Complete {formatCheckoutTime(report.completedAt)}
                   {report.reviewedAt

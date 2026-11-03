@@ -11,6 +11,7 @@ import { pgDb, pgGetReport, pgReadCompanySettings } from "@/lib/server/postgres-
 import { runDriverTallies } from "@/lib/server/driver-tally-run";
 import { runSlackDeliveries, slackCronAuth, slackWebhooksFromEnv } from "@/lib/server/slack-delivery";
 import { NextResponse } from "next/server";
+import { sweepUnsentReports } from "@/lib/server/checkout-repo";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -44,6 +45,13 @@ async function run(req: Request) {
       photoSteps,
       appOrigin: appOrigin(),
     });
+    let swept = 0;
+    try {
+      swept = (await sweepUnsentReports(orgId, { appOrigin: appOrigin(), limit: 25 })).sent;
+    } catch (err) {
+      const message = err instanceof Error ? err.message.replace(/https?:\/\/\S+/g, "").slice(0, 120) : "";
+      console.log(`[checkout-sweep] status=error error=${message || "failed"}`);
+    }
     let tallies = 0;
     try {
       const tally = await runDriverTallies({
@@ -57,7 +65,7 @@ async function run(req: Request) {
       const message = err instanceof Error ? err.message.replace(/https?:\/\/\S+/g, "").slice(0, 120) : "";
       console.log(`[driver-tally] status=error error=${message || "failed"}`);
     }
-    return NextResponse.json({ ok: true, ...counts, tallies });
+    return NextResponse.json({ ok: true, ...counts, swept, tallies });
   } catch (err) {
     const message = err instanceof Error ? err.message.replace(/https?:\/\/\S+/g, "").slice(0, 180) : "";
     console.log(`[slack-delivery] status=error error=${message || "failed"}`);
