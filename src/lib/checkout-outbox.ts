@@ -24,6 +24,11 @@ import { driverUploadMessage } from "./delivery-status";
 import { compressUploadPhoto } from "./utils";
 
 let flushing: Promise<number> | null = null;
+/**
+ * Checks being sent right now. The background retry runs every 15 seconds while
+ * the Send screen uploads, so without this both could upload the same check at once.
+ */
+const inFlight = new Set<string>();
 
 function transport() {
   return {
@@ -82,7 +87,14 @@ async function runFlush(): Promise<number> {
   const items = await listCheckoutOutbox();
   const now = Date.now();
   for (const item of items) {
-    const result = await deliverOutboxItem(item, transport(), saveCheckoutOutboxItem, now);
+    if (inFlight.has(item.id)) continue;
+    inFlight.add(item.id);
+    let result: Awaited<ReturnType<typeof deliverOutboxItem>>;
+    try {
+      result = await deliverOutboxItem(item, transport(), saveCheckoutOutboxItem, now);
+    } finally {
+      inFlight.delete(item.id);
+    }
     if (!result.done) continue;
     if (result.report) {
       await saveCheckoutReport({
@@ -193,8 +205,16 @@ export async function submitCheckoutFromDraft(input: {
   }
 
   input.onProgress?.("Uploading", 35);
-  const result = await deliverOutboxItem(
-    item,
+  // A background retry may already be sending this check. Wait for it, then
+  // send whatever is left, so two uploads for one check never run at once.
+  while (inFlight.has(key)) {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  inFlight.add(key);
+  const latest = await getCheckoutOutboxItem(key);
+  const result = latest
+    ? await deliverOutboxItem(
+    { ...latest, nextAttemptAt: now },
     transport(),
     saveCheckoutOutboxItem,
     Date.now(),
@@ -205,7 +225,10 @@ export async function submitCheckoutFromDraft(input: {
         percent
       );
     }
-  );
+  ).finally(() => {
+    inFlight.delete(key);
+  })
+    : (inFlight.delete(key), { done: true as const, item, report: undefined });
   if (result.done) {
     if (result.report) {
       await saveCheckoutReport({

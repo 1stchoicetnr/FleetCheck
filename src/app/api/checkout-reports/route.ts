@@ -8,7 +8,9 @@ import {
   canViewArchivedRecords,
   resolveRequestAuth,
 } from "@/lib/server/request-auth";
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
+import { slackLinkOrigin } from "@/lib/server/auth-http";
+import { sweepUnsentSoon } from "@/lib/server/unsent-sweep";
 import {
   createReport,
   listReportPage,
@@ -55,6 +57,9 @@ export async function GET(req: NextRequest) {
       offset: params.has("offset") ? Number(params.get("offset")) : undefined,
     });
     const dur = (performance.now() - started).toFixed(1);
+    // Safety net: mark sent any finished check the phone never confirmed.
+    const origin = slackLinkOrigin(req);
+    after(() => sweepUnsentSoon(auth.orgId, origin) ?? undefined);
     return NextResponse.json(page, {
       headers: {
         "Cache-Control": "no-store",

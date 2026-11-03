@@ -510,6 +510,83 @@ export async function listReportsForDriver(
   );
 }
 
+/**
+ * Merge photos into one report in a single statement. Two uploads for the same
+ * check can land at once (the phone's background retry and the Send screen).
+ * A read-then-write of the whole photo list let the later write drop the
+ * other request's photos, so the check never had every required photo.
+ */
+export async function mergeReportPhotos(
+  db: OrgDb,
+  orgId: string,
+  id: string,
+  photosJson: string
+): Promise<boolean> {
+  const rows = await db.query(
+    `UPDATE checkout_reports
+     SET photos = COALESCE(
+       (
+         SELECT jsonb_agg(elem.value ORDER BY elem.ordinality)
+         FROM jsonb_array_elements(COALESCE(photos, '[]'::jsonb)) WITH ORDINALITY AS elem(value, ordinality)
+         WHERE NOT EXISTS (
+           SELECT 1 FROM jsonb_array_elements($3::jsonb) AS incoming
+           WHERE incoming->>'angle' = elem.value->>'angle'
+         )
+       ),
+       '[]'::jsonb
+     ) || $3::jsonb
+     WHERE id = $1 AND org_id = $2
+     RETURNING id`,
+    [id, org(orgId), photosJson]
+  );
+  return rows.length > 0;
+}
+
+/** Save fields worked out from the photos without touching the photo list itself. */
+export async function updateReportPhotoResult(
+  db: OrgDb,
+  orgId: string,
+  report: {
+    id: string;
+    status: string;
+    reviewStatus: string;
+    flagged: boolean;
+    inspectionFormJson: string;
+  }
+): Promise<void> {
+  await db.query(
+    `UPDATE checkout_reports
+     SET status = CASE WHEN status = 'complete' THEN status ELSE $3 END,
+         review_status = $4,
+         flagged = $5,
+         inspection_form = $6::jsonb
+     WHERE id = $1 AND org_id = $2`,
+    [report.id, org(orgId), report.status, report.reviewStatus, report.flagged, report.inspectionFormJson]
+  );
+}
+
+/** Checks with no sent time that are old enough to have finished. Newest first. */
+export async function listUnsentReportIds(
+  db: OrgDb,
+  orgId: string,
+  olderThan: string,
+  newerThan: string,
+  limit: number
+): Promise<string[]> {
+  const rows = await db.query(
+    `SELECT id FROM checkout_reports
+     WHERE org_id = $1
+       AND archived_at IS NULL
+       AND sent_at IS NULL
+       AND created_at < $2
+       AND created_at > $3
+     ORDER BY created_at DESC
+     LIMIT $4`,
+    [org(orgId), olderThan, newerThan, limit]
+  );
+  return rows.map((row) => String(row.id));
+}
+
 export async function countStuckUploads(db: OrgDb, orgId: string, olderThan: string) {
   const rows = await db.query(
     `SELECT COUNT(*)::int AS stuck

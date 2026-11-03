@@ -776,6 +776,39 @@ export async function pgListReportsForDriver(
   return rows.map(rowToReport);
 }
 
+export async function pgMergeReportPhotos(
+  orgId: string,
+  id: string,
+  photos: VehiclePhoto[]
+): Promise<boolean> {
+  await pgMigrateAndSeed();
+  return orgData.mergeReportPhotos(orgDb(), orgId, id, JSON.stringify(photos));
+}
+
+export async function pgUpdateReportPhotoResult(
+  orgId: string,
+  report: CheckoutReport
+): Promise<void> {
+  await pgMigrateAndSeed();
+  await orgData.updateReportPhotoResult(orgDb(), orgId, {
+    id: report.id,
+    status: report.status,
+    reviewStatus: report.reviewStatus,
+    flagged: report.flagged,
+    inspectionFormJson: JSON.stringify(report.inspectionForm ?? null),
+  });
+}
+
+export async function pgListUnsentReportIds(
+  orgId: string,
+  olderThan: string,
+  newerThan: string,
+  limit: number
+): Promise<string[]> {
+  await pgMigrateAndSeed();
+  return orgData.listUnsentReportIds(orgDb(), orgId, olderThan, newerThan, limit);
+}
+
 export async function pgCountStuckUploads(orgId: string, olderThan: string): Promise<number> {
   await pgMigrateAndSeed();
   return orgData.countStuckUploads(orgDb(), orgId, olderThan);

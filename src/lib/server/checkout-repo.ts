@@ -89,7 +89,7 @@ import {
 } from "./slack-delivery";
 import { RAD_CAB_COMPANY_ID } from "@/lib/company-rules";
 import { assertIdempotencyKey, isUniqueViolation } from "@/lib/checkout-idempotency";
-import { isStuckUpload, STUCK_UPLOAD_AFTER_MS } from "@/lib/delivery-status";
+import { HISTORICAL_SENT_BEFORE, isStuckUpload, STUCK_UPLOAD_AFTER_MS } from "@/lib/delivery-status";
 import {
   pgAssertFleetInOrg,
   pgDeleteFleet,
@@ -99,6 +99,9 @@ import {
   pgGetReport,
   pgListReportsForDriver,
   pgMarkReportSent,
+  pgMergeReportPhotos,
+  pgUpdateReportPhotoResult,
+  pgListUnsentReportIds,
   pgGetVehicle,
   pgInsertFleet,
   pgListCompanies,
@@ -514,6 +517,58 @@ export async function confirmReportSent(
   return saved;
 }
 
+const SWEEP_AFTER_MS = 5 * 60 * 1000;
+const SWEEP_LOOKBACK_MS = 3 * 24 * 60 * 60 * 1000;
+
+/**
+ * Safety net for checks the phone never finished sending. Any check older than
+ * 5 minutes with every required photo stored (or a red precheck) and no sent
+ * time is marked sent and posted to Slack. Slack posting is idempotent, so a
+ * check already in Slack is not posted twice. Checks still missing photos are
+ * left alone and logged with the missing angles.
+ */
+export async function sweepUnsentReports(
+  orgId: string,
+  options?: { appOrigin?: string; limit?: number }
+): Promise<{ checked: number; sent: number; missingPhotos: number }> {
+  const mode = assertConfigured();
+  if (mode !== "postgres") return { checked: 0, sent: 0, missingPhotos: 0 };
+  const now = Date.now();
+  const olderThan = new Date(now - SWEEP_AFTER_MS).toISOString();
+  const lookback = Math.max(now - SWEEP_LOOKBACK_MS, Date.parse(HISTORICAL_SENT_BEFORE));
+  const ids = await pgListUnsentReportIds(
+    orgId,
+    olderThan,
+    new Date(lookback).toISOString(),
+    options?.limit ?? 10
+  );
+  if (ids.length === 0) return { checked: 0, sent: 0, missingPhotos: 0 };
+  const settingsDoc = await readStoredCompanySettings(orgId);
+  const published = publicCompanySettings(settingsDoc);
+  let sent = 0;
+  let missingPhotos = 0;
+  for (const id of ids) {
+    const report = await pgGetReport(orgId, id);
+    if (!report || report.sentAt || report.archivedAt) continue;
+    const missing = missingRequiredPhotos(report, photoStepsForCompany(published, report.companyId));
+    if (missing.length > 0) {
+      missingPhotos += 1;
+      console.log(`[checkout-sweep] report=${id} result=missing-photos angles=${missing.join(",")}`);
+      continue;
+    }
+    try {
+      await confirmReportSent(orgId, id, { appOrigin: options?.appOrigin, office: false });
+      sent += 1;
+      console.log(`[checkout-sweep] report=${id} result=sent`);
+    } catch (err) {
+      console.log(
+        `[checkout-sweep] report=${id} result=failed ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+  }
+  return { checked: ids.length, sent, missingPhotos };
+}
+
 /** Owner action. Does not post again when Slack already has the check. */
 export async function resendReportToSlack(
   orgId: string,
@@ -707,6 +762,39 @@ function reportWithPhotos(
   };
 }
 
+/**
+ * Store new photos and work out status from what the database now holds.
+ * Postgres merges the photo list in one statement, so two uploads for the same
+ * check at once cannot drop each other's photos.
+ */
+async function savePhotosToReport(
+  mode: ReturnType<typeof assertConfigured>,
+  orgId: string,
+  existing: CheckoutReport,
+  stored: VehiclePhoto[]
+): Promise<CheckoutReport> {
+  const steps = photoStepsForCompany(
+    publicCompanySettings(await readStoredCompanySettings(orgId)),
+    existing.companyId
+  );
+  if (mode !== "postgres") {
+    const photos = [...existing.photos];
+    for (const photo of stored) {
+      const idx = photos.findIndex((item) => item.angle === photo.angle);
+      if (idx >= 0) photos[idx] = photo;
+      else photos.push(photo);
+    }
+    return localPutReport(reportWithPhotos(existing, photos, steps));
+  }
+  if (!(await pgMergeReportPhotos(orgId, existing.id, stored))) {
+    throw new SharedBackendError("Checkout report not found", 404);
+  }
+  const fresh = (await pgGetReport(orgId, existing.id)) ?? existing;
+  const updated = reportWithPhotos(fresh, fresh.photos, steps);
+  await pgUpdateReportPhotoResult(orgId, updated);
+  return { ...updated, status: fresh.status === "complete" ? "complete" : updated.status, synced: true };
+}
+
 export async function addReportPhoto(
   orgId: string,
   reportId: string,
@@ -730,14 +818,7 @@ export async function addReportPhoto(
     damageNote: cleanDamageNote(flags?.damageNote),
     qualityNote: cleanDamageNote(flags?.qualityNote),
   };
-  const photos = existing.photos.filter((p) => p.angle !== angle);
-  photos.push(photo);
-  const steps = photoStepsForCompany(
-    publicCompanySettings(await readStoredCompanySettings(orgId)),
-    existing.companyId
-  );
-  const updated = reportWithPhotos(existing, photos, steps);
-  const saved = mode === "postgres" ? await pgPutReport(orgId, updated) : await localPutReport(updated);
+  const saved = await savePhotosToReport(mode, orgId, existing, [photo]);
   if (flags?.flaggedDamage) {
     void recordCheckoutAlerts(orgId, saved).catch((err) => {
       console.error("[alerts] photo flag alerts failed:", err);
@@ -776,18 +857,7 @@ export async function addReportPhotos(
       return photo;
     })
   );
-  const photos = [...existing.photos];
-  for (const photo of stored) {
-    const idx = photos.findIndex((item) => item.angle === photo.angle);
-    if (idx >= 0) photos[idx] = photo;
-    else photos.push(photo);
-  }
-  const steps = photoStepsForCompany(
-    publicCompanySettings(await readStoredCompanySettings(orgId)),
-    existing.companyId
-  );
-  const updated = reportWithPhotos(existing, photos, steps);
-  const saved = mode === "postgres" ? await pgPutReport(orgId, updated) : await localPutReport(updated);
+  const saved = await savePhotosToReport(mode, orgId, existing, stored);
   if (stored.some((photo) => photo.flaggedDamage)) {
     void recordCheckoutAlerts(orgId, saved).catch((err) => {
       console.error("[alerts] photo flag alerts failed:", err);
