@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import type { User } from "@/lib/types";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AppHeader } from "@/components/app-header";
 import { CheckoutAccountNotice } from "@/components/checkout-account-notice";
@@ -52,7 +53,29 @@ import { ClipboardCheck } from "lucide-react";
 import { useCheckoutFeedbackMeta } from "@/components/checkout-feedback";
 
 function CheckoutStartPage() {
-  const { user, loading } = useAuth();
+  const { user, loading, adoptUser } = useAuth();
+  const [nameDraft, setNameDraft] = useState("");
+  const [nameSaving, setNameSaving] = useState(false);
+  const [nameError, setNameError] = useState("");
+  async function saveOwnName() {
+    setNameSaving(true);
+    setNameError("");
+    try {
+      const res = await fetch("/api/auth/session", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: nameDraft }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { user?: User; error?: string };
+      if (!res.ok || !data.user) throw new Error(data.error || "Could not save your name.");
+      adoptUser(data.user);
+      setNameDraft("");
+    } catch (err) {
+      setNameError(err instanceof Error ? err.message : "Could not save your name.");
+    } finally {
+      setNameSaving(false);
+    }
+  }
   const router = useRouter();
   const searchParams = useSearchParams();
   const draftOdometer = useRef<string | null>(null);
@@ -649,10 +672,31 @@ function CheckoutStartPage() {
                 <p className="text-xs text-gray-500 mt-1">
                   Taken from the signed-in person. It is not copied from the last check.
                 </p>
-                {showErrors && isGenericDriverName(user?.name) && (
-                  <p className="text-sm text-red-600 mt-1">
-                    A placeholder name like Driver is blocked. Ask Office for your real name.
-                  </p>
+                {user && isGenericDriverName(user.name) && (
+                  <div className="mt-2">
+                    <p className="text-sm text-red-600">
+                      Set your real name before you submit. A placeholder like Driver is blocked.
+                    </p>
+                    <div className="flex gap-2 mt-2">
+                      <input
+                        className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-base"
+                        placeholder="First and last name"
+                        value={nameDraft}
+                        maxLength={60}
+                        autoComplete="name"
+                        onChange={(e) => setNameDraft(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        className="rounded-lg bg-blue-600 px-3 py-2 text-white font-semibold disabled:opacity-50"
+                        disabled={nameSaving || !nameDraft.trim()}
+                        onClick={saveOwnName}
+                      >
+                        {nameSaving ? "Saving…" : "Set my name"}
+                      </button>
+                    </div>
+                    {nameError && <p className="text-sm text-red-600 mt-1">{nameError}</p>}
+                  </div>
                 )}
               </div>
               {!addingUnit && (
