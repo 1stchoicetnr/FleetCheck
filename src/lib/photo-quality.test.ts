@@ -36,3 +36,12 @@ test("only document and odometer slots are checked, and generic driver names are
   assert.equal(isGenericDriverName(" driver 2 "), true);
   assert.equal(isGenericDriverName("Ada Lovelace"), false);
 });
+
+import { cleanOwnName } from "./driver-name.ts";
+test("cleanOwnName refuses placeholders and keeps real names", () => {
+  assert.equal(cleanOwnName("Driver"), null);
+  assert.equal(cleanOwnName("  driver 2 "), null);
+  assert.equal(cleanOwnName(""), null);
+  assert.equal(cleanOwnName("K"), null);
+  assert.equal(cleanOwnName("  Ken   Smith "), "Ken Smith");
+});

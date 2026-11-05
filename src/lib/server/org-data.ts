@@ -2247,3 +2247,12 @@ export async function deleteMemberUser(db: OrgDb, orgId: string, userId: string)
   );
   return Boolean(rows[0]);
 }
+
+/** The signed-in person renames themself. Only the name changes. */
+export async function updateOwnName(db: OrgDb, orgId: string, id: string, name: string) {
+  const rows = await db.query(
+    "UPDATE app_users SET name = $1 WHERE id = $2 AND org_id = $3 RETURNING id",
+    [name, id, org(orgId)]
+  );
+  if (!rows[0]) throw new OrgAccessError();
+}

@@ -22,3 +22,15 @@ export function isGenericDriverName(name: string | null | undefined): boolean {
   if (GENERIC.has(normalized)) return true;
   return /^driver(?:\s+\d+)?$/.test(normalized);
 }
+
+export const DRIVER_NAME_MAX = 60;
+export const SET_NAME_MESSAGE =
+  "Set your real name before you submit a check. Tap Set my name on the checkout page.";
+
+/** Trimmed name the signed-in person may save as their own, or null when it is a placeholder. */
+export function cleanOwnName(name: unknown): string | null {
+  if (typeof name !== "string") return null;
+  const trimmed = name.trim().replace(/\s+/g, " ").slice(0, DRIVER_NAME_MAX);
+  if (trimmed.length < 2 || isGenericDriverName(trimmed)) return null;
+  return trimmed;
+}

@@ -1,3 +1,4 @@
+import { isGenericDriverName, SET_NAME_MESSAGE } from "@/lib/driver-name";
 import { toClientReport } from "@/lib/photo-url";
 import { errorResponse } from "@/lib/server/api-error";
 import { assertDriverMayCheckVehicle } from "@/lib/server/driver-fleets";
@@ -123,6 +124,12 @@ export async function POST(req: NextRequest) {
     ) {
       return NextResponse.json({ error: "Signature image is invalid or too large" }, { status: 400 });
     }
+    if (isGenericDriverName(auth.name)) {
+      return NextResponse.json(
+        { error: SET_NAME_MESSAGE, code: "driver_name_required" },
+        { status: 400 }
+      );
+    }
     await assertDriverMayCheckVehicle(auth, body.vehicleId);
     const report = await createReport(orgId, {
       companyId: body.companyId,
@@ -133,7 +140,8 @@ export async function POST(req: NextRequest) {
       make: body.make,
       model: body.model,
       odometer: Number(body.odometer),
-      driverName: body.driverName,
+      // The signed-in person, never a typed or cached name.
+      driverName: auth.name!.trim(),
       dispatcherName: body.dispatcherName,
       type: body.type === "check_in" ? "check_in" : "check_out",
       inspectionForm: body.inspectionForm,
