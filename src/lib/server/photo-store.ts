@@ -2,7 +2,12 @@ import { del, get, put } from "@vercel/blob";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { checkoutObjectPath } from "./org-scope";
-import { hasBlobToken, isLocalSharedStoreEnabled } from "./shared-config";
+import {
+  hasBlobToken,
+  isLocalSharedStoreEnabled,
+  privatePhotoBlobToken,
+  publicBlobToken,
+} from "./shared-config";
 
 const DATA_DIR = path.join(process.cwd(), ".data", "blobs");
 
@@ -64,9 +69,13 @@ export async function persistCheckoutPhoto(
   const ext = contentType.includes("png") ? "png" : contentType.includes("webp") ? "webp" : "jpg";
   const filename = checkoutObjectPath(orgId, reportId, angle, ext);
 
-  if (hasBlobToken()) {
+  const token = privatePhotoBlobToken();
+  if (token) {
+    // New photos go to the private store. The old store is public and rejects
+    // private uploads, so PRIVATE_BLOB_READ_WRITE_TOKEN wins when it is set.
     const blob = await put(filename, buffer, {
       access: "private",
+      token,
       contentType: contentType.includes("png")
         ? "image/png"
         : contentType.includes("webp")
@@ -85,7 +94,7 @@ export async function persistCheckoutPhoto(
   }
 
   throw new Error(
-    "Photo storage is not configured. Set BLOB_READ_WRITE_TOKEN on Vercel."
+    "Photo storage is not configured. Set PRIVATE_BLOB_READ_WRITE_TOKEN on Vercel."
   );
 }
 
@@ -140,7 +149,7 @@ async function fetchPublicPhoto(url: string): Promise<StoredPhotoBytes> {
 }
 
 async function readPrivateBlob(url: string): Promise<StoredPhotoBytes> {
-  const result = await get(url, { access: "private" });
+  const result = await get(url, { access: "private", token: privatePhotoBlobToken() });
   if (!result || result.statusCode !== 200 || !result.stream) {
     throw new Error("Could not load stored photo");
   }
@@ -179,14 +188,21 @@ export async function readStoredPhotoBytes(
   return fetchPublic(url);
 }
 
+/** Private photos are deleted with the private token, older public ones with the public token. */
+export function deleteTokenFor(url: string): string | undefined {
+  return blobAccessKind(url) === "private" ? privatePhotoBlobToken() : publicBlobToken();
+}
+
 /** Best-effort removal of a stored checkout photo. Missing files are ignored. */
 export async function deleteStoredPhoto(url: string | undefined): Promise<void> {
   if (!url || url.startsWith("/photo-examples/") || url.startsWith("/api/shared-files/")) {
     return;
   }
   if (!hasBlobToken() || !url.startsWith("http")) return;
+  const token = deleteTokenFor(url);
+  if (!token) return;
   try {
-    await del(url);
+    await del(url, { token });
   } catch (err) {
     console.error("[photos] delete failed:", err);
   }
