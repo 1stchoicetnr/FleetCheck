@@ -11,8 +11,23 @@ export function getDatabaseUrl(): string | undefined {
   return process.env.DATABASE_URL || process.env.POSTGRES_URL;
 }
 
+/**
+ * BLOB_READ_WRITE_TOKEN is the original (public) Blob store. Older photos and
+ * feedback screenshots live there. PRIVATE_BLOB_READ_WRITE_TOKEN is the private
+ * store new checkout photos go to.
+ */
 export function hasBlobToken(): boolean {
-  return Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+  return Boolean(process.env.BLOB_READ_WRITE_TOKEN || process.env.PRIVATE_BLOB_READ_WRITE_TOKEN);
+}
+
+/** Token for writing and reading private checkout photos. */
+export function privatePhotoBlobToken(): string | undefined {
+  return process.env.PRIVATE_BLOB_READ_WRITE_TOKEN || process.env.BLOB_READ_WRITE_TOKEN || undefined;
+}
+
+/** Token for the original public store (old photos, feedback screenshots). */
+export function publicBlobToken(): string | undefined {
+  return process.env.BLOB_READ_WRITE_TOKEN || undefined;
 }
 
 export function getOfficePin(): string {

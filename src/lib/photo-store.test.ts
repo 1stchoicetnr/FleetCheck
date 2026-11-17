@@ -45,3 +45,36 @@ test("a public photo stays on the open URL, and a closed one can fall back", asy
   });
   assert.deepEqual(Array.from(closed.bytes), [7]);
 });
+
+test("new photos use the private store token; old public photos keep the public token", async () => {
+  const { privatePhotoBlobToken, publicBlobToken, hasBlobToken } = await import(
+    "./server/shared-config.ts"
+  );
+  const { deleteTokenFor } = await import("./server/photo-store.ts");
+  const saved = {
+    pub: process.env.BLOB_READ_WRITE_TOKEN,
+    priv: process.env.PRIVATE_BLOB_READ_WRITE_TOKEN,
+  };
+  try {
+    process.env.BLOB_READ_WRITE_TOKEN = "public-store";
+    process.env.PRIVATE_BLOB_READ_WRITE_TOKEN = "private-store";
+    assert.equal(privatePhotoBlobToken(), "private-store");
+    assert.equal(publicBlobToken(), "public-store");
+    assert.equal(deleteTokenFor(PRIVATE), "private-store");
+    assert.equal(deleteTokenFor(PUBLIC), "public-store");
+
+    delete process.env.PRIVATE_BLOB_READ_WRITE_TOKEN;
+    assert.equal(privatePhotoBlobToken(), "public-store");
+
+    delete process.env.BLOB_READ_WRITE_TOKEN;
+    process.env.PRIVATE_BLOB_READ_WRITE_TOKEN = "private-store";
+    assert.equal(hasBlobToken(), true);
+    assert.equal(publicBlobToken(), undefined);
+    assert.equal(deleteTokenFor(PUBLIC), undefined);
+  } finally {
+    if (saved.pub === undefined) delete process.env.BLOB_READ_WRITE_TOKEN;
+    else process.env.BLOB_READ_WRITE_TOKEN = saved.pub;
+    if (saved.priv === undefined) delete process.env.PRIVATE_BLOB_READ_WRITE_TOKEN;
+    else process.env.PRIVATE_BLOB_READ_WRITE_TOKEN = saved.priv;
+  }
+});
