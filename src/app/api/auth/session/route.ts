@@ -1,4 +1,6 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
+import { upkeepSoon } from "@/lib/server/checkout-upkeep";
+import { slackLinkOrigin } from "@/lib/server/auth-http";
 import { errorResponse } from "@/lib/server/api-error";
 import { publicProfile } from "@/lib/server/auth-accounts";
 import { fleetProfileForMember } from "@/lib/server/fleet-scope";
@@ -23,6 +25,10 @@ export async function GET(req: Request) {
       role: auth.role,
     });
     const fleets = await fleetProfileForMember(auth.orgId, auth.userId, auth.role);
+    // Every app open is a chance to finish checks a phone never confirmed.
+    const orgId = auth.orgId;
+    const origin = slackLinkOrigin(req);
+    after(() => upkeepSoon(orgId, origin) ?? undefined);
     return NextResponse.json(
       { user: { ...profile, ...fleets } },
       { headers: { "Cache-Control": "no-store" } }

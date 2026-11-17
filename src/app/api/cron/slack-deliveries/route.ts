@@ -1,17 +1,9 @@
-import {
-  effectiveCheckoutSlack,
-  parseCompanySettings,
-  photoStepsForCompany,
-  publicCompanySettings,
-  slackWebhookOverride,
-} from "@/lib/company-settings";
-import { RAD_CAB_COMPANY_ID } from "@/lib/company-rules";
 import { orgFromSession } from "@/lib/server/org-scope";
-import { pgDb, pgGetReport, pgReadCompanySettings } from "@/lib/server/postgres-store";
+import { pgDb } from "@/lib/server/postgres-store";
 import { runDriverTallies } from "@/lib/server/driver-tally-run";
-import { runSlackDeliveries, slackCronAuth, slackWebhooksFromEnv } from "@/lib/server/slack-delivery";
+import { slackCronAuth } from "@/lib/server/slack-delivery";
 import { NextResponse } from "next/server";
-import { sweepUnsentReports } from "@/lib/server/checkout-repo";
+import { runCheckoutUpkeep } from "@/lib/server/checkout-upkeep";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,29 +21,8 @@ async function run(req: Request) {
   if (auth === "denied") return NextResponse.json({ ok: false }, { status: 401 });
   try {
     const orgId = orgFromSession();
-    const doc = parseCompanySettings(await pgReadCompanySettings(orgId));
-    const settings = publicCompanySettings(doc);
-    const photoSteps = photoStepsForCompany(settings, RAD_CAB_COMPANY_ID);
-    const requiredRadCabAngles = photoSteps
-      .filter((step) => step.required)
-      .map((step) => step.angle);
     const db = pgDb();
-    const counts = await runSlackDeliveries(db, {
-      orgId,
-      getReport: (id) => pgGetReport(orgId, id),
-      routes: effectiveCheckoutSlack(doc),
-      webhooks: slackWebhooksFromEnv(slackWebhookOverride(doc) || undefined),
-      requiredRadCabAngles,
-      photoSteps,
-      appOrigin: appOrigin(),
-    });
-    let swept = 0;
-    try {
-      swept = (await sweepUnsentReports(orgId, { appOrigin: appOrigin(), limit: 25 })).sent;
-    } catch (err) {
-      const message = err instanceof Error ? err.message.replace(/https?:\/\/\S+/g, "").slice(0, 120) : "";
-      console.log(`[checkout-sweep] status=error error=${message || "failed"}`);
-    }
+    const { swept, ...counts } = await runCheckoutUpkeep(orgId, appOrigin(), { sweepLimit: 25 });
     let tallies = 0;
     try {
       const tally = await runDriverTallies({
