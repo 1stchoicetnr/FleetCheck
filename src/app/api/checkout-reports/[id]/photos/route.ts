@@ -1,7 +1,8 @@
 import { mayUpdateCheckout } from "@/lib/checkout-access";
 import { toClientReport } from "@/lib/photo-url";
 import { type ApiErrorContext, errorResponse } from "@/lib/server/api-error";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
+import { upkeepSoon } from "@/lib/server/checkout-upkeep";
 import {
   addReportPhoto,
   addReportPhotos,
@@ -127,6 +128,7 @@ export async function POST(
         }))
       );
       const finished = await finishIfComplete(req, orgId, report);
+      after(() => upkeepSoon(orgId, slackLinkOrigin(req)) ?? undefined);
       return NextResponse.json({ report: toClientReport(finished) });
     }
     if (!body.angle || !body.dataUrl) {
@@ -162,6 +164,7 @@ export async function POST(
       }
     );
     const finished = await finishIfComplete(req, orgId, report);
+    after(() => upkeepSoon(orgId, slackLinkOrigin(req)) ?? undefined);
     return NextResponse.json({ report: toClientReport(finished) });
   } catch (err) {
     return errorResponse(err, "Failed to save photo", ctx);
