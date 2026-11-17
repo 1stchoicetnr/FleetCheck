@@ -306,10 +306,16 @@ export async function fetchMyChecks(): Promise<CheckoutReport[]> {
   return data.reports;
 }
 
-export async function markCheckoutSent(reportId: string): Promise<CheckoutReport> {
+export async function markCheckoutSent(
+  reportId: string,
+  options?: { withoutPhotos?: boolean }
+): Promise<CheckoutReport> {
   const data = await api<{ report: CheckoutReport }>(
     `/api/checkout-reports/${reportId}/sent`,
-    { method: "POST", body: "{}" }
+    {
+      method: "POST",
+      body: JSON.stringify(options?.withoutPhotos ? { withoutPhotos: true } : {}),
+    }
   );
   return data.report;
 }

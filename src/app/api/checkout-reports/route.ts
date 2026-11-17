@@ -1,6 +1,6 @@
 import { isGenericDriverName, SET_NAME_MESSAGE } from "@/lib/driver-name";
 import { toClientReport } from "@/lib/photo-url";
-import { errorResponse } from "@/lib/server/api-error";
+import { type ApiErrorContext, errorResponse } from "@/lib/server/api-error";
 import { assertDriverMayCheckVehicle } from "@/lib/server/driver-fleets";
 import { vehicleIdsInScope } from "@/lib/server/fleet-scope";
 import {
@@ -81,8 +81,11 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const ctx: ApiErrorContext = { route: "create" };
   try {
     const auth = await assertCheckoutSubmitter(req);
+    ctx.userId = auth.userId;
+    ctx.userName = auth.name;
     const orgId = auth.orgId;
     const body = (await req.json()) as {
       companyId?: string;
@@ -101,6 +104,7 @@ export async function POST(req: NextRequest) {
       signedAt?: string;
       idempotencyKey?: string;
     };
+    if (typeof body.idempotencyKey === "string") ctx.reportId = `key:${body.idempotencyKey}`;
     if (
       !body.companyId ||
       !body.vehicleId ||
@@ -207,6 +211,6 @@ export async function POST(req: NextRequest) {
     }
     return NextResponse.json({ report: toClientReport(report) }, { status: 201 });
   } catch (err) {
-    return errorResponse(err, "Failed to create report");
+    return errorResponse(err, "Failed to create report", ctx);
   }
 }

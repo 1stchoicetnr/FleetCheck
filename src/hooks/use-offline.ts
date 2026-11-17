@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { flushCheckoutOutbox, retryCheckoutOutbox } from "@/lib/checkout-outbox";
+import {
+  clearCheckoutOutboxItem,
+  flushCheckoutOutbox,
+  listOutboxForBanner,
+  retryCheckoutOutbox,
+} from "@/lib/checkout-outbox";
+import type { CheckoutOutboxItem } from "@/lib/checkout-idempotency";
 import { getPendingSyncCount, syncPendingRecords } from "@/lib/storage";
 
 export function useOnlineStatus() {
@@ -24,6 +30,7 @@ export function useOnlineStatus() {
 
 export function usePendingSync() {
   const [count, setCount] = useState(0);
+  const [items, setItems] = useState<CheckoutOutboxItem[]>([]);
   const [retrying, setRetrying] = useState(false);
   const online = useOnlineStatus();
 
@@ -32,7 +39,11 @@ export function usePendingSync() {
     async function refresh() {
       if (online) await syncPendingRecords();
       const pending = online ? await flushCheckoutOutbox() : await getPendingSyncCount();
-      if (!cancelled) setCount(pending);
+      const waiting = pending > 0 ? await listOutboxForBanner() : [];
+      if (!cancelled) {
+        setCount(pending);
+        setItems(waiting);
+      }
     }
     void refresh();
     const interval = setInterval(() => void refresh(), online ? 15000 : 5000);
@@ -47,12 +58,20 @@ export function usePendingSync() {
     try {
       const pending = online ? await retryCheckoutOutbox() : await getPendingSyncCount();
       setCount(pending);
+      setItems(pending > 0 ? await listOutboxForBanner() : []);
     } finally {
       setRetrying(false);
     }
   };
 
-  return { count, retry, retrying, online };
+  /** Office, Manager or Owner only; the banner checks the role and asks first. */
+  const clear = async (id: string) => {
+    const pending = await clearCheckoutOutboxItem(id);
+    setCount(pending);
+    setItems(pending > 0 ? await listOutboxForBanner() : []);
+  };
+
+  return { count, items, retry, retrying, online, clear };
 }
 
 interface SpeechRecognitionResultEvent {

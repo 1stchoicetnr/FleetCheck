@@ -4,6 +4,9 @@ import { OrgAccessError } from "./org-scope";
 import { OfficeAuthError } from "./office-pin";
 import { SharedBackendError } from "./checkout-repo";
 import { PhotoValidationError } from "./photo-store";
+import { formatClientErrorLog, type ApiErrorContext } from "@/lib/api-log";
+
+export type { ApiErrorContext };
 
 export class RequestError extends Error {
   status: number;
@@ -14,7 +17,11 @@ export class RequestError extends Error {
 }
 
 /** Log the real error server-side; send clients only safe, generic text. */
-export function errorResponse(err: unknown, fallback: string): NextResponse {
+export function errorResponse(
+  err: unknown,
+  fallback: string,
+  ctx?: ApiErrorContext
+): NextResponse {
   if (
     err instanceof OfficeAuthError ||
     err instanceof AuthError ||
@@ -22,12 +29,19 @@ export function errorResponse(err: unknown, fallback: string): NextResponse {
     err instanceof PhotoValidationError ||
     err instanceof OrgAccessError
   ) {
+    console.log(formatClientErrorLog(err.status, err.message, ctx));
     return NextResponse.json({ error: err.message }, { status: err.status });
   }
   if (err instanceof SharedBackendError && err.status < 500) {
+    console.log(formatClientErrorLog(err.status, err.message, ctx));
     return NextResponse.json({ error: err.message }, { status: err.status });
   }
-  console.error(`[api] ${fallback}:`, err);
+  console.error(
+    `[api] ${fallback}:${ctx?.reportId ? ` report=${ctx.reportId}` : ""}${
+      ctx?.userId ? ` user=${ctx.userId}` : ""
+    }`,
+    err
+  );
   const status = err instanceof SharedBackendError ? err.status : 500;
   return NextResponse.json({ error: fallback }, { status });
 }

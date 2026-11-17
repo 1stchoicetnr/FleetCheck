@@ -1,5 +1,6 @@
 import type { CheckoutInspectionForm } from "./inspection-form";
 import type { CheckoutReport, CheckoutType, PhotoAngle } from "./types";
+import { isPhotoWindowClosedError } from "./photo-window";
 
 /** Client key sent with a check so a retry returns the original row. */
 export const IDEMPOTENCY_KEY_RE = /^chk-[A-Za-z0-9_-]{8,76}$/;
@@ -43,7 +44,11 @@ export interface CheckoutOutboxItem {
   attempts: number;
   nextAttemptAt: string;
   lastError?: string;
+  /** HTTP status of the last failure (401 = signed out). */
+  lastStatus?: number;
   permanent?: boolean;
+  /** The photo window closed, so the check was sent without its photos. */
+  sentWithoutPhotos?: boolean;
   createdAt: string;
   serverReportId?: string;
   uploadedTokens: Partial<Record<PhotoAngle, string>>;
@@ -157,6 +162,7 @@ export function scheduleOutboxFailure(
     attempts: item.attempts + 1,
     permanent,
     lastError: message,
+    lastStatus: errorStatus(err),
     nextAttemptAt: new Date(now + delay).toISOString(),
   };
 }
@@ -195,6 +201,8 @@ export interface OutboxTransport {
   create(item: CheckoutOutboxItem): Promise<CheckoutReport>;
   upload(reportId: string, photos: OutboxPhoto[]): Promise<CheckoutReport>;
   markSent?(reportId: string): Promise<CheckoutReport>;
+  /** Send without photos after the server closed the driver's photo window. */
+  markSentWithoutPhotos?(reportId: string): Promise<CheckoutReport>;
 }
 
 export async function deliverOutboxItem(
@@ -220,7 +228,24 @@ export async function deliverOutboxItem(
     onProgress?.(uploaded, current.photos.length);
     for (let i = 0; i < pending.length; i += batchSize) {
       const slice = pending.slice(i, i + batchSize);
-      report = await transport.upload(current.serverReportId as string, slice);
+      try {
+        report = await transport.upload(current.serverReportId as string, slice);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "";
+        if (
+          errorStatus(err) === 403 &&
+          isPhotoWindowClosedError(message) &&
+          transport.markSentWithoutPhotos
+        ) {
+          // Photos can no longer be added from this phone. Send the check so it
+          // stops sitting here; the office sees it as missing photos.
+          report = await transport.markSentWithoutPhotos(current.serverReportId as string);
+          current = { ...current, sentWithoutPhotos: true, lastError: undefined, lastStatus: undefined };
+          await save(current);
+          return { done: true, item: current, report };
+        }
+        throw err;
+      }
       const uploadedTokens = { ...current.uploadedTokens };
       for (const photo of slice) {
         uploadedTokens[photo.angle] = photoToken(photo.dataUrl);

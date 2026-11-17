@@ -15,9 +15,18 @@ export function missingRequiredPhotos(
   return steps.filter((step) => step.required && !stored.has(step.angle)).map((step) => step.angle);
 }
 
-/** Drivers cannot be marked sent while a required photo is missing. Office can record sent anyway. */
-export function sentBlockedByMissingPhotos(office: boolean, missingCount: number): boolean {
-  return !office && missingCount > 0;
+/**
+ * Drivers cannot be marked sent while a required photo is missing. Office can record sent anyway.
+ * A driver whose photo window has closed may send without the photos when they ask to;
+ * the check then shows as sent without photos so the office follows up.
+ */
+export function sentBlockedByMissingPhotos(
+  office: boolean,
+  missingCount: number,
+  driver?: { withoutPhotos?: boolean; windowClosed?: boolean }
+): boolean {
+  if (office || missingCount === 0) return false;
+  return !(driver?.withoutPhotos && driver.windowClosed);
 }
 
 /** Slack already has this checkout. Recording sent time must not post it again. */

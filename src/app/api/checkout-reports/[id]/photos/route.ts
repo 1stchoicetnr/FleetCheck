@@ -1,6 +1,6 @@
 import { mayUpdateCheckout } from "@/lib/checkout-access";
 import { toClientReport } from "@/lib/photo-url";
-import { errorResponse } from "@/lib/server/api-error";
+import { type ApiErrorContext, errorResponse } from "@/lib/server/api-error";
 import { NextResponse } from "next/server";
 import {
   addReportPhoto,
@@ -18,6 +18,7 @@ import {
 import { RequestError } from "@/lib/server/api-error";
 import { assertPhotoDataUrl } from "@/lib/server/photo-store";
 import { PHOTO_ANGLES, PhotoAngle } from "@/lib/types";
+import { driverPhotoWindowClosed, PHOTO_WINDOW_CLOSED_MESSAGE } from "@/lib/photo-window";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -51,15 +52,17 @@ async function finishIfComplete(
   }
 }
 
-const DRIVER_UPLOAD_WINDOW_MS = 6 * 60 * 60 * 1000;
-
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const ctx: ApiErrorContext = { route: "photos" };
   try {
     const { id } = await params;
+    ctx.reportId = id;
     const auth = await assertCheckoutSubmitter(req);
+    ctx.userId = auth.userId;
+    ctx.userName = auth.name;
     const orgId = auth.orgId;
     const office = sessionGrantsOffice(auth) || (await isOfficeRequest(req));
     const body = (await req.json()) as {
@@ -108,11 +111,8 @@ export async function POST(
           throw new RequestError("Damage note is too long", 400);
         }
       }
-      if (!office) {
-        const created = Date.parse(existing.createdAt);
-        if (!Number.isFinite(created) || Date.now() - created > DRIVER_UPLOAD_WINDOW_MS) {
-          throw new RequestError("This checkout is closed for new photos. Ask the office.", 403);
-        }
+      if (!office && driverPhotoWindowClosed(existing.createdAt)) {
+        throw new RequestError(PHOTO_WINDOW_CLOSED_MESSAGE, 403);
       }
       const report = await addReportPhotos(
         orgId,
@@ -145,8 +145,8 @@ export async function POST(
       if (!body.dataUrl.startsWith("data:") && !body.dataUrl.startsWith("/photo-examples/")) {
         throw new RequestError("Photo must be an image upload", 400);
       }
-      if (!Number.isFinite(created) || Date.now() - created > DRIVER_UPLOAD_WINDOW_MS) {
-        throw new RequestError("This checkout is closed for new photos. Ask the office.", 403);
+      if (!Number.isFinite(created) || driverPhotoWindowClosed(existing.createdAt)) {
+        throw new RequestError(PHOTO_WINDOW_CLOSED_MESSAGE, 403);
       }
     }
     const report = await addReportPhoto(
@@ -164,6 +164,6 @@ export async function POST(
     const finished = await finishIfComplete(req, orgId, report);
     return NextResponse.json({ report: toClientReport(finished) });
   } catch (err) {
-    return errorResponse(err, "Failed to save photo");
+    return errorResponse(err, "Failed to save photo", ctx);
   }
 }
