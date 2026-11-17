@@ -78,6 +78,7 @@ import {
 } from "./local-store";
 import { deleteStoredPhoto, persistCheckoutPhoto } from "./photo-store";
 import { recordCheckoutAlerts } from "./report-alerts";
+import { driverPhotoWindowClosed } from "@/lib/photo-window";
 import { effectiveCheckoutSlack } from "@/lib/company-settings";
 import { isGenericDriverName } from "@/lib/driver-name";
 import { notifyCheckoutReport } from "./slack-notify";
@@ -468,7 +469,13 @@ export async function listMyReports(
 export async function confirmReportSent(
   orgId: string,
   id: string,
-  options?: { appOrigin?: string; office?: boolean; postSlack?: boolean }
+  options?: {
+    appOrigin?: string;
+    office?: boolean;
+    postSlack?: boolean;
+    /** Driver asked to send without the photos (their photo window is closed). */
+    withoutPhotos?: boolean;
+  }
 ): Promise<CheckoutReport> {
   const mode = assertConfigured();
   const existing = await getReport(orgId, id);
@@ -480,11 +487,21 @@ export async function confirmReportSent(
     photoStepsForCompany(publicCompanySettings(settingsDoc), existing.companyId)
   );
   const missing = missingRequiredPhotos(existing, steps);
-  if (sentBlockedByMissingPhotos(Boolean(options?.office), missing.length)) {
+  if (
+    sentBlockedByMissingPhotos(Boolean(options?.office), missing.length, {
+      withoutPhotos: options?.withoutPhotos,
+      windowClosed: driverPhotoWindowClosed(existing.createdAt),
+    })
+  ) {
     console.log(`[checkout-sent] report=${id} result=needs-photos`);
     throw new SharedBackendError(
       "This check still needs its photos before it can be sent.",
       409
+    );
+  }
+  if (missing.length > 0) {
+    console.log(
+      `[checkout-sent] report=${id} result=sent-without-photos by=${options?.office ? "office" : "driver"} missing=${missing.length} angles=${missing.join(",")}`
     );
   }
   const sentAt = new Date().toISOString();

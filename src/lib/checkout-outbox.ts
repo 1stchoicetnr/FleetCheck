@@ -57,7 +57,31 @@ function transport() {
     markSent(reportId: string) {
       return markCheckoutSent(reportId);
     },
+    markSentWithoutPhotos(reportId: string) {
+      return markCheckoutSent(reportId, { withoutPhotos: true });
+    },
   };
+}
+
+/** What the upload banner lists: one line per check still on this phone. */
+export async function listOutboxForBanner(): Promise<CheckoutOutboxItem[]> {
+  return listCheckoutOutbox();
+}
+
+/**
+ * Office, Manager or Owner removes a stuck check from this phone. The photos on
+ * this phone are lost, so the banner asks first. A check already on the server
+ * stays there.
+ */
+export async function clearCheckoutOutboxItem(id: string): Promise<number> {
+  if (inFlight.has(id)) throw new Error("This check is uploading right now. Try again in a moment.");
+  const item = await getCheckoutOutboxItem(id);
+  await deleteCheckoutOutboxItem(id);
+  if (item?.draftId) await deleteCheckoutDraft(item.draftId);
+  console.info(
+    `[outbox] cleared item=${id} server=${item?.serverReportId ?? "none"} unit=${item?.unitNumber ?? "?"}`
+  );
+  return getPendingSyncCount();
 }
 
 /** Send waiting checks now. A stopped upload is released so Retry can try again. */
