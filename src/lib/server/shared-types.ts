@@ -63,6 +63,8 @@ export interface CheckoutReportInput {
   signedAt?: string;
   /** Stable client key. A replay returns the original report and does not notify again. */
   idempotencyKey?: string;
+  /** When the driver did the check, if it sat on the phone first. Defaults to now. */
+  completedAt?: string;
 }
 
 export interface UpsertVehicleInput {

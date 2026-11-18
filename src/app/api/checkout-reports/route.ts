@@ -8,8 +8,12 @@ import {
   assertOfficeAccess,
   canViewArchivedRecords,
   resolveRequestAuth,
+  sessionGrantsOffice,
 } from "@/lib/server/request-auth";
 import { after, NextRequest, NextResponse } from "next/server";
+import { resolveQueuedDriver, queuedCaptureTime } from "@/lib/queued-driver";
+import { pgDb } from "@/lib/server/postgres-store";
+import { getUser } from "@/lib/server/org-data";
 import { slackLinkOrigin } from "@/lib/server/auth-http";
 import { upkeepSoon } from "@/lib/server/checkout-upkeep";
 import {
@@ -104,6 +108,9 @@ export async function POST(req: NextRequest) {
       signatureDataUrl?: string;
       signedAt?: string;
       idempotencyKey?: string;
+      originalDriverUserId?: string;
+      originalDriverName?: string;
+      capturedAt?: string;
     };
     if (typeof body.idempotencyKey === "string") ctx.reportId = `key:${body.idempotencyKey}`;
     if (
@@ -136,6 +143,34 @@ export async function POST(req: NextRequest) {
       );
     }
     await assertDriverMayCheckVehicle(auth, body.vehicleId);
+    // A check that sat on a shared phone keeps the driver who did it.
+    const originalId =
+      typeof body.originalDriverUserId === "string" ? body.originalDriverUserId.trim() : "";
+    const originalUser =
+      originalId && originalId !== auth.userId
+        ? await lookupOriginalDriver(orgId, originalId)
+        : null;
+    const who = resolveQueuedDriver({
+      signer: {
+        userId: auth.userId!,
+        name: auth.name!.trim(),
+        office: sessionGrantsOffice(auth),
+      },
+      original: {
+        userId: originalId || undefined,
+        name: typeof body.originalDriverName === "string" ? body.originalDriverName : undefined,
+      },
+      originalUser,
+    });
+    if (!who.ok) {
+      return NextResponse.json({ error: who.message, code: "driver_mismatch" }, { status: 409 });
+    }
+    if (who.kept) {
+      console.log(
+        `[checkout-create] key=${body.idempotencyKey ?? "none"} result=kept-original-driver driver="${who.driverName}" sentBy=${auth.userId}`
+      );
+    }
+    const completedAt = queuedCaptureTime(body.capturedAt);
     const report = await createReport(orgId, {
       companyId: body.companyId,
       vehicleId: body.vehicleId,
@@ -145,14 +180,16 @@ export async function POST(req: NextRequest) {
       make: body.make,
       model: body.model,
       odometer: Number(body.odometer),
-      // The signed-in person, never a typed or cached name.
-      driverName: auth.name!.trim(),
+      // The signed-in person, or the original driver when the office sends a
+      // check that sat on a shared phone. Never a typed name.
+      driverName: who.driverName,
       dispatcherName: body.dispatcherName,
       type: body.type === "check_in" ? "check_in" : "check_out",
       inspectionForm: body.inspectionForm,
       signatureDataUrl: body.signatureDataUrl,
       signedAt: body.signedAt,
-      driverUserId: auth.userId ?? undefined,
+      driverUserId: who.driverUserId,
+      completedAt,
       idempotencyKey:
         typeof body.idempotencyKey === "string" ? body.idempotencyKey : undefined,
     });
@@ -213,5 +250,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ report: toClientReport(report) }, { status: 201 });
   } catch (err) {
     return errorResponse(err, "Failed to create report", ctx);
+  }
+}
+
+async function lookupOriginalDriver(
+  orgId: string,
+  id: string
+): Promise<{ id: string; name: string } | null> {
+  try {
+    const row = (await getUser(pgDb(), orgId, id)) as { id?: unknown; name?: unknown } | undefined;
+    if (!row || typeof row.name !== "string") return null;
+    return { id: String(row.id), name: row.name };
+  } catch {
+    return null;
   }
 }

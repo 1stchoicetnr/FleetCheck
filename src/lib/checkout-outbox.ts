@@ -6,6 +6,7 @@ import {
   deliverOutboxItem,
   idempotencyKeyForDraft,
   mergeOutboxAttempt,
+  originalDriverFields,
   OutboxPhoto,
   releaseOutboxForRetry,
 } from "./checkout-idempotency";
@@ -49,6 +50,7 @@ function transport() {
         signatureDataUrl: item.signatureDataUrl,
         signedAt: item.signedAt,
         idempotencyKey: item.id,
+        ...originalDriverFields(item),
       });
     },
     upload(reportId: string, photos: OutboxPhoto[]) {
@@ -143,6 +145,8 @@ export async function submitCheckoutFromDraft(input: {
   model: string;
   odometer: number;
   driverName: string;
+  /** Signed-in account doing the check. */
+  driverUserId?: string;
   dispatcherName: string;
   type: CheckoutType;
   inspectionForm?: CheckoutInspectionForm;
@@ -214,6 +218,8 @@ export async function submitCheckoutFromDraft(input: {
     model: input.model,
     odometer: input.odometer,
     driverName: input.driverName,
+    driverUserId: input.driverUserId,
+    capturedAt: input.signedAt || now,
     dispatcherName: input.dispatcherName,
     type: input.type,
     inspectionForm: input.inspectionForm,
@@ -279,6 +285,7 @@ export async function submitCheckoutFromDraft(input: {
       signatureDataUrl: item.signatureDataUrl,
       signedAt: item.signedAt,
       idempotencyKey: item.id,
+      ...originalDriverFields(item),
     });
     return { state: "sent", report };
   }

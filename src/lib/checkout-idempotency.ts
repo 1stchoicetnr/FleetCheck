@@ -61,6 +61,10 @@ export interface CheckoutOutboxItem {
   model: string;
   odometer: number;
   driverName: string;
+  /** Account that did the check on this phone. Kept when someone else sends it later. */
+  driverUserId?: string;
+  /** When the driver finished the check on this phone. */
+  capturedAt?: string;
   dispatcherName: string;
   type: CheckoutType;
   inspectionForm?: CheckoutInspectionForm;
@@ -269,4 +273,17 @@ export async function deliverOutboxItem(
     await save(failed);
     return { done: false, item: failed };
   }
+}
+
+/** Who and when to send with the create call, so the server keeps the original driver. */
+export function originalDriverFields(item: CheckoutOutboxItem): {
+  originalDriverUserId?: string;
+  originalDriverName?: string;
+  capturedAt?: string;
+} {
+  return {
+    originalDriverUserId: item.driverUserId,
+    originalDriverName: item.driverName,
+    capturedAt: item.capturedAt || item.signedAt || item.createdAt,
+  };
 }

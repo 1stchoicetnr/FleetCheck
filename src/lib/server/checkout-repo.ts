@@ -779,7 +779,7 @@ export async function createReport(
     inspectionForm: stamped,
     photos: [],
     status: checkoutCompletionStatus(undefined, { photos: [], inspectionForm: stamped }, photoSteps),
-    completedAt: now,
+    completedAt: input.completedAt || now,
     reviewStatus: reviewStatusForLight(
       stamped.trafficLight === "red" || stamped.trafficLight === "yellow"
         ? stamped.trafficLight
