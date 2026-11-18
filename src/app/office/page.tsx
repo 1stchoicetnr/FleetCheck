@@ -238,6 +238,12 @@ function OfficeReportsPage() {
                   Units
                 </Link>
                 <Link
+                  href="/office/stuck"
+                  className="text-xs font-semibold text-brand-700 underline underline-offset-2"
+                >
+                  Stuck checks
+                </Link>
+                <Link
                   href="/office/feedback"
                   className="text-xs font-semibold text-brand-700 underline underline-offset-2"
                 >

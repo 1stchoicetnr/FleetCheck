@@ -1,3 +1,4 @@
+import type { StuckCheckRow } from "./stuck-checks";
 import type { CheckoutInspectionForm, Powertrain } from "./inspection-form";
 import {
   AlertEventType,
@@ -538,4 +539,11 @@ export async function updateFleetSettings(input: {
     body: JSON.stringify(input),
   });
   return data.settings;
+}
+
+export async function fetchStuckChecks(): Promise<{
+  stuck: StuckCheckRow[];
+  sentWithoutPhotos: StuckCheckRow[];
+}> {
+  return api("/api/checkout-reports/stuck");
 }

@@ -19,6 +19,7 @@ import {
 import { RequestError } from "@/lib/server/api-error";
 import { assertPhotoDataUrl } from "@/lib/server/photo-store";
 import { PHOTO_ANGLES, PhotoAngle } from "@/lib/types";
+import { photoSavedLog } from "@/lib/photo-log";
 import { driverPhotoWindowClosed, PHOTO_WINDOW_CLOSED_MESSAGE } from "@/lib/photo-window";
 
 export const runtime = "nodejs";
@@ -57,6 +58,7 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const started = Date.now();
   const ctx: ApiErrorContext = { route: "photos" };
   try {
     const { id } = await params;
@@ -129,6 +131,17 @@ export async function POST(
       );
       const finished = await finishIfComplete(req, orgId, report);
       after(() => upkeepSoon(orgId, slackLinkOrigin(req)) ?? undefined);
+      console.log(
+        photoSavedLog({
+          reportId: id,
+          userId: auth.userId,
+          office,
+          photos: batch.map((photo) => ({ angle: String(photo.angle), dataUrl: String(photo.dataUrl) })),
+          ms: Date.now() - started,
+          stored: finished.photos.filter((photo) => Boolean(photo.dataUrl)).length,
+          sent: Boolean(finished.sentAt),
+        })
+      );
       return NextResponse.json({ report: toClientReport(finished) });
     }
     if (!body.angle || !body.dataUrl) {
@@ -165,6 +178,17 @@ export async function POST(
     );
     const finished = await finishIfComplete(req, orgId, report);
     after(() => upkeepSoon(orgId, slackLinkOrigin(req)) ?? undefined);
+    console.log(
+      photoSavedLog({
+        reportId: id,
+        userId: auth.userId,
+        office,
+        photos: [{ angle: String(body.angle), dataUrl: body.dataUrl }],
+        ms: Date.now() - started,
+        stored: finished.photos.filter((photo) => Boolean(photo.dataUrl)).length,
+        sent: Boolean(finished.sentAt),
+      })
+    );
     return NextResponse.json({ report: toClientReport(finished) });
   } catch (err) {
     return errorResponse(err, "Failed to save photo", ctx);

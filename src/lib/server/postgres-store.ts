@@ -851,6 +851,13 @@ export async function pgListUnsentReportIds(
   return orgData.listUnsentReportIds(orgDb(), orgId, olderThan, newerThan, limit, noSlackNewerThan);
 }
 
+/** Read-only: recent checks for the office stuck-checks page. */
+export async function pgListRecentReportsForStuck(orgId: string, since: string): Promise<CheckoutReport[]> {
+  await pgMigrateAndSeed();
+  const rows = (await orgData.listRecentReportsForStuck(orgDb(), orgId, since)) as ReportRow[];
+  return rows.map(rowToReport);
+}
+
 export async function pgCountStuckUploads(orgId: string, olderThan: string): Promise<number> {
   await pgMigrateAndSeed();
   return orgData.countStuckUploads(orgDb(), orgId, olderThan);

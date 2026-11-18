@@ -302,6 +302,19 @@ test("new uploads use the org prefix and old links stay put", async () => {
   assert.throws(() => checkoutObjectPath("  ", "rep-a", "front", "jpg"), OrgAccessError);
 });
 
+test("stuck-checks query stays inside the org and returns only a stored marker for photos", async () => {
+  const db = new PGlite();
+  await seed(db);
+  const data = runner(db);
+  await db.query(`UPDATE checkout_reports SET photos = $1::jsonb`, [
+    JSON.stringify([{ angle: "front", dataUrl: "data:image/jpeg;base64,AAAA", capturedAt: "x" }]),
+  ]);
+  const rows = await orgData.listRecentReportsForStuck(data, ORG_A, "2000-01-01T00:00:00.000Z");
+  assert.deepEqual(ids(rows), ["rep-a"]);
+  const photos = (rows[0] as { photos: Array<{ dataUrl: string }> }).photos;
+  assert.equal(photos[0].dataUrl, "stored");
+});
+
 test("office list rows mark which photos are stored without sending the image", async () => {
   const db = new PGlite();
   await seed(db);

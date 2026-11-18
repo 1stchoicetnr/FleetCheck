@@ -78,6 +78,7 @@ import {
 } from "./local-store";
 import { deleteStoredPhoto, persistCheckoutPhoto } from "./photo-store";
 import { recordCheckoutAlerts } from "./report-alerts";
+import { classifyStuckChecks, STUCK_LOOKBACK_DAYS } from "@/lib/stuck-checks";
 import { alertsReady } from "@/lib/alert-timing";
 import { sentMissingPhotoCount } from "@/lib/checkout-slack";
 import { driverPhotoWindowClosed } from "@/lib/photo-window";
@@ -100,6 +101,7 @@ import {
   pgDeleteFleet,
   pgFindVehicleByPlate,
   pgCountStuckUploads,
+  pgListRecentReportsForStuck,
   pgFindReportByIdempotency,
   pgGetReport,
   pgListReportsForDriver,
@@ -1217,4 +1219,16 @@ export async function updateFleetSettings(
       ? await pgSetFleetSettings(orgId, patch)
       : await localSetFleetSettings(patch);
   return next;
+}
+
+/** Read-only office view of stuck checks and checks sent without photos (last 14 days). */
+export async function listStuckChecks(orgId: string, now = Date.now()) {
+  const mode = assertConfigured();
+  const since = new Date(now - STUCK_LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const reports =
+    mode === "postgres"
+      ? await pgListRecentReportsForStuck(orgId, since)
+      : (await localListReports()).filter((report) => report.createdAt > since);
+  const published = publicCompanySettings(await readStoredCompanySettings(orgId));
+  return classifyStuckChecks(reports, (companyId) => photoStepsForCompany(published, companyId), now);
 }
