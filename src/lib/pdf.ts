@@ -1,4 +1,5 @@
 import jsPDF from "jspdf";
+import { overrideMarker } from "./photo-override";
 import {
   CheckRecord,
   CheckoutReport,
@@ -561,7 +562,7 @@ export async function generateCheckoutReportPDF(
         flagged && item.photo ? damageFlagText(item.photo, report.driverName) : item.label
       }${flagged ? " · DAMAGE" : ""}${
         item.photo?.qualityNote ? ` · ${item.photo.qualityNote}` : ""
-      }`;
+      }${item.photo && overrideMarker(item.photo) ? ` · ${overrideMarker(item.photo)}` : ""}`;
       const captionLine = String(doc.splitTextToSize(caption, pageWidth - 28)[0] ?? caption);
       doc.text(captionLine, 14, top);
       const src = item.photo?.dataUrl;

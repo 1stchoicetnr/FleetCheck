@@ -7,6 +7,8 @@ export type TallyCheck = {
   reviewStatus: string;
   companyId?: string | null;
   companyName?: string | null;
+  /** Photos kept despite a dark/blank/blurry warning on this check. */
+  qualityOverrides?: number;
 };
 
 export type TallyWindow = {
@@ -148,10 +150,11 @@ type Counts = {
   conditional: number;
   fail: number;
   pending: number;
+  overrides: number;
 };
 
 function emptyCounts(): Counts {
-  return { total: 0, pass: 0, conditional: 0, fail: 0, pending: 0 };
+  return { total: 0, pass: 0, conditional: 0, fail: 0, pending: 0, overrides: 0 };
 }
 
 export function driverTallyText(window: TallyWindow, checks: TallyCheck[]): string | null {
@@ -171,6 +174,7 @@ export function driverTallyText(window: TallyWindow, checks: TallyCheck[]): stri
     else if (check.reviewStatus === "conditional") counts.conditional += 1;
     else if (check.reviewStatus === "fail") counts.fail += 1;
     else counts.pending += 1;
+    counts.overrides += Math.max(0, Math.floor(Number(check.qualityOverrides) || 0));
     byDriver.set(name, counts);
   }
   const lines = [...byDriver.entries()]
@@ -178,7 +182,10 @@ export function driverTallyText(window: TallyWindow, checks: TallyCheck[]): stri
     .map(([name, counts]) => {
       const pending = counts.pending ? ` · ${counts.pending} not reviewed` : "";
       const noun = counts.total === 1 ? "check" : "checks";
-      return `${name} — ${counts.total} ${noun} · ${counts.pass} pass · ${counts.conditional} conditional · ${counts.fail} fail${pending}`;
+      const kept = counts.overrides
+        ? ` · ${counts.overrides} low-quality ${counts.overrides === 1 ? "photo" : "photos"} kept`
+        : "";
+      return `${name} — ${counts.total} ${noun} · ${counts.pass} pass · ${counts.conditional} conditional · ${counts.fail} fail${pending}${kept}`;
     });
   return [`*Inspekt driver tally · ${window.label}*`, ...lines].join("\n");
 }

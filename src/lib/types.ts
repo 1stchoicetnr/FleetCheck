@@ -1,3 +1,4 @@
+import type { PhotoQualityOverride } from "./photo-override";
 import type { CheckoutInspectionForm } from "./inspection-form";
 
 export type UserRole = "super_admin" | "management" | "tech" | "driver";
@@ -179,7 +180,7 @@ export interface CheckoutDraft {
   model: string;
   photos: Partial<Record<PhotoAngle, string>>;
   photoFlags?: Partial<
-    Record<PhotoAngle, { flaggedDamage: boolean; damageNote?: string; qualityNote?: string }>
+    Record<PhotoAngle, PhotoFlagState>
   >;
   inspectionForm?: CheckoutInspectionForm;
   signatureDataUrl?: string;
@@ -247,6 +248,15 @@ export interface KnownIssueConsent {
   consentedAt: string;
 }
 
+/** Per-photo marks kept on the phone with a draft. */
+export interface PhotoFlagState {
+  flaggedDamage: boolean;
+  damageNote?: string;
+  qualityNote?: string;
+  qualityOverride?: PhotoQualityOverride;
+  qualityOverrideReason?: string;
+}
+
 export interface VehiclePhoto {
   angle: PhotoAngle;
   dataUrl: string;
@@ -256,6 +266,10 @@ export interface VehiclePhoto {
   damageNote?: string;
   /** Driver kept a blurry or glaring document / odometer photo and said why. */
   qualityNote?: string;
+  /** Driver tapped "Use anyway" on a dark, blank, or blurry warning. Absent on older photos. */
+  qualityOverride?: PhotoQualityOverride;
+  /** Quick reason for the override, e.g. "Too dark / night". */
+  qualityOverrideReason?: string;
 }
 
 export type FuelLevel =

@@ -33,6 +33,7 @@ export async function runDriverTallies(input: {
       reviewStatus: String(row.review_status ?? ""),
       companyId: row.company_id == null ? null : String(row.company_id),
       companyName: row.company_name == null ? null : String(row.company_name),
+      qualityOverrides: Number(row.quality_overrides ?? 0) || 0,
     }));
     const text = driverTallyText(window, checks);
     if (!text) {

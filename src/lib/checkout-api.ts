@@ -403,6 +403,8 @@ export async function uploadCheckoutPhotos(
     flaggedDamage?: boolean;
     damageNote?: string;
     qualityNote?: string;
+    qualityOverride?: string;
+    qualityOverrideReason?: string;
   }>
 ): Promise<CheckoutReport> {
   const data = await api<{ report: CheckoutReport }>(

@@ -8,6 +8,7 @@ import {
   mergeOutboxAttempt,
   originalDriverFields,
   OutboxPhoto,
+  outboxPhoto,
   releaseOutboxForRetry,
 } from "./checkout-idempotency";
 import {
@@ -19,7 +20,7 @@ import {
   listCheckoutOutbox,
   saveCheckoutOutboxItem,
 } from "./storage";
-import type { CheckoutReport, CheckoutType, PhotoAngle } from "./types";
+import type { CheckoutReport, CheckoutType, PhotoAngle, PhotoFlagState } from "./types";
 import type { CheckoutInspectionForm } from "./inspection-form";
 import { driverUploadMessage } from "./delivery-status";
 import { compressUploadPhoto } from "./utils";
@@ -162,7 +163,7 @@ export async function submitCheckoutFromDraft(input: {
   signedAt?: string;
   photos: Partial<Record<PhotoAngle, string>>;
   photoFlags?: Partial<
-    Record<PhotoAngle, { flaggedDamage: boolean; damageNote?: string; qualityNote?: string }>
+    Record<PhotoAngle, PhotoFlagState>
   >;
   onProgress?: (message: string, percent: number) => void;
 }): Promise<
@@ -196,14 +197,7 @@ export async function submitCheckoutFromDraft(input: {
         }
       }
       const flags = input.photoFlags?.[angle];
-      photos[index] = {
-        angle,
-        dataUrl: compressed,
-        capturedAt,
-        flaggedDamage: flags?.flaggedDamage,
-        damageNote: flags?.damageNote,
-        qualityNote: flags?.qualityNote,
-      };
+      photos[index] = outboxPhoto(angle, compressed, capturedAt, flags);
       prepared += 1;
       input.onProgress?.(
         `Preparing photos ${prepared}/${entries.length}`,

@@ -1,5 +1,6 @@
 import type { CheckoutInspectionForm } from "./inspection-form";
 import type { CheckoutReport, CheckoutType, PhotoAngle } from "./types";
+import type { PhotoQualityOverride } from "./photo-override";
 import { isPhotoWindowClosedError } from "./photo-window";
 
 /** Client key sent with a check so a retry returns the original row. */
@@ -35,6 +36,34 @@ export interface OutboxPhoto {
   flaggedDamage?: boolean;
   damageNote?: string;
   qualityNote?: string;
+  /** Kept despite a dark/blank/blurry warning. Older queued checks do not have it. */
+  qualityOverride?: PhotoQualityOverride;
+  qualityOverrideReason?: string;
+}
+
+/** One queued photo with the driver's marks. Missing marks (older drafts) stay absent. */
+export function outboxPhoto(
+  angle: PhotoAngle,
+  dataUrl: string,
+  capturedAt: string,
+  flags?: {
+    flaggedDamage?: boolean;
+    damageNote?: string;
+    qualityNote?: string;
+    qualityOverride?: PhotoQualityOverride;
+    qualityOverrideReason?: string;
+  }
+): OutboxPhoto {
+  return {
+    angle,
+    dataUrl,
+    capturedAt,
+    flaggedDamage: flags?.flaggedDamage,
+    damageNote: flags?.damageNote,
+    qualityNote: flags?.qualityNote,
+    qualityOverride: flags?.qualityOverride,
+    qualityOverrideReason: flags?.qualityOverrideReason,
+  };
 }
 
 /** One in-progress submit. The id is the idempotency key. */

@@ -12,7 +12,21 @@ import { ProgressBar } from "./ui/progress-bar";
 import { PhotoExampleCard } from "./photo-example-image";
 import { compressImageFile } from "@/lib/utils";
 import { LiveCameraFrame } from "./live-camera-frame";
-import { PHOTO_ANGLES, PhotoAngle, PhotoStep, walkaroundPhotoSteps } from "@/lib/types";
+import {
+  PHOTO_ANGLES,
+  PhotoAngle,
+  PhotoFlagState,
+  PhotoStep,
+  walkaroundPhotoSteps,
+} from "@/lib/types";
+import {
+  cleanQualityOverride,
+  defaultOverrideReason,
+  OVERRIDE_REASON_MAX,
+  OVERRIDE_REASONS,
+  overrideReasonText,
+  type PhotoQualityOverride,
+} from "@/lib/photo-override";
 import { DAMAGE_NOTE_MAX } from "@/lib/photo-flags";
 import {
   isBlockingPhotoIssue,
@@ -37,14 +51,14 @@ import { primaryButtonClass } from "@/lib/button-styles";
 
 interface GuidedPhotoCaptureProps {
   photos: Partial<Record<PhotoAngle, string>>;
-  photoFlags?: Partial<
-    Record<PhotoAngle, { flaggedDamage: boolean; damageNote?: string; qualityNote?: string }>
-  >;
+  photoFlags?: Partial<Record<PhotoAngle, PhotoFlagState>>;
   onAccept: (angle: PhotoAngle, dataUrl: string) => void;
   onClear: (angle: PhotoAngle) => void;
   onFlagDamage?: (angle: PhotoAngle, flaggedDamage: boolean) => void;
   onDamageNote?: (angle: PhotoAngle, damageNote: string) => void;
   onQualityNote?: (angle: PhotoAngle, qualityNote: string) => void;
+  /** Driver kept a dark, blank, or blurry photo with "Use anyway". */
+  onQualityOverride?: (angle: PhotoAngle, issue: PhotoQualityOverride, reason: string) => void;
   onAllComplete: () => void;
   /** Dev: browse all steps without requiring captures */
   testingBrowseMode?: boolean;
@@ -68,6 +82,7 @@ export function GuidedPhotoCapture({
   onFlagDamage,
   onDamageNote,
   onQualityNote,
+  onQualityOverride,
   onAllComplete,
   testingBrowseMode = false,
   steps = walkaroundPhotoSteps(PHOTO_ANGLES),
@@ -98,6 +113,9 @@ export function GuidedPhotoCapture({
     warning?: string;
   } | null>(null);
   const [qualityNote, setQualityNote] = useState("");
+  /** "Use anyway" was tapped on a dark/blank/blurry warning; reason chips are showing. */
+  const [overrideOpen, setOverrideOpen] = useState(false);
+  const [overrideReason, setOverrideReason] = useState("");
 
   const currentIndex = testingBrowseMode
     ? viewIndex
@@ -140,6 +158,8 @@ export function GuidedPhotoCapture({
       const issue = await readPhotoQuality(compressed);
       if (isBlockingPhotoIssue(issue) && issue) {
         setQualityNote("");
+        setOverrideOpen(false);
+        setOverrideReason("");
         setPending({
           dataUrl: compressed,
           issue,
@@ -198,8 +218,30 @@ export function GuidedPhotoCapture({
     handleAccept(dataUrl);
   };
 
+  /** Keep a dark, blank, or blurry photo. The check is not failed; office sees a marker. */
+  const keepBlockedPhoto = async () => {
+    if (!current || !pending?.blockReason) return;
+    const issue = cleanQualityOverride(pending.issue);
+    if (!issue) return;
+    const reason = overrideReasonText(overrideReason || defaultOverrideReason(issue), qualityNote);
+    let dataUrl = pending.dataUrl;
+    try {
+      dataUrl = await stampPhotoDataUrl(pending.dataUrl, new Date().toISOString());
+    } catch {
+      // Keep the unstamped photo rather than losing it.
+    }
+    onQualityOverride?.(current.angle, issue, reason);
+    setPending(null);
+    setQualityNote("");
+    setOverrideOpen(false);
+    setOverrideReason("");
+    handleAccept(dataUrl);
+  };
+
   const retakePending = () => {
     setPending(null);
+    setOverrideOpen(false);
+    setOverrideReason("");
     setQualityNote("");
     setPickError("");
   };
@@ -225,6 +267,8 @@ export function GuidedPhotoCapture({
 
   const goToStep = (index: number) => {
     setPending(null);
+    setOverrideOpen(false);
+    setOverrideReason("");
     setQualityNote("");
     setViewIndex(index);
   };
@@ -306,7 +350,46 @@ export function GuidedPhotoCapture({
                   />
                 </div>
                 {pending.blockReason ? (
-                  <p className="text-sm font-semibold text-amber-200">{pending.blockReason}</p>
+                  <div className="space-y-2">
+                    <p className="text-sm font-semibold text-amber-200">{pending.blockReason}</p>
+                    {overrideOpen && cleanQualityOverride(pending.issue) && (
+                      <div className="photo-use-anyway space-y-2 rounded-xl border border-amber-700/50 bg-amber-950/30 p-3">
+                        <p className="text-xs text-[#c4c4cc]">
+                          Why keep it? The office will see you kept this photo.
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {OVERRIDE_REASONS[cleanQualityOverride(pending.issue)!].map((reason) => {
+                            const issue = cleanQualityOverride(pending.issue)!;
+                            const selected = (overrideReason || defaultOverrideReason(issue)) === reason;
+                            return (
+                              <button
+                                key={reason}
+                                type="button"
+                                aria-pressed={selected}
+                                onClick={() => setOverrideReason(reason)}
+                                className={`rounded-full border px-3 py-1.5 text-sm font-semibold ${
+                                  selected
+                                    ? "border-amber-300 bg-amber-300 text-black"
+                                    : "border-[#5c5c64] text-[#e4e4e7]"
+                                }`}
+                              >
+                                {reason}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <input
+                          type="text"
+                          value={qualityNote}
+                          maxLength={OVERRIDE_REASON_MAX}
+                          onChange={(event) => setQualityNote(event.target.value)}
+                          placeholder="Note (optional)"
+                          aria-label="Note (optional)"
+                          className="w-full rounded-xl border border-[#5c5c64] bg-[#1c1c1e] px-3 py-2 text-sm text-white placeholder:text-[#8b8b93]"
+                        />
+                      </div>
+                    )}
+                  </div>
                 ) : pending.warning ? (
                   <div className="space-y-2">
                     <p className="text-sm font-semibold text-amber-200">{pending.warning}</p>
@@ -346,14 +429,31 @@ export function GuidedPhotoCapture({
                   </div>
                 ) : null}
                 {pending.blockReason ? (
-                  <Button
-                    variant="outline"
-                    size="lg"
-                    className="w-full border-red-400/50 text-red-300 bg-red-950/30 hover:bg-red-950/50"
-                    onClick={retakePending}
-                  >
-                    Retake
-                  </Button>
+                  <div className="space-y-2">
+                    <Button size="lg" className="w-full" onClick={retakePending}>
+                      Retake
+                    </Button>
+                    {cleanQualityOverride(pending.issue) &&
+                      (overrideOpen ? (
+                        <Button
+                          variant="outline"
+                          size="lg"
+                          className="w-full border-amber-400/50 text-amber-200 bg-amber-950/30 hover:bg-amber-950/50"
+                          onClick={() => void keepBlockedPhoto()}
+                        >
+                          Keep this photo
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="lg"
+                          className="w-full border-[#5c5c64] text-[#e4e4e7]"
+                          onClick={() => setOverrideOpen(true)}
+                        >
+                          Use anyway
+                        </Button>
+                      ))}
+                  </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-2">
                     <Button

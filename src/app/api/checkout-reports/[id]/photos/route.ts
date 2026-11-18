@@ -75,6 +75,8 @@ export async function POST(
       flaggedDamage?: boolean;
       damageNote?: string;
       qualityNote?: string;
+      qualityOverride?: string;
+      qualityOverrideReason?: string;
       photos?: Array<{
         angle?: PhotoAngle;
         dataUrl?: string;
@@ -82,6 +84,8 @@ export async function POST(
         flaggedDamage?: boolean;
         damageNote?: string;
         qualityNote?: string;
+        qualityOverride?: string;
+        qualityOverrideReason?: string;
       }>;
     };
     const batch = Array.isArray(body.photos) ? body.photos : null;
@@ -127,6 +131,8 @@ export async function POST(
           flaggedDamage: photo.flaggedDamage,
           damageNote: photo.damageNote,
           qualityNote: photo.qualityNote,
+          qualityOverride: photo.qualityOverride,
+          qualityOverrideReason: photo.qualityOverrideReason,
         }))
       );
       const finished = await finishIfComplete(req, orgId, report);
@@ -174,6 +180,8 @@ export async function POST(
         flaggedDamage: body.flaggedDamage,
         damageNote: body.damageNote,
         qualityNote: body.qualityNote,
+        qualityOverride: body.qualityOverride,
+        qualityOverrideReason: body.qualityOverrideReason,
       }
     );
     const finished = await finishIfComplete(req, orgId, report);

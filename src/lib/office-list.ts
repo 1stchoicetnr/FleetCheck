@@ -1,3 +1,4 @@
+import { cleanQualityOverride } from "./photo-override";
 import { inspectionFormFlagsReport } from "./inspection-form.ts";
 import { cleanDamageNote, odometerMismatchNotes } from "./photo-flags.ts";
 import type { CheckoutReport, CheckoutReviewStatus } from "./types.ts";
@@ -57,6 +58,7 @@ export function toOfficeListReport(report: CheckoutReport): CheckoutReport {
       flaggedDamage: photo.flaggedDamage || undefined,
       damageNote: cleanDamageNote(photo.damageNote),
       qualityNote: odometerMismatchNotes([photo])[0],
+      qualityOverride: cleanQualityOverride(photo.qualityOverride),
       dataUrl: "",
     })),
   };
