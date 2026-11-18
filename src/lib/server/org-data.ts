@@ -1448,8 +1448,18 @@ export async function listFleetCompanies(db: OrgDb, orgId: string, fleetIds: str
 export async function listVehicleIdsForFleets(db: OrgDb, orgId: string, fleetIds: string[]) {
   if (fleetIds.length === 0) return [];
   const slots = fleetIds.map((_, index) => `$${index + 2}`).join(", ");
+  // A unit a driver added by plate has no fleet yet. It still belongs to the
+  // company, so office and managers of that company's fleets must see its checks.
   const rows = await db.query(
-    `SELECT id FROM vehicles WHERE org_id = $1 AND fleet_id IN (${slots})`,
+    `SELECT id FROM vehicles
+     WHERE org_id = $1
+       AND (
+         fleet_id IN (${slots})
+         OR (
+           fleet_id IS NULL
+           AND company_id IN (SELECT company_id FROM fleets WHERE org_id = $1 AND id IN (${slots}))
+         )
+       )`,
     [org(orgId), ...fleetIds]
   );
   return rows.map((row) => String(row.id));

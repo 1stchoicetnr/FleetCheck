@@ -40,9 +40,13 @@ export async function assertVehicleInScope(auth: RequestAuth, vehicleId: string)
   if (scope.all) return;
   const vehicle = await getVehicle(await openAuthDb(), auth.orgId, vehicleId);
   const fleetId = vehicle?.fleet_id ? String(vehicle.fleet_id) : "";
-  if (!fleetId || !scope.fleetIds.includes(fleetId)) {
-    throw new AuthError("Not found", 404);
+  if (fleetId && scope.fleetIds.includes(fleetId)) return;
+  if (vehicle && !fleetId && scope.fleetIds.length > 0) {
+    // Unit with no fleet yet (added by plate): visible to that company's fleets.
+    const rows = await listFleetCompanies(await openAuthDb(), auth.orgId, scope.fleetIds);
+    if (rows.some((row) => String(row.company_id) === String(vehicle.company_id))) return;
   }
+  throw new AuthError("Not found", 404);
 }
 
 export async function assertFleetInScope(auth: RequestAuth, fleetId: string): Promise<void> {
