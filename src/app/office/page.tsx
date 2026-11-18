@@ -372,6 +372,11 @@ function OfficeReportsPage() {
                               Flagged
                             </span>
                           )}
+                          {(report.missingPhotoCount ?? 0) > 0 && (
+                            <span className="rounded-full border border-red-500/40 bg-red-500/15 px-2 py-0.5 text-[11px] font-semibold text-red-300">
+                              Sent without photos ({report.missingPhotoCount})
+                            </span>
+                          )}
                           {odometerMismatchNotes(report.photos).length > 0 && (
                             <span className="rounded-full border border-amber-500/40 bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-300">
                               Odometer mismatch

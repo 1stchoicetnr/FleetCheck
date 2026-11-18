@@ -301,3 +301,34 @@ test("new uploads use the org prefix and old links stay put", async () => {
   );
   assert.throws(() => checkoutObjectPath("  ", "rep-a", "front", "jpg"), OrgAccessError);
 });
+
+test("office list rows mark which photos are stored without sending the image", async () => {
+  const db = new PGlite();
+  await seed(db);
+  const data = runner(db);
+  await db.query(
+    `UPDATE checkout_reports SET photos = $1::jsonb WHERE id = 'rep-a'`,
+    [
+      JSON.stringify([
+        { angle: "front", dataUrl: "https://blob.example/front.jpg", capturedAt: "2024-05-01" },
+        { angle: "rear", dataUrl: "", capturedAt: "2024-05-01" },
+      ]),
+    ]
+  );
+  const page = await orgData.listReportPage(data, ORG_A, {
+    includeArchived: true,
+    companyId: null,
+    vehicleId: null,
+    status: null,
+    limit: 50,
+    offset: 0,
+  });
+  const photos = (page.rows[0] as { photos: Array<{ angle: string; dataUrl: string }> }).photos;
+  assert.deepEqual(
+    photos.map((photo) => [photo.angle, photo.dataUrl]),
+    [
+      ["front", "stored"],
+      ["rear", ""],
+    ]
+  );
+});

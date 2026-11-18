@@ -156,6 +156,8 @@ export interface CheckoutReport {
   idempotencyKey?: string;
   /** Office only: why an unsent check is stuck, e.g. "Old app · never sent". Not stored. */
   deliveryNote?: string;
+  /** Office list only: required photos missing on a check that was sent anyway. */
+  missingPhotoCount?: number;
   /** Set when the phone finished uploading. Empty means Office is still waiting. */
   sentAt?: string;
   /** ISO timestamp when Office archived this report. Absent = visible in the default list. */

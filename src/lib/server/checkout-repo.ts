@@ -78,6 +78,8 @@ import {
 } from "./local-store";
 import { deleteStoredPhoto, persistCheckoutPhoto } from "./photo-store";
 import { recordCheckoutAlerts } from "./report-alerts";
+import { alertsReady } from "@/lib/alert-timing";
+import { sentMissingPhotoCount } from "@/lib/checkout-slack";
 import { driverPhotoWindowClosed } from "@/lib/photo-window";
 import { effectiveCheckoutSlack } from "@/lib/company-settings";
 import { isGenericDriverName } from "@/lib/driver-name";
@@ -426,16 +428,20 @@ export async function listReportPage(orgId: string, query: OfficeListQuery) {
       offset,
       vehicleIds: query.vehicleIds,
     }), pgCountStuckUploads(orgId, olderThan)]);
-    const published = page.reports.some((report) => !report.sentAt)
+    const published = page.reports.length
       ? publicCompanySettings(await readStoredCompanySettings(orgId))
       : null;
     return {
       ...page,
       reports: page.reports.map((report) => {
-        const reason = published
-          ? stuckReason(report, photoStepsForCompany(published, report.companyId))
-          : undefined;
-        return toOfficeListReport(reason ? { ...report, deliveryNote: reason } : report);
+        const steps = published ? photoStepsForCompany(published, report.companyId) : undefined;
+        const reason = steps ? stuckReason(report, steps) : undefined;
+        const missingPhotoCount = report.sentAt ? sentMissingPhotoCount(report, steps) : 0;
+        return toOfficeListReport({
+          ...report,
+          ...(reason ? { deliveryNote: reason } : {}),
+          ...(missingPhotoCount ? { missingPhotoCount } : {}),
+        });
       }),
       stuck,
       limit,
@@ -546,7 +552,40 @@ export async function confirmReportSent(
       webhooks,
     });
   }
+  // The check is sent, so its damage alerts are due now (photos landed, or sent without them).
+  await recordAlertsWhenReady(orgId, saved, "sent");
   return saved;
+}
+
+/**
+ * Record damage alerts once photos have landed, the check is sent, or 30
+ * minutes have passed. Alert ids are per check and kind, so calling this again
+ * never posts twice.
+ */
+export async function recordAlertsWhenReady(
+  orgId: string,
+  report: CheckoutReport,
+  source: string
+): Promise<boolean> {
+  try {
+    const settingsDoc = await readStoredCompanySettings(orgId);
+    const steps = photoStepsForClient(
+      report,
+      photoStepsForCompany(publicCompanySettings(settingsDoc), report.companyId)
+    );
+    const missingPhotos = missingRequiredPhotos(report, steps).length;
+    if (!alertsReady({ missingPhotos, sentAt: report.sentAt, createdAt: report.createdAt })) {
+      return false;
+    }
+    await recordCheckoutAlerts(orgId, report);
+    if (missingPhotos > 0) {
+      console.log(`[alerts] report=${report.id} source=${source} result=recorded-without-photos missing=${missingPhotos}`);
+    }
+    return true;
+  } catch (err) {
+    console.error(`[alerts] report=${report.id} source=${source} failed:`, err);
+    return false;
+  }
 }
 
 /**
@@ -625,6 +664,8 @@ export async function sweepUnsentReports(
     if (missing.length > 0) {
       missingPhotos += 1;
       console.log(`[checkout-sweep] report=${id} result=missing-photos angles=${missing.join(",")}`);
+      // Photos never came: damage alerts go out after 30 minutes anyway.
+      await recordAlertsWhenReady(orgId, report, "sweep-timeout");
       continue;
     }
     const postSlack = sweepShouldPostSlack(report.createdAt, now);
@@ -803,9 +844,7 @@ export async function createReport(
     throw err;
   }
   if (saved.id !== report.id) return saved;
-  void recordCheckoutAlerts(orgId, saved).catch((err) => {
-    console.error("[alerts] checkout report alerts failed:", err);
-  });
+  // Damage alerts wait for the photos (see recordAlertsWhenReady).
   return saved;
 }
 
@@ -899,9 +938,7 @@ export async function addReportPhoto(
   };
   const saved = await savePhotosToReport(mode, orgId, existing, [photo]);
   if (flags?.flaggedDamage) {
-    void recordCheckoutAlerts(orgId, saved).catch((err) => {
-      console.error("[alerts] photo flag alerts failed:", err);
-    });
+    // Alerts go out when the last photo lands (confirmReportSent) or after 30 minutes.
   }
   return saved;
 }
@@ -938,9 +975,7 @@ export async function addReportPhotos(
   );
   const saved = await savePhotosToReport(mode, orgId, existing, stored);
   if (stored.some((photo) => photo.flaggedDamage)) {
-    void recordCheckoutAlerts(orgId, saved).catch((err) => {
-      console.error("[alerts] photo flag alerts failed:", err);
-    });
+    // Alerts go out when the last photo lands (confirmReportSent) or after 30 minutes.
   }
   return saved;
 }
@@ -982,9 +1017,7 @@ export async function patchReportPhotoFlags(
   const updated = reportWithPhotos(existing, photos, steps);
   const saved = mode === "postgres" ? await pgPutReport(orgId, updated) : await localPutReport(updated);
   if (flags.flaggedDamage && !wasFlagged) {
-    void recordCheckoutAlerts(orgId, saved).catch((err) => {
-      console.error("[alerts] photo flag alerts failed:", err);
-    });
+    void recordAlertsWhenReady(orgId, saved, "photo-flags");
   }
   return saved;
 }
