@@ -25,6 +25,14 @@ import { driverUploadMessage } from "./delivery-status";
 import { compressUploadPhoto } from "./utils";
 
 let flushing: Promise<number> | null = null;
+let askedPersist = false;
+
+/** Ask the browser not to clear this phone's waiting checks when storage runs low. */
+function askPersistentStorage() {
+  if (askedPersist || typeof navigator === "undefined") return;
+  askedPersist = true;
+  void navigator.storage?.persist?.().catch(() => false);
+}
 /**
  * Checks being sent right now. The background retry runs every 15 seconds while
  * the Send screen uploads, so without this both could upload the same check at once.
@@ -177,9 +185,16 @@ export async function submitCheckoutFromDraft(input: {
       cursor += 1;
       if (index >= entries.length) return;
       const [angle, dataUrl] = entries[index];
-      const compressed = dataUrl.startsWith("data:")
-        ? await compressUploadPhoto(dataUrl)
-        : dataUrl;
+      let compressed = dataUrl;
+      if (dataUrl.startsWith("data:")) {
+        try {
+          compressed = await compressUploadPhoto(dataUrl);
+        } catch (err) {
+          // An old tablet can run out of memory resizing a photo. Send the
+          // original instead of failing before the check is queued.
+          console.info(`[outbox] compress failed angle=${angle}`, err);
+        }
+      }
       const flags = input.photoFlags?.[angle];
       photos[index] = {
         angle,
@@ -229,6 +244,7 @@ export async function submitCheckoutFromDraft(input: {
   };
   const item = mergeOutboxAttempt(await getCheckoutOutboxItem(key), next);
   await saveCheckoutOutboxItem(item);
+  askPersistentStorage();
 
   if (typeof navigator !== "undefined" && !navigator.onLine) {
     return { state: "saved", pending: await getPendingSyncCount() };

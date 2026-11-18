@@ -52,17 +52,42 @@ export class ApiError extends Error {
   }
 }
 
+/** Server functions stop at 60 seconds. A phone on a dead signal must not wait forever. */
+export const API_TIMEOUT_MS = 30_000;
+export const UPLOAD_TIMEOUT_MS = 75_000;
+
+export function requestTimeoutMs(path: string, method?: string): number {
+  if ((method || "GET").toUpperCase() !== "POST") return API_TIMEOUT_MS;
+  return path.startsWith("/api/checkout-reports") ? UPLOAD_TIMEOUT_MS : API_TIMEOUT_MS;
+}
+
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
-    ...init,
-    cache: "no-store",
-    credentials: "same-origin",
-    headers: {
-      "Content-Type": "application/json",
-      ...officePinHeader(),
-      ...(init?.headers || {}),
-    },
-  });
+  const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timer = controller
+    ? setTimeout(() => controller.abort(), requestTimeoutMs(path, init?.method))
+    : null;
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      ...init,
+      ...(controller ? { signal: controller.signal } : {}),
+      cache: "no-store",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json",
+        ...officePinHeader(),
+        ...(init?.headers || {}),
+      },
+    });
+  } catch (err) {
+    if (controller?.signal.aborted) {
+      // No status: the outbox treats this as a signal problem and tries again.
+      throw new Error("The upload timed out. It is still on this phone and will try again.");
+    }
+    throw err;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
   const data = (await res.json().catch(() => ({}))) as T & { error?: string };
   if (!res.ok) {
     throw new ApiError(data.error || `Request failed (${res.status})`, res.status);

@@ -145,6 +145,33 @@ export function pendingOutboxPhotos(item: CheckoutOutboxItem): OutboxPhoto[] {
   );
 }
 
+/** Vercel refuses request bodies over 4.5 MB, and a refused batch would never send. */
+export const PHOTO_BATCH_MAX_CHARS = 3_000_000;
+export const PHOTO_BATCH_MAX_COUNT = 4;
+
+/** Up to 4 photos per request, and never more than about 3 MB of image data. */
+export function photoBatches(
+  photos: OutboxPhoto[],
+  maxChars = PHOTO_BATCH_MAX_CHARS,
+  maxCount = PHOTO_BATCH_MAX_COUNT
+): OutboxPhoto[][] {
+  const batches: OutboxPhoto[][] = [];
+  let current: OutboxPhoto[] = [];
+  let size = 0;
+  for (const photo of photos) {
+    const chars = photo.dataUrl.length;
+    if (current.length > 0 && (current.length >= maxCount || size + chars > maxChars)) {
+      batches.push(current);
+      current = [];
+      size = 0;
+    }
+    current.push(photo);
+    size += chars;
+  }
+  if (current.length > 0) batches.push(current);
+  return batches;
+}
+
 export function outboxIsDue(item: CheckoutOutboxItem, now: number): boolean {
   if (item.permanent) return false;
   const at = Date.parse(item.nextAttemptAt);
@@ -257,11 +284,9 @@ export async function deliverOutboxItem(
       await save(current);
     }
     const pending = pendingOutboxPhotos(current);
-    const batchSize = 4;
     let uploaded = current.photos.length - pending.length;
     onProgress?.(uploaded, current.photos.length);
-    for (let i = 0; i < pending.length; i += batchSize) {
-      const slice = pending.slice(i, i + batchSize);
+    for (const slice of photoBatches(pending)) {
       try {
         report = await transport.upload(current.serverReportId as string, slice);
       } catch (err) {

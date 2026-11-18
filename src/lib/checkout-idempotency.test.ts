@@ -10,6 +10,8 @@ import {
   idempotencyKeyForCheck,
   idempotencyKeyForDraft,
   replayIsSameCheck,
+  photoBatches,
+  type OutboxPhoto,
   IDEMPOTENCY_KEY_RE,
   isPermanentOutboxError,
   releaseOutboxForRetry,
@@ -379,4 +381,13 @@ test("a stored check is a replay only when the signature time matches", () => {
   assert.notEqual(followUp, key);
   assert.equal(followUp, followUpIdempotencyKey(key, "2026-11-18T14:20:00.000Z"));
   assert.match(followUp, IDEMPOTENCY_KEY_RE);
+});
+
+test("photo batches stay under the request size limit", () => {
+  const photo = (angle: string, chars: number) =>
+    ({ angle, dataUrl: "x".repeat(chars), capturedAt: "2026-11-18T10:00:00Z" }) as unknown as OutboxPhoto;
+  const small = Array.from({ length: 9 }, (_, i) => photo(`a${i}`, 100));
+  assert.deepEqual(photoBatches(small).map((b) => b.length), [4, 4, 1]);
+  const big = [photo("a", 2_000_000), photo("b", 2_000_000), photo("c", 500_000), photo("d", 5_000_000)];
+  assert.deepEqual(photoBatches(big).map((b) => b.map((p) => p.angle).join("")), ["a", "bc", "d"]);
 });
