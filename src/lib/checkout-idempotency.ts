@@ -116,6 +116,19 @@ export function followUpIdempotencyKey(key: string, signedAt: string): string {
   return idempotencyKeyForDraft(`${key}|${Number.isFinite(t) ? new Date(t).toISOString() : signedAt}`);
 }
 
+/**
+ * Draft id for a new check. The usual id is one per driver, unit and type; when
+ * a check under that id is still waiting to send, the new one gets its own id.
+ */
+export function freshCheckoutDraftId(
+  baseId: string,
+  waitingDraftIds: string[],
+  now = Date.now()
+): string {
+  if (!waitingDraftIds.includes(baseId)) return baseId;
+  return `${baseId}-${now.toString(36)}`;
+}
+
 export function assertIdempotencyKey(key: string): void {
   if (!IDEMPOTENCY_KEY_RE.test(key)) {
     throw new Error("Idempotency key is invalid");

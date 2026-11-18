@@ -11,11 +11,13 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { useAuth } from "@/hooks/use-auth";
 import { canStartCheckout } from "@/lib/fleet-config";
+import { freshCheckoutDraftId } from "@/lib/checkout-idempotency";
 import {
   checkoutDraftId,
   getCachedCompanies,
   getCachedVehicles,
   getCheckoutDraft,
+  listCheckoutOutbox,
   saveCachedCompanies,
   saveCachedVehicles,
   saveCheckoutDraft,
@@ -346,7 +348,15 @@ function CheckoutStartPage() {
         );
       }
 
-      const id = editingDraftId || checkoutDraftId(companyId, vehicle.id, type, user.id);
+      const baseId = editingDraftId || checkoutDraftId(companyId, vehicle.id, type, user.id);
+      // A finished check of this unit can still be waiting to send under the same
+      // draft. A new check must not reuse its photos, signature, or server row.
+      const id = editingDraftId
+        ? baseId
+        : freshCheckoutDraftId(
+            baseId,
+            (await listCheckoutOutbox().catch(() => [])).map((item) => item.draftId)
+          );
       const existing = await getCheckoutDraft(id);
       const powertrain = inferPowertrain(
         make.trim(),
