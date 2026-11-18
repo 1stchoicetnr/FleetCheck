@@ -605,6 +605,39 @@ export async function listUnsentReportIds(
   return rows.map((row) => String(row.id));
 }
 
+/** Recent checks for the read-only stuck-checks page. Photo images are never read, only a stored marker. */
+export async function listRecentReportsForStuck(db: OrgDb, orgId: string, since: string, limit = 300) {
+  const rows = await db.query(
+    `SELECT
+      id, company_id, vehicle_id, unit_number, plate, year, make, model, odometer,
+      driver_name, dispatcher_name, type, status, completed_at, review_status,
+      review_notes, new_damage_notes, retake_angles, reviewed_at, reviewed_by,
+      flagged, created_at, signed_at, inspection_form, archived_at, sent_at,
+      idempotency_key, driver_user_id,
+      COALESCE(
+        (
+          SELECT jsonb_agg(
+            jsonb_build_object(
+              'angle', elem.value->>'angle',
+              'capturedAt', elem.value->>'capturedAt',
+              'dataUrl', CASE WHEN btrim(COALESCE(elem.value->>'dataUrl', '')) <> '' THEN 'stored' ELSE '' END
+            )
+          )
+          FROM jsonb_array_elements(COALESCE(photos, '[]'::jsonb)) AS elem
+        ),
+        '[]'::jsonb
+      ) AS photos
+    FROM checkout_reports
+    WHERE org_id = $1
+      AND archived_at IS NULL
+      AND created_at > $2
+    ORDER BY created_at DESC
+    LIMIT $3`,
+    [org(orgId), since, limit]
+  );
+  return rows;
+}
+
 export async function countStuckUploads(db: OrgDb, orgId: string, olderThan: string) {
   const rows = await db.query(
     `SELECT COUNT(*)::int AS stuck
