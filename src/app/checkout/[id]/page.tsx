@@ -341,6 +341,7 @@ function CheckoutCapturePage() {
         model: draft.model || vehicle.model,
         odometer: Number(draft.odometer),
         driverName: user.name,
+        driverUserId: user.id,
         dispatcherName: draft.dispatcherName,
         type: draft.type,
         inspectionForm: {

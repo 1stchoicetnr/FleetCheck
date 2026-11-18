@@ -357,6 +357,9 @@ export async function createCheckoutReport(input: {
   signatureDataUrl?: string;
   signedAt?: string;
   idempotencyKey?: string;
+  originalDriverUserId?: string;
+  originalDriverName?: string;
+  capturedAt?: string;
 }): Promise<CheckoutReport> {
   const data = await api<{ report: CheckoutReport }>("/api/checkout-reports", {
     method: "POST",
