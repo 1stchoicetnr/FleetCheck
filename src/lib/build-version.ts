@@ -4,3 +4,12 @@ export function isStaleBuild(clientBuild: string | undefined, serverBuild: strin
   if (clientBuild === "dev" || serverBuild === "dev") return false;
   return clientBuild !== serverBuild;
 }
+
+/**
+ * Pages where a driver is in the middle of a check (taking photos, signing,
+ * sending). An app update must not reload these: a photo just taken, or an
+ * upload in progress, would be cut off. The update happens on the next page.
+ */
+export function isCheckInProgressPath(pathname: string | undefined): boolean {
+  return /^\/(checkout|check-in)\/[^/]+\/?$/.test(pathname ?? "");
+}

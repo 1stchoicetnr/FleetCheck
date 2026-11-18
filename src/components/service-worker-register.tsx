@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { isStaleBuild } from "@/lib/build-version";
+import { isCheckInProgressPath, isStaleBuild } from "@/lib/build-version";
 
 const BUILD_ID = process.env.NEXT_PUBLIC_BUILD_ID || "dev";
 
@@ -20,9 +20,11 @@ export function ServiceWorkerRegister() {
       return;
     }
 
+    // Never reload while a driver is taking photos, signing, or sending.
+    const midCheck = () => isCheckInProgressPath(window.location.pathname);
     let reloaded = false;
     const onControllerChange = () => {
-      if (reloaded) return;
+      if (reloaded || midCheck()) return;
       reloaded = true;
       window.location.reload();
     };
@@ -39,6 +41,7 @@ export function ServiceWorkerRegister() {
         .then((res) => (res.ok ? res.json() : null))
         .then((data: { build?: string } | null) => {
           if (!isStaleBuild(BUILD_ID, data?.build)) return;
+          if (midCheck()) return;
           const key = `inspekt-reload-${data?.build}`;
           if (sessionStorage.getItem(key)) return;
           sessionStorage.setItem(key, "1");
@@ -51,8 +54,11 @@ export function ServiceWorkerRegister() {
       if (document.visibilityState === "visible") checkVersion();
     };
     document.addEventListener("visibilitychange", onVisible);
+    // A check skipped above updates once the driver is off the check screens.
+    const timer = window.setInterval(checkVersion, 2 * 60 * 1000);
 
     return () => {
+      window.clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisible);
       navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange);
     };
