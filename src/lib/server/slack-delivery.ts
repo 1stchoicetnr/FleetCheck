@@ -259,7 +259,10 @@ export async function deliverCheckoutSlack(
   try {
     if (!progress.ts) {
       if (filesWanted && api?.token && api.channelId) {
-        const text = checkoutSlackText(report, { appOrigin: options.appOrigin });
+        const text = checkoutSlackText(report, {
+          appOrigin: options.appOrigin,
+          photoSteps: options.photoSteps,
+        });
         const posted = await postSlackApiMessage(slackFetch, {
           token: api.token,
           channel: api.channelId,
@@ -278,6 +281,7 @@ export async function deliverCheckoutSlack(
           webhookUrl: url,
           fetchImpl: options.fetchImpl,
           appOrigin: options.appOrigin,
+          photoSteps: options.photoSteps,
         });
         await finishSlackDelivery(db, {
           orgId: options.orgId,
@@ -350,6 +354,7 @@ export async function deliverCheckoutSlack(
           webhookUrl: url,
           fetchImpl: options.fetchImpl,
           appOrigin: options.appOrigin,
+          photoSteps: options.photoSteps,
         });
         await finishSlackDelivery(db, {
           orgId: options.orgId,

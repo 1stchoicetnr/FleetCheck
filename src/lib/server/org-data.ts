@@ -414,7 +414,9 @@ export async function listReportPage(
               'flaggedDamage', CASE WHEN elem.value->>'flaggedDamage' = 'true' THEN true ELSE NULL END,
               'damageNote', NULLIF(btrim(COALESCE(elem.value->>'damageNote', '')), ''),
               'qualityNote', CASE WHEN btrim(COALESCE(elem.value->>'qualityNote', '')) ILIKE 'odometer check:%'
-                THEN left(btrim(elem.value->>'qualityNote'), 500) ELSE NULL END
+                THEN left(btrim(elem.value->>'qualityNote'), 500) ELSE NULL END,
+              -- A marker, not the image: lets the list count missing photos.
+              'dataUrl', CASE WHEN btrim(COALESCE(elem.value->>'dataUrl', '')) <> '' THEN 'stored' ELSE '' END
             )
           )
           FROM jsonb_array_elements(COALESCE(photos, '[]'::jsonb)) AS elem

@@ -1,7 +1,9 @@
 import type { CheckoutInspectionForm } from "./inspection-form";
 import { DAMAGE_SIDES, checkIssueLines } from "./inspection-form";
 import { damageFlagText, damageSideLine, odometerMismatchNotes } from "./photo-flags";
-import type { CheckoutReport, FuelLevel } from "./types";
+import type { CheckoutReport, FuelLevel, PhotoStep } from "./types";
+import { missingRequiredPhotos } from "./checkout-completion";
+import { photoStepsForClient } from "./legacy-checkout";
 import { FUEL_LEVEL_LABELS } from "./types";
 import { formatMileage, formatUnitLabel } from "./utils";
 
@@ -146,9 +148,20 @@ function fitCheckoutSlack(head: string[], damage: string[], tail: string): strin
 }
 
 /** One short checkout post: the check, damage, and two links. No per-photo list. */
+/** Required photos a sent check is still missing. 0 when the photo rules are unknown. */
+export function sentMissingPhotoCount(report: CheckoutReport, photoSteps?: PhotoStep[]): number {
+  if (!photoSteps?.length) return 0;
+  return missingRequiredPhotos(report, photoStepsForClient(report, photoSteps)).length;
+}
+
+export function missingPhotosSlackLine(missing: number): string | null {
+  if (missing <= 0) return null;
+  return `*:warning: Sent without photos:* ${missing} required photo${missing === 1 ? "" : "s"} missing. Office: follow up.`;
+}
+
 export function checkoutSlackText(
   report: CheckoutReport,
-  options?: { appOrigin?: string | null }
+  options?: { appOrigin?: string | null; photoSteps?: PhotoStep[] }
 ): string {
   const unit = formatUnitLabel(report.unitNumber, report.plate);
   const dispatcher = report.dispatcherName.trim() || "—";
@@ -161,6 +174,9 @@ export function checkoutSlackText(
     `*Odometer:* ${formatMileage(report.odometer)}`,
     `*Fuel:* ${fuelGaugeLabel(report.inspectionForm)}`,
     `*Result:* ${checkoutResultLabel(report)}`,
+    ...[missingPhotosSlackLine(sentMissingPhotoCount(report, options?.photoSteps))].filter(
+      (line): line is string => Boolean(line)
+    ),
     `*Time:* ${formatCheckoutTime(report.completedAt)}`,
     ...odometerMismatchNotes(report.photos).map((note) => `*Odometer mismatch:* ${note}`),
     ...checkIssueLines(report.inspectionForm).map((line) => `*Check issue:* ${line}`),
@@ -203,9 +219,17 @@ export async function postSlackMessage(
  */
 export async function postCheckoutSlack(
   report: CheckoutReport,
-  options: { webhookUrl: string; fetchImpl?: CheckoutFetch; appOrigin?: string | null }
+  options: {
+    webhookUrl: string;
+    fetchImpl?: CheckoutFetch;
+    appOrigin?: string | null;
+    photoSteps?: PhotoStep[];
+  }
 ): Promise<{ text: string }> {
-  const text = checkoutSlackText(report, { appOrigin: options.appOrigin });
+  const text = checkoutSlackText(report, {
+    appOrigin: options.appOrigin,
+    photoSteps: options.photoSteps,
+  });
   await postSlackMessage(options.webhookUrl, text, options.fetchImpl);
   return { text };
 }
