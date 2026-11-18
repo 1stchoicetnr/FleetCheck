@@ -176,3 +176,11 @@ export async function claimInvite(db: OrgDb, orgId: string, id: string): Promise
   );
   return Boolean(rows[0]);
 }
+
+/** Slide a live session forward. An expired or signed-out session is not revived. */
+export async function extendSession(db: OrgDb, tokenHash: string, expiresAt: string): Promise<void> {
+  await db.query(
+    `UPDATE auth_sessions SET expires_at = $2 WHERE token_hash = $1 AND expires_at > NOW()`,
+    [tokenHash, expiresAt]
+  );
+}
