@@ -72,3 +72,18 @@ test("damage marks always name the driver", () => {
   assert.equal(damageSideLine("Left", "scrape", "Ada Lovelace"), "Left · Ada Lovelace: scrape");
   assert.equal(damageSideLine("Rear", undefined, "Ada Lovelace"), "Rear · Ada Lovelace: marked");
 });
+
+test("odometer reading gives up instead of hanging the photo step", async () => {
+  const { withTimeout, OcrTimeoutError } = await import("./odometer-ocr.ts");
+  let cleaned = false;
+  const never = new Promise<string>(() => {});
+  await assert.rejects(
+    withTimeout(never, 20, () => {
+      cleaned = true;
+    }),
+    (err: unknown) => err instanceof OcrTimeoutError
+  );
+  assert.equal(cleaned, true);
+  assert.equal(await withTimeout(Promise.resolve("145900"), 1000), "145900");
+  await assert.rejects(withTimeout(Promise.reject(new Error("boom")), 1000), /boom/);
+});

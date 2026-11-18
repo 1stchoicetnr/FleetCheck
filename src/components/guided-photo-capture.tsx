@@ -151,12 +151,15 @@ export function GuidedPhotoCapture({
         needsSharpPhoto(current.angle) && issue === "glare" ? issue : null;
       if (current.angle === "odometer_fuel") {
         let read = "";
+        let ocrAvailable = true;
         try {
           read = await recognizeOdometerDigits(compressed);
         } catch {
-          read = "";
+          // The reader could not run (slow or no signal, old phone). That is not
+          // the driver's fault, so the photo goes on without a mileage warning.
+          ocrAvailable = false;
         }
-        if (!odometerReadingMatches(odometer ?? "", read)) {
+        if (ocrAvailable && !odometerReadingMatches(odometer ?? "", read)) {
           // Never hard-block: phone OCR misreads odometers often. Warn, let the
           // driver retake or continue, and flag the photo for office review.
           const stampedOdo = await stampPhotoDataUrl(compressed, new Date().toISOString());
