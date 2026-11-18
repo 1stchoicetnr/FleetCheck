@@ -70,8 +70,12 @@ self.addEventListener("activate", (event) => {
       // Old app versions had no reload-on-update code. If we just replaced an
       // older worker, reload open pages so they pick up the new app.
       if (stale.length > 0) {
+        // Not a page where a driver is mid-check (photos, signing, sending).
         const windows = await self.clients.matchAll({ type: "window" });
-        await Promise.all(windows.map((client) => client.navigate(client.url).catch(() => undefined)));
+        const safe = windows.filter(
+          (client) => !/^\/(checkout|check-in)\/[^/]+\/?$/.test(new URL(client.url).pathname)
+        );
+        await Promise.all(safe.map((client) => client.navigate(client.url).catch(() => undefined)));
       }
     })()
   );
