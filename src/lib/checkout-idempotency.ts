@@ -86,6 +86,36 @@ export function idempotencyKeyForDraft(draftId: string): string {
   return `chk-${hex}${hex}`;
 }
 
+/**
+ * The outbox key for one check. The draft id is the same every time a driver
+ * checks the same unit, so the signature time is part of the key: a retry of
+ * this check reuses it, and the next check of the same unit gets a new one.
+ */
+export function idempotencyKeyForCheck(draftId: string, signedAt?: string): string {
+  return idempotencyKeyForDraft(signedAt ? `${draftId}|${signedAt}` : draftId);
+}
+
+/**
+ * A stored check found by key is a retry of this one only when the signature
+ * times match (or one side has none, as on older phones). A different time means
+ * a new check that reused an old key, so it must not be swallowed by the old row.
+ */
+export function replayIsSameCheck(
+  stored: { signedAt?: string | null },
+  incoming: { signedAt?: string | null }
+): boolean {
+  const a = Date.parse(stored.signedAt ?? "");
+  const b = Date.parse(incoming.signedAt ?? "");
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return true;
+  return a === b;
+}
+
+/** Server-side key for a new check that arrived with an old key (older phones). */
+export function followUpIdempotencyKey(key: string, signedAt: string): string {
+  const t = Date.parse(signedAt);
+  return idempotencyKeyForDraft(`${key}|${Number.isFinite(t) ? new Date(t).toISOString() : signedAt}`);
+}
+
 export function assertIdempotencyKey(key: string): void {
   if (!IDEMPOTENCY_KEY_RE.test(key)) {
     throw new Error("Idempotency key is invalid");

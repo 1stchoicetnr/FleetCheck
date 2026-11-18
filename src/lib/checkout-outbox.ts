@@ -4,7 +4,7 @@ import { createCheckoutReport, markCheckoutSent, uploadCheckoutPhotos } from "./
 import {
   CheckoutOutboxItem,
   deliverOutboxItem,
-  idempotencyKeyForDraft,
+  idempotencyKeyForCheck,
   mergeOutboxAttempt,
   originalDriverFields,
   OutboxPhoto,
@@ -201,7 +201,7 @@ export async function submitCheckoutFromDraft(input: {
   }
 
   const now = new Date().toISOString();
-  const key = idempotencyKeyForDraft(input.draftId);
+  const key = idempotencyKeyForCheck(input.draftId, input.signedAt);
   const next: CheckoutOutboxItem = {
     id: key,
     draftId: input.draftId,

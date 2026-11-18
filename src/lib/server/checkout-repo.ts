@@ -92,7 +92,12 @@ import {
   slackWebhooksFromEnv,
 } from "./slack-delivery";
 import { RAD_CAB_COMPANY_ID } from "@/lib/company-rules";
-import { assertIdempotencyKey, isUniqueViolation } from "@/lib/checkout-idempotency";
+import {
+  assertIdempotencyKey,
+  followUpIdempotencyKey,
+  isUniqueViolation,
+  replayIsSameCheck,
+} from "@/lib/checkout-idempotency";
 import { photoStepsForClient, stuckReason, sweepShouldPostSlack } from "@/lib/legacy-checkout";
 import { finishDecision, type FinishDecision } from "@/lib/checkout-finish";
 import { HISTORICAL_SENT_BEFORE, isStuckUpload, STUCK_UPLOAD_AFTER_MS } from "@/lib/delivery-status";
@@ -762,8 +767,21 @@ export async function createReport(
       throw new SharedBackendError("Idempotency key is invalid", 400);
     }
   }
-  const replay = await reportForIdempotencyKey(mode, orgId, input.idempotencyKey);
-  if (replay) return replay;
+  let replay = await reportForIdempotencyKey(mode, orgId, input.idempotencyKey);
+  if (replay && input.idempotencyKey && input.signedAt && !replayIsSameCheck(replay, input)) {
+    // Older phones reuse one key per driver and unit. This is a new check, not a
+    // retry of the stored one, so it gets its own key instead of the old row.
+    const followUp = followUpIdempotencyKey(input.idempotencyKey, input.signedAt);
+    console.log(
+      `[checkout-create] key=${input.idempotencyKey} result=new-check-old-key old=${replay.id} newKey=${followUp}`
+    );
+    input = { ...input, idempotencyKey: followUp };
+    replay = await reportForIdempotencyKey(mode, orgId, followUp);
+  }
+  if (replay) {
+    console.log(`[checkout-create] key=${input.idempotencyKey} result=replay report=${replay.id}`);
+    return replay;
+  }
   await assertFleet(mode, orgId, input.companyId);
   const now = new Date().toISOString();
   let vehicle =
