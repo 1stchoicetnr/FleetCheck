@@ -6,7 +6,10 @@ import type { OrgDb } from "./server/org-data.ts";
 import {
   deliverOutboxItem,
   failureDelay,
+  followUpIdempotencyKey,
+  idempotencyKeyForCheck,
   idempotencyKeyForDraft,
+  replayIsSameCheck,
   IDEMPOTENCY_KEY_RE,
   isPermanentOutboxError,
   releaseOutboxForRetry,
@@ -350,4 +353,30 @@ test("when the server is missing photos at send, the phone uploads every photo a
   }, Date.parse(stored.nextAttemptAt));
   assert.equal(second.done, true);
   assert.deepEqual(uploaded.sort(), stored.photos.map((photo) => photo.angle).sort());
+});
+
+test("each check of the same unit by the same driver gets its own key", () => {
+  const draftId = "cr-company-rad-cab-vehicle-11-check_out-user-amber";
+  const yesterday = idempotencyKeyForCheck(draftId, "2026-11-13T14:57:00.000Z");
+  const today = idempotencyKeyForCheck(draftId, "2026-11-18T14:20:00.000Z");
+  assert.notEqual(yesterday, today);
+  assert.equal(today, idempotencyKeyForCheck(draftId, "2026-11-18T14:20:00.000Z"));
+  assert.match(today, IDEMPOTENCY_KEY_RE);
+});
+
+test("a stored check is a replay only when the signature time matches", () => {
+  assert.equal(
+    replayIsSameCheck({ signedAt: "2026-11-18T14:20:00.000Z" }, { signedAt: "2026-11-18T14:20:00Z" }),
+    true
+  );
+  assert.equal(
+    replayIsSameCheck({ signedAt: "2026-11-13T14:57:00.000Z" }, { signedAt: "2026-11-18T14:20:00.000Z" }),
+    false
+  );
+  assert.equal(replayIsSameCheck({ signedAt: null }, { signedAt: "2026-11-18T14:20:00.000Z" }), true);
+  const key = idempotencyKeyForDraft("cr-company-rad-cab-vehicle-11-check_out-user-amber");
+  const followUp = followUpIdempotencyKey(key, "2026-11-18T14:20:00Z");
+  assert.notEqual(followUp, key);
+  assert.equal(followUp, followUpIdempotencyKey(key, "2026-11-18T14:20:00.000Z"));
+  assert.match(followUp, IDEMPOTENCY_KEY_RE);
 });

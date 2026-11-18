@@ -163,6 +163,9 @@ export async function POST(req: NextRequest) {
       originalUser,
     });
     if (!who.ok) {
+      console.log(
+        `[api-4xx] status=409 route=create report=key:${body.idempotencyKey ?? "none"} user=${auth.userId} code=driver_mismatch`
+      );
       return NextResponse.json({ error: who.message, code: "driver_mismatch" }, { status: 409 });
     }
     if (who.kept) {
