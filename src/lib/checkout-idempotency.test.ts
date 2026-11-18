@@ -10,6 +10,7 @@ import {
   idempotencyKeyForCheck,
   idempotencyKeyForDraft,
   replayIsSameCheck,
+  freshCheckoutDraftId,
   IDEMPOTENCY_KEY_RE,
   isPermanentOutboxError,
   releaseOutboxForRetry,
@@ -379,4 +380,14 @@ test("a stored check is a replay only when the signature time matches", () => {
   assert.notEqual(followUp, key);
   assert.equal(followUp, followUpIdempotencyKey(key, "2026-11-18T14:20:00.000Z"));
   assert.match(followUp, IDEMPOTENCY_KEY_RE);
+});
+
+test("a new check never reuses a draft that is still waiting to send", () => {
+  const base = "cr-company-rad-cab-vehicle-11-check_out-user-amber";
+  assert.equal(freshCheckoutDraftId(base, []), base);
+  assert.equal(freshCheckoutDraftId(base, ["other"]), base);
+  const fresh = freshCheckoutDraftId(base, [base], Date.parse("2026-11-18T19:00:00Z"));
+  assert.notEqual(fresh, base);
+  assert.ok(fresh.startsWith(`${base}-`));
+  assert.notEqual(idempotencyKeyForDraft(fresh), idempotencyKeyForDraft(base));
 });
