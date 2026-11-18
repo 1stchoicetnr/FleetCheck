@@ -21,3 +21,11 @@ export function sessionCookieOptions(maxAge = SESSION_MAX_AGE_SEC) {
     maxAge,
   };
 }
+
+/** Renew a session once it has less than this left, so drivers are not signed out mid-shift. */
+export const SESSION_RENEW_BELOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+export function sessionNeedsRenewal(expiresAt: string | Date | undefined, now = Date.now()): boolean {
+  const t = expiresAt instanceof Date ? expiresAt.getTime() : Date.parse(String(expiresAt ?? ""));
+  return Number.isFinite(t) && t > now && t - now < SESSION_RENEW_BELOW_MS;
+}

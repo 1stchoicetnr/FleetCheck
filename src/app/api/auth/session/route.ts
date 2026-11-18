@@ -4,7 +4,8 @@ import { slackLinkOrigin } from "@/lib/server/auth-http";
 import { errorResponse } from "@/lib/server/api-error";
 import { publicProfile } from "@/lib/server/auth-accounts";
 import { fleetProfileForMember } from "@/lib/server/fleet-scope";
-import { resolveRequestAuth } from "@/lib/server/request-auth";
+import { renewSessionIfOld, resolveRequestAuth } from "@/lib/server/request-auth";
+import { applySessionCookie } from "@/lib/server/auth-http";
 import { cleanOwnName } from "@/lib/driver-name";
 import { pgDb } from "@/lib/server/postgres-store";
 import { updateOwnName } from "@/lib/server/org-data";
@@ -29,10 +30,15 @@ export async function GET(req: Request) {
     const orgId = auth.orgId;
     const origin = slackLinkOrigin(req);
     after(() => upkeepSoon(orgId, origin) ?? undefined);
-    return NextResponse.json(
+    const res = NextResponse.json(
       { user: { ...profile, ...fleets } },
       { headers: { "Cache-Control": "no-store" } }
     );
+    // Stay signed in while the app is used: a hard 14-day cutoff signed drivers
+    // out mid-shift and left checks waiting on "Sign in first".
+    const renewed = await renewSessionIfOld(req).catch(() => null);
+    if (renewed) applySessionCookie(res, renewed);
+    return res;
   } catch (err) {
     return errorResponse(err, "Could not read the session.");
   }

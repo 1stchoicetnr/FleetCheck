@@ -3,8 +3,8 @@ import { getUser } from "./org-data";
 import { orgFromSession } from "./org-scope";
 import { assertOfficePin, isOfficeRequest } from "./office-pin";
 import { AuthError } from "./auth-accounts";
-import { getSession } from "./auth-store";
-import { hashSecret, SESSION_COOKIE } from "./auth-tokens";
+import { extendSession, getSession } from "./auth-store";
+import { hashSecret, SESSION_COOKIE, SESSION_MAX_AGE_SEC, sessionNeedsRenewal } from "./auth-tokens";
 import { isMemberRole, type MemberRole } from "./member-role";
 import { pgDb, pgMigrateAndSeed } from "./postgres-store";
 
@@ -123,4 +123,19 @@ export async function assertPeopleAccess(req: Request): Promise<RequestAuth> {
   if (sessionGrantsPeople(auth)) return auth;
   if (await isOfficeRequest(req)) return { ...auth, role: "owner", source: "pin" };
   throw new AuthError("Manager access is required.", 401);
+}
+
+/**
+ * Every app open pushes a session that is past its halfway point out another
+ * 14 days. Returns the token when the cookie should be set again.
+ */
+export async function renewSessionIfOld(req: Request): Promise<string | null> {
+  const token = cookieValue(req, SESSION_COOKIE);
+  if (!token) return null;
+  const db = pgDb();
+  const hash = hashSecret(token);
+  const session = await getSession(db, hash);
+  if (!session || !sessionNeedsRenewal(session.expires_at as unknown as string | Date)) return null;
+  await extendSession(db, hash, new Date(Date.now() + SESSION_MAX_AGE_SEC * 1000).toISOString());
+  return token;
 }
