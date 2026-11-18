@@ -773,6 +773,7 @@ function CheckoutCapturePage() {
             setPhotoFlags((prev) => ({
               ...prev,
               [angle]: {
+                ...prev[angle],
                 flaggedDamage,
                 damageNote: flaggedDamage ? prev[angle]?.damageNote : undefined,
               },
@@ -782,9 +783,9 @@ function CheckoutCapturePage() {
             setPhotoFlags((prev) => ({
               ...prev,
               [angle]: {
+                ...prev[angle],
                 flaggedDamage: true,
                 damageNote,
-                qualityNote: prev[angle]?.qualityNote,
               },
             }));
           }}
@@ -792,9 +793,20 @@ function CheckoutCapturePage() {
             setPhotoFlags((prev) => ({
               ...prev,
               [angle]: {
+                ...prev[angle],
                 flaggedDamage: prev[angle]?.flaggedDamage ?? false,
-                damageNote: prev[angle]?.damageNote,
                 qualityNote,
+              },
+            }));
+          }}
+          onQualityOverride={(angle, qualityOverride, qualityOverrideReason) => {
+            setPhotoFlags((prev) => ({
+              ...prev,
+              [angle]: {
+                ...prev[angle],
+                flaggedDamage: prev[angle]?.flaggedDamage ?? false,
+                qualityOverride,
+                qualityOverrideReason,
               },
             }));
           }}

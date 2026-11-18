@@ -3,6 +3,7 @@ import { DAMAGE_SIDES, checkIssueLines } from "./inspection-form";
 import { damageFlagText, damageSideLine, odometerMismatchNotes } from "./photo-flags";
 import type { CheckoutReport, FuelLevel, PhotoStep } from "./types";
 import { missingRequiredPhotos } from "./checkout-completion";
+import { qualityOverrideSlackLine } from "./photo-override";
 import { photoStepsForClient } from "./legacy-checkout";
 import { FUEL_LEVEL_LABELS } from "./types";
 import { formatMileage, formatUnitLabel } from "./utils";
@@ -174,7 +175,10 @@ export function checkoutSlackText(
     `*Odometer:* ${formatMileage(report.odometer)}`,
     `*Fuel:* ${fuelGaugeLabel(report.inspectionForm)}`,
     `*Result:* ${checkoutResultLabel(report)}`,
-    ...[missingPhotosSlackLine(sentMissingPhotoCount(report, options?.photoSteps))].filter(
+    ...[
+      missingPhotosSlackLine(sentMissingPhotoCount(report, options?.photoSteps)),
+      qualityOverrideSlackLine(report.photos),
+    ].filter(
       (line): line is string => Boolean(line)
     ),
     `*Time:* ${formatCheckoutTime(report.completedAt)}`,

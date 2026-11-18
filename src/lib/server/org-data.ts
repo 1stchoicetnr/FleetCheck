@@ -415,6 +415,8 @@ export async function listReportPage(
               'damageNote', NULLIF(btrim(COALESCE(elem.value->>'damageNote', '')), ''),
               'qualityNote', CASE WHEN btrim(COALESCE(elem.value->>'qualityNote', '')) ILIKE 'odometer check:%'
                 THEN left(btrim(elem.value->>'qualityNote'), 500) ELSE NULL END,
+              'qualityOverride', CASE WHEN elem.value->>'qualityOverride' IN ('dark', 'blank', 'blur')
+                THEN elem.value->>'qualityOverride' ELSE NULL END,
               -- A marker, not the image: lets the list count missing photos.
               'dataUrl', CASE WHEN btrim(COALESCE(elem.value->>'dataUrl', '')) <> '' THEN 'stored' ELSE '' END
             )
@@ -818,7 +820,14 @@ export async function listDriverTallyChecks(
   end: string
 ) {
   return db.query(
-    `SELECT r.driver_name, r.review_status, r.company_id, c.name AS company_name
+    `SELECT r.driver_name, r.review_status, r.company_id, c.name AS company_name,
+       (
+         SELECT COUNT(*)::int
+         FROM jsonb_array_elements(
+           CASE WHEN jsonb_typeof(r.photos) = 'array' THEN r.photos ELSE '[]'::jsonb END
+         ) AS elem
+         WHERE elem.value->>'qualityOverride' IN ('dark', 'blank', 'blur')
+       ) AS quality_overrides
      FROM checkout_reports r
      LEFT JOIN companies c ON c.id = r.company_id AND c.org_id = r.org_id
      WHERE r.org_id = $1

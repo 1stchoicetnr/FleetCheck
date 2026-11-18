@@ -187,3 +187,21 @@ test("Slack post lists each checklist issue with its reason and note", () => {
   assert.match(text, /\*Check issue:\* Headlights: Issue — Not working — left bulb/);
   assert.doesNotMatch(checkoutSlackText(report(), { appOrigin: ORIGIN }), /Check issue/);
 });
+
+test("slack says when a driver kept a dark or blurry photo", () => {
+  const plain = checkoutSlackText(report(), { appOrigin: ORIGIN });
+  assert.doesNotMatch(plain, /kept despite/);
+  const base = report();
+  const text = checkoutSlackText(
+    {
+      ...base,
+      photos: base.photos.map((photo) =>
+        photo.angle === "windshield"
+          ? { ...photo, qualityOverride: "dark" as const, qualityOverrideReason: "Too dark / night" }
+          : photo
+      ),
+    },
+    { appOrigin: ORIGIN }
+  );
+  assert.match(text, /1 photo kept despite a dark\/blurry warning \(Windshield\)/);
+});

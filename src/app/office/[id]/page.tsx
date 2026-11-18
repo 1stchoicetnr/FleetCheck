@@ -1,5 +1,6 @@
 "use client";
 
+import { overrideMarker, qualityOverrideCount } from "@/lib/photo-override";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { AppHeader } from "@/components/app-header";
@@ -601,6 +602,23 @@ export default function OfficeReportDetailPage() {
             </Button>
           </div>
 
+          {qualityOverrideCount(report.photos) > 0 && (
+            <div className="rounded-xl border border-amber-400 bg-amber-50 px-3 py-2">
+              <p className="text-sm font-semibold text-amber-900">
+                {qualityOverrideCount(report.photos)} photo
+                {qualityOverrideCount(report.photos) === 1 ? "" : "s"} kept despite a dark/blurry warning
+              </p>
+              {report.photos.map((photo) =>
+                overrideMarker(photo) ? (
+                  <p key={photo.angle} className="text-xs text-amber-900 leading-snug">
+                    {PHOTO_ANGLES.find((step) => step.angle === photo.angle)?.label ?? photo.angle}:{" "}
+                    {overrideMarker(photo)}
+                  </p>
+                ) : null
+              )}
+            </div>
+          )}
+
           {odometerMismatchNotes(report.photos).length > 0 && (
             <div className="rounded-xl border border-amber-400 bg-amber-50 px-3 py-2">
               <p className="text-sm font-semibold text-amber-900">Odometer mismatch</p>
@@ -651,6 +669,11 @@ export default function OfficeReportDetailPage() {
                         {step.label}
                         {damaged ? ` · DAMAGE · ${report.driverName}` : ""}
                       </p>
+                      {photo && overrideMarker(photo) && (
+                        <p className="inline-block rounded-full border border-amber-400 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800 leading-snug">
+                          {overrideMarker(photo)}
+                        </p>
+                      )}
                       {cleanDamageNote(photo?.qualityNote) && (
                         <p className="text-[11px] text-amber-800 leading-snug">
                           {cleanDamageNote(photo?.qualityNote)}
