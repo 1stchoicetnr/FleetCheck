@@ -20,7 +20,7 @@ import { RequestError } from "@/lib/server/api-error";
 import { assertPhotoDataUrl } from "@/lib/server/photo-store";
 import { PHOTO_ANGLES, PhotoAngle } from "@/lib/types";
 import { photoSavedLog } from "@/lib/photo-log";
-import { driverPhotoWindowClosed, PHOTO_WINDOW_CLOSED_MESSAGE } from "@/lib/photo-window";
+import { driverMayAddPhotos, PHOTO_WINDOW_CLOSED_MESSAGE } from "@/lib/photo-window";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -114,7 +114,7 @@ export async function POST(
           throw new RequestError("Damage note is too long", 400);
         }
       }
-      if (!office && driverPhotoWindowClosed(existing.createdAt)) {
+      if (!office && !driverMayAddPhotos(existing, batch.map((photo) => photo.capturedAt))) {
         throw new RequestError(PHOTO_WINDOW_CLOSED_MESSAGE, 403);
       }
       const report = await addReportPhotos(
@@ -160,7 +160,7 @@ export async function POST(
       if (!body.dataUrl.startsWith("data:") && !body.dataUrl.startsWith("/photo-examples/")) {
         throw new RequestError("Photo must be an image upload", 400);
       }
-      if (!Number.isFinite(created) || driverPhotoWindowClosed(existing.createdAt)) {
+      if (!Number.isFinite(created) || !driverMayAddPhotos(existing, [body.capturedAt])) {
         throw new RequestError(PHOTO_WINDOW_CLOSED_MESSAGE, 403);
       }
     }
