@@ -11,6 +11,7 @@ import { Button } from "./ui/button";
 import { ProgressBar } from "./ui/progress-bar";
 import { PhotoExampleCard } from "./photo-example-image";
 import { compressImageFile } from "@/lib/utils";
+import { isUsableImageDataUrl, MAX_QUEUED_PHOTO_CHARS } from "@/lib/canvas-safe";
 import { LiveCameraFrame } from "./live-camera-frame";
 import {
   PHOTO_ANGLES,
@@ -155,6 +156,12 @@ export function GuidedPhotoCapture({
     setPickError("");
     try {
       const compressed = await compressImageFile(file);
+      if (!isUsableImageDataUrl(compressed) || compressed.length > MAX_QUEUED_PHOTO_CHARS) {
+        // The phone could not shrink this photo (an iPhone out of photo memory).
+        // A photo that can never upload must not get into the check.
+        setPickError("Could not save that photo. Take it again.");
+        return;
+      }
       const issue = await readPhotoQuality(compressed);
       if (isBlockingPhotoIssue(issue) && issue) {
         setQualityNote("");

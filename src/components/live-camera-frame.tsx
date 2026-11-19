@@ -6,6 +6,7 @@ import { framingForAngle } from "@/lib/photo-guides";
 import type { PhotoAngle } from "@/lib/types";
 import { FramingOutline } from "./framing-outline";
 import { primaryButtonClass } from "@/lib/button-styles";
+import { releaseCanvas } from "@/lib/canvas-safe";
 
 export function LiveCameraFrame({
   angle,
@@ -66,10 +67,15 @@ export function LiveCameraFrame({
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    if (!ctx) {
+      // iPhone out of photo memory: free this canvas so the next tap can work.
+      releaseCanvas(canvas);
+      return;
+    }
     ctx.drawImage(video, 0, 0);
     canvas.toBlob(
       (blob) => {
+        releaseCanvas(canvas);
         if (!blob) return;
         onCapture(new File([blob], "capture.jpg", { type: "image/jpeg" }));
       },

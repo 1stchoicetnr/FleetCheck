@@ -23,6 +23,7 @@ import {
 } from "./types";
 import { generateId } from "./utils";
 import type { CheckoutOutboxItem } from "./checkout-idempotency";
+import { withDbRetry } from "./idb-retry";
 import { inspectionFormFlagsReport } from "./inspection-form";
 import { SLACK_CHANNEL_DEFAULTS } from "./slack-config";
 import { PHOTO_EXAMPLE_PATHS } from "./photo-examples";
@@ -180,9 +181,32 @@ async function migrateFleetCategories(
   }
 }
 
+/** Forget the open connection so the next step opens a fresh one. */
+function resetDB() {
+  const stale = dbPromise;
+  dbPromise = null;
+  void stale
+    ?.then((db) => {
+      try {
+        db.close();
+      } catch {
+        // Already closed.
+      }
+    })
+    .catch(() => undefined);
+}
+
 function getDB() {
   if (!dbPromise) {
-    dbPromise = openDB<FleetCheckDB>("fleetcheck-db", 7, {
+    const opening: Promise<IDBPDatabase<FleetCheckDB>> = openDB<FleetCheckDB>("fleetcheck-db", 7, {
+      // iOS closed the connection (app was in the background). Reopen next time.
+      terminated() {
+        if (dbPromise === opening) dbPromise = null;
+      },
+      // A newer app version in another tab needs the database.
+      blocking() {
+        resetDB();
+      },
       upgrade(db, oldVersion) {
         if (oldVersion < 1) {
           const users = db.createObjectStore("users", { keyPath: "id" });
@@ -245,9 +269,19 @@ function getDB() {
       await migrateFleetCategories(db);
       await migrateCompaniesAndCheckout(db);
       return db;
+    }).catch((err) => {
+      // A failed open must not be remembered: the next call tries again.
+      if (dbPromise === opening) dbPromise = null;
+      throw err;
     });
+    dbPromise = opening;
   }
   return dbPromise;
+}
+
+/** One database step that survives iOS dropping the connection. */
+function withDB<T>(step: (db: IDBPDatabase<FleetCheckDB>) => Promise<T>): Promise<T> {
+  return withDbRetry(getDB, resetDB, step);
 }
 
 const RAD_CAB_UNIT_12_ID = "vehicle-radcab-12";
@@ -894,12 +928,13 @@ export async function saveSettings(settings: AppSettings): Promise<void> {
 
 // Pending sync
 export async function getPendingSyncCount(): Promise<number> {
-  const db = await getDB();
-  const [checks, uploads] = await Promise.all([
-    db.count("pendingSync"),
-    db.count("checkoutOutbox"),
-  ]);
-  return checks + uploads;
+  return withDB(async (db) => {
+    const [checks, uploads] = await Promise.all([
+      db.count("pendingSync"),
+      db.count("checkoutOutbox"),
+    ]);
+    return checks + uploads;
+  });
 }
 
 export async function clearPendingSync(): Promise<void> {
@@ -1151,38 +1186,36 @@ export function checkoutDraftId(
 }
 
 export async function saveCheckoutDraft(draft: CheckoutDraft): Promise<void> {
-  await (await getDB()).put("checkoutDrafts", {
-    ...draft,
-    updatedAt: new Date().toISOString(),
-  });
+  const row = { ...draft, updatedAt: new Date().toISOString() };
+  await withDB((db) => db.put("checkoutDrafts", row));
 }
 
 export async function getCheckoutDraft(
   id: string
 ): Promise<CheckoutDraft | undefined> {
-  return (await getDB()).get("checkoutDrafts", id);
+  return withDB((db) => db.get("checkoutDrafts", id));
 }
 
 export async function deleteCheckoutDraft(id: string): Promise<void> {
-  await (await getDB()).delete("checkoutDrafts", id);
+  await withDB((db) => db.delete("checkoutDrafts", id));
 }
 
 export async function listCheckoutOutbox(): Promise<CheckoutOutboxItem[]> {
-  return (await getDB()).getAll("checkoutOutbox");
+  return withDB((db) => db.getAll("checkoutOutbox"));
 }
 
 export async function getCheckoutOutboxItem(
   id: string
 ): Promise<CheckoutOutboxItem | undefined> {
-  return (await getDB()).get("checkoutOutbox", id);
+  return withDB((db) => db.get("checkoutOutbox", id));
 }
 
 export async function saveCheckoutOutboxItem(item: CheckoutOutboxItem): Promise<void> {
-  await (await getDB()).put("checkoutOutbox", item);
+  await withDB((db) => db.put("checkoutOutbox", item));
 }
 
 export async function deleteCheckoutOutboxItem(id: string): Promise<void> {
-  await (await getDB()).delete("checkoutOutbox", id);
+  await withDB((db) => db.delete("checkoutOutbox", id));
 }
 
 export async function saveCachedCompanies(companies: Company[]): Promise<void> {
