@@ -24,6 +24,7 @@ import type { CheckoutReport, CheckoutType, PhotoAngle, PhotoFlagState } from ".
 import type { CheckoutInspectionForm } from "./inspection-form";
 import { driverUploadMessage } from "./delivery-status";
 import { compressUploadPhoto } from "./utils";
+import { isSendablePhoto } from "./canvas-safe";
 
 let flushing: Promise<number> | null = null;
 let askedPersist = false;
@@ -171,10 +172,14 @@ export async function submitCheckoutFromDraft(input: {
   | { state: "saved"; pending: number; error?: string }
 > {
   const capturedAt = new Date().toISOString();
-  const entries = Object.entries(input.photos).filter(([, dataUrl]) => dataUrl) as [
-    PhotoAngle,
-    string,
-  ][];
+  const entries = Object.entries(input.photos).filter(([angle, dataUrl]) => {
+    if (!dataUrl) return false;
+    if (isSendablePhoto(dataUrl)) return true;
+    // An empty "data:," photo (iPhone canvas out of memory) is refused by the
+    // server every time and would hold the whole check on this phone forever.
+    console.info(`[outbox] skipped unusable photo angle=${angle} chars=${String(dataUrl).length}`);
+    return false;
+  }) as [PhotoAngle, string][];
   input.onProgress?.("Preparing photos", 5);
   const photos: OutboxPhoto[] = new Array(entries.length);
   let prepared = 0;

@@ -2,6 +2,7 @@ import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { alreadyUploadReady } from "./checkout-idempotency";
 import { displayPlate, normalizePlate } from "./plate";
+import { isUsableImageDataUrl, releaseCanvas, withFallbackAfter } from "./canvas-safe";
 import type { Vehicle } from "./types";
 
 export { displayPlate, normalizePlate };
@@ -114,29 +115,49 @@ export function fitInBox(
   return { width, height };
 }
 
+/** An image that never loads or draws must not leave the phone waiting forever. */
+export const COMPRESS_TIMEOUT_MS = 20_000;
+
 export function compressImage(
   dataUrl: string,
   maxDimension = PHOTO_UPLOAD_MAX_EDGE,
   quality = PHOTO_UPLOAD_JPEG_QUALITY
 ): Promise<string> {
-  return new Promise((resolve) => {
+  const work = new Promise<string>((resolve) => {
     const img = new Image();
     img.onload = () => {
-      let { width, height } = img;
-      const longest = Math.max(width, height);
-      if (longest > maxDimension) {
-        const scale = maxDimension / longest;
-        width = Math.round(width * scale);
-        height = Math.round(height * scale);
+      let canvas: HTMLCanvasElement | null = null;
+      try {
+        let { width, height } = img;
+        const longest = Math.max(width, height);
+        if (longest > maxDimension) {
+          const scale = maxDimension / longest;
+          width = Math.round(width * scale);
+          height = Math.round(height * scale);
+        }
+        canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        // iPhone returns null here once its canvas memory is used up.
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(dataUrl);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        const out = canvas.toDataURL("image/jpeg", quality);
+        // "data:," means the canvas had no pixels to give; keep the original.
+        resolve(isUsableImageDataUrl(out) ? out : dataUrl);
+      } catch {
+        resolve(dataUrl);
+      } finally {
+        releaseCanvas(canvas);
+        img.onload = null;
+        img.onerror = null;
       }
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext("2d")!;
-      ctx.drawImage(img, 0, 0, width, height);
-      resolve(canvas.toDataURL("image/jpeg", quality));
     };
     img.onerror = () => resolve(dataUrl);
     img.src = dataUrl;
   });
+  return withFallbackAfter(work, COMPRESS_TIMEOUT_MS, dataUrl);
 }
