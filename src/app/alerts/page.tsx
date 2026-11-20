@@ -20,6 +20,7 @@ import {
 } from "@/lib/checkout-api";
 import { DamageBeforeAfter } from "@/components/damage-before-after";
 import { WhoHadItLastBlock } from "@/components/who-had-it-last";
+import { PhotoCheckFindings } from "@/components/photo-check-findings";
 import { MarkKnownDamage } from "@/components/known-damage";
 import type { PhotoAngle } from "@/lib/types";
 import { isOfficeUnlocked } from "@/lib/office-auth";
@@ -178,6 +179,7 @@ export default function AlertsPage() {
     { key: "status_needs_work", label: "Needs Work" },
     { key: "status_out_of_service", label: "Out of Service" },
     { key: "repeat_problem", label: "Repeat" },
+    { key: "photo_check", label: "Photo check" },
     { key: "known_issue_updated", label: "Known Issue" },
     { key: "check_events", label: "Check In/Out" },
   ];
@@ -327,6 +329,14 @@ export default function AlertsPage() {
                       </div>
                     )}
                     {alert.details?.whoHadIt && <WhoHadItLastBlock info={alert.details.whoHadIt} />}
+                    {alert.type === "photo_check" && alert.reportId && alert.details?.photoCheck && (
+                      <PhotoCheckFindings
+                        reportId={alert.reportId}
+                        findings={alert.details.photoCheck}
+                        canDecide={Boolean(user && canManageOfficeRecords(user.role)) && !alert.archivedAt}
+                        onDone={() => void loadAlerts()}
+                      />
+                    )}
                     {alert.type === "damage_reported" &&
                       !alert.archivedAt &&
                       user &&

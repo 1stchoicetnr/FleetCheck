@@ -95,7 +95,8 @@ export interface SharedOfficeAlert {
     | "damage_reported"
     | "status_needs_work"
     | "status_out_of_service"
-    | "repeat_problem";
+    | "repeat_problem"
+    | "photo_check";
   message: string;
   vehicleId: string;
   vehiclePlate: string;

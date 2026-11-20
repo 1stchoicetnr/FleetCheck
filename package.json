@@ -12,6 +12,7 @@
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
     "@vercel/blob": "^2.8.0",
+    "@vercel/oidc": "^4.0.9",
     "clsx": "^2.1.1",
     "idb": "^8.0.2",
     "jspdf": "^2.5.2",

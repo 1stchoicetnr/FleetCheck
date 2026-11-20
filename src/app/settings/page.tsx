@@ -6,6 +6,7 @@ import { AppHeader } from "@/components/app-header";
 import { OfficePinGate } from "@/components/office-pin-gate";
 import { CompanySettingsPanel } from "@/components/company-settings-panel";
 import { NotificationSettingsPanel } from "@/components/notification-settings-panel";
+import { PhotoCheckSettingsCard } from "@/components/photo-check-settings";
 import { PeopleSettingsEntries, PeopleSettingsPanel } from "@/components/people-settings-panel";
 import { useAuth } from "@/hooks/use-auth";
 import {
@@ -63,6 +64,7 @@ function SettingsPage() {
         ))}
       </div>
       {sections.includes("company") && <CompanySettingsPanel />}
+      {sections.includes("company") && <PhotoCheckSettingsCard />}
       {sections.includes("company") || canEditFleets(user) ? (
         <FleetManager
           canEdit={canEditFleets(user)}

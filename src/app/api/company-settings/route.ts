@@ -14,6 +14,7 @@ const COMPANY_WIDE_KEYS = [
   "cloverCompanyIds",
   "pdfLogoDataUrl",
   "clearPdfLogo",
+  "photoCheck",
 ] as const;
 
 export const runtime = "nodejs";
