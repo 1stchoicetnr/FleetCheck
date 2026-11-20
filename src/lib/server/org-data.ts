@@ -932,12 +932,13 @@ export async function insertAlert(
     createdAt: string;
     read: boolean;
     archivedAt: string | null;
+    damageKeys?: string[] | null;
   }
 ) {
   await db.query(
     `INSERT INTO fleet_alerts (
-      id, org_id, type, message, vehicle_id, vehicle_plate, actor_name, report_id, created_at, read, archived_at
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      id, org_id, type, message, vehicle_id, vehicle_plate, actor_name, report_id, created_at, read, archived_at, damage_keys
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb)
     ON CONFLICT (id) DO NOTHING`,
     [
       alert.id,
@@ -951,8 +952,49 @@ export async function insertAlert(
       alert.createdAt,
       alert.read,
       alert.archivedAt,
+      alert.damageKeys?.length ? JSON.stringify(alert.damageKeys) : null,
     ]
   );
+}
+
+/** Org-wide read state. Returns the updated rows. */
+export async function setAlertsRead(
+  db: OrgDb,
+  orgId: string,
+  ids: string[],
+  read: boolean,
+  readAt: string | null,
+  readBy: string | null
+) {
+  if (!ids.length) return [];
+  return db.query(
+    `UPDATE fleet_alerts SET read = $1, read_at = $2, read_by = $3
+     WHERE org_id = $4 AND id = ANY($5::text[])
+     RETURNING *`,
+    [read, read ? readAt : null, read ? readBy : null, org(orgId), ids]
+  );
+}
+
+/**
+ * A later check repeated this alert's damage. Counts each check once and only
+ * while the alert is open; returns undefined when nothing changed.
+ */
+export async function bumpAlertReport(
+  db: OrgDb,
+  orgId: string,
+  id: string,
+  input: { reportId: string; actorName: string; at: string }
+) {
+  const rows = await db.query(
+    `UPDATE fleet_alerts
+     SET report_ids = COALESCE(report_ids, '[]'::jsonb) || jsonb_build_array($1::text),
+         last_report_id = $1, last_actor_name = $2, last_reported_at = $3
+     WHERE id = $4 AND org_id = $5 AND archived_at IS NULL
+       AND NOT (COALESCE(report_ids, '[]'::jsonb) @> jsonb_build_array($1::text))
+     RETURNING *`,
+    [input.reportId, input.actorName, input.at, id, org(orgId)]
+  );
+  return rows[0];
 }
 
 export async function setAlertArchivedAt(

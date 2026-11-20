@@ -57,6 +57,7 @@ import {
   localDeleteReport,
   localInsertUser,
   localListAlerts,
+  localSetAlertsRead,
   localListUsers,
   localUpdateFleet,
   localUpdateUser,
@@ -123,6 +124,7 @@ import {
   pgDeleteReport,
   pgInsertUser,
   pgListAlerts,
+  pgSetAlertsRead,
   pgListUsers,
   pgUpdateFleet,
   pgUpdateUser,
@@ -1127,9 +1129,41 @@ export async function listOfficeAlerts(
   includeArchived = false
 ): Promise<SharedOfficeAlert[]> {
   const mode = assertConfigured();
+  const alerts =
+    mode === "postgres"
+      ? await pgListAlerts(orgId, includeArchived)
+      : await localListAlerts(includeArchived);
+  return alerts.map((alert) => ({
+    ...alert,
+    reportCount: 1 + (alert.reportIds?.length ?? 0),
+  }));
+}
+
+/** Org-wide read state: once anyone in the office marks it read, it is read for everyone. */
+export async function setOfficeAlertsRead(
+  orgId: string,
+  ids: string[],
+  read: boolean,
+  readBy: string | null
+): Promise<SharedOfficeAlert[]> {
+  const mode = assertConfigured();
+  if (!ids.length) return [];
   return mode === "postgres"
-    ? pgListAlerts(orgId, includeArchived)
-    : localListAlerts(includeArchived);
+    ? pgSetAlertsRead(orgId, ids, read, readBy)
+    : localSetAlertsRead(ids, read, readBy);
+}
+
+/** Every open check of one unit, newest first (before/after photos). */
+export async function listVehicleReports(
+  orgId: string,
+  vehicleId: string
+): Promise<CheckoutReport[]> {
+  const mode = assertConfigured();
+  return mode === "postgres"
+    ? pgListVehicleReports(orgId, vehicleId)
+    : (await localListReports()).filter(
+        (report) => report.vehicleId === vehicleId && !report.archivedAt
+      );
 }
 
 export async function setOfficeAlertArchived(

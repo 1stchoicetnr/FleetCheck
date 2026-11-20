@@ -100,7 +100,19 @@ export interface SharedOfficeAlert {
   reportId?: string;
   createdAt: string;
   read: boolean;
+  /** Org-wide read: when and by whom it was marked read. Old records have neither. */
+  readAt?: string;
+  readBy?: string;
   archivedAt?: string;
+  /** Damage items this alert covers (see damage-keys.ts). Old records have none. */
+  damageKeys?: string[];
+  /** Later checks that repeated this damage instead of making a new alert. */
+  reportIds?: string[];
+  /** 1 + reportIds.length. */
+  reportCount?: number;
+  lastReportedAt?: string;
+  lastReportId?: string;
+  lastActorName?: string;
 }
 
 export interface SharedAppUser {

@@ -81,6 +81,17 @@ async function embedStoredPhotos(report: CheckoutReport): Promise<CheckoutReport
   return { ...report, photos, signatureDataUrl };
 }
 
+/** Stored private-blob address -> data URL, read on the server. Anything else is left alone. */
+async function embedStoredSrc(src?: string): Promise<string | undefined> {
+  if (!src || !blobAccessKind(src)) return src;
+  try {
+    const loaded = await readStoredPhotoBytes(src);
+    return photoDataUrl(loaded.bytes, loaded.contentType);
+  } catch {
+    return undefined;
+  }
+}
+
 export async function checkoutReportPdfBytes(
   report: CheckoutReport,
   options: CheckoutPdfOptions = {}
@@ -88,8 +99,18 @@ export async function checkoutReportPdfBytes(
   installPdfPolyfills();
   const logo = options.logoDataUrl || (await defaultLogoDataUrl());
   const { generateCheckoutReportPDF } = await import("@/lib/pdf");
+  const damageCompare = options.damageCompare
+    ? await Promise.all(
+        options.damageCompare.map(async (pair) => ({
+          ...pair,
+          beforeSrc: await embedStoredSrc(pair.beforeSrc),
+          afterSrc: await embedStoredSrc(pair.afterSrc),
+        }))
+      )
+    : undefined;
   const blob = await generateCheckoutReportPDF(await embedStoredPhotos(report), {
     ...options,
+    damageCompare,
     logoDataUrl: logo,
   });
   return new Uint8Array(await blob.arrayBuffer());

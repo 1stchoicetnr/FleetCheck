@@ -1,5 +1,10 @@
 import { errorResponse } from "@/lib/server/api-error";
-import { deleteOfficeAlert, listOfficeAlerts, setOfficeAlertArchived } from "@/lib/server/checkout-repo";
+import {
+  deleteOfficeAlert,
+  listOfficeAlerts,
+  setOfficeAlertArchived,
+  setOfficeAlertsRead,
+} from "@/lib/server/checkout-repo";
 import { assertVehicleInScope } from "@/lib/server/fleet-scope";
 import { assertOfficeAccess, canViewArchivedRecords } from "@/lib/server/request-auth";
 import { NextResponse } from "next/server";
@@ -28,9 +33,20 @@ export async function PATCH(
     if (!(await alertInScope(auth, id))) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
-    const body = (await req.json()) as { archived?: boolean };
+    const body = (await req.json()) as { archived?: boolean; read?: boolean };
+    if (typeof body.read === "boolean" && typeof body.archived !== "boolean") {
+      // Read is org-wide: marking it read clears it for everyone in the office.
+      const [alert] = await setOfficeAlertsRead(
+        auth.orgId,
+        [id],
+        body.read,
+        auth.name || auth.email || (auth.source === "pin" ? "Office" : null)
+      );
+      if (!alert) return NextResponse.json({ error: "Not found" }, { status: 404 });
+      return NextResponse.json({ alert });
+    }
     if (typeof body.archived !== "boolean") {
-      return NextResponse.json({ error: "archived (boolean) is required" }, { status: 400 });
+      return NextResponse.json({ error: "archived or read (boolean) is required" }, { status: 400 });
     }
     if (body.archived === false && !canViewArchivedRecords(auth)) {
       return NextResponse.json({ error: "Owner access is required." }, { status: 403 });

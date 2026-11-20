@@ -22,8 +22,23 @@ import { postAshleySlackDm } from "@/lib/ashley-slack";
 import { repeatProblemNote } from "@/lib/driver-tally";
 import { repeatedIssues } from "@/lib/repeat-issues";
 import { formatUnitLabel } from "@/lib/utils";
-import { localInsertAlert, localListAlerts, localListReports } from "./local-store";
-import { pgInsertAlert, pgListAlerts, pgListVehicleReports } from "./postgres-store";
+import { damageItemKeys, openDamageAlerts, planDamageAlert } from "@/lib/damage-keys";
+import { beforeAfterPairs, beforeAfterSlackLines } from "@/lib/damage-before-after";
+import { formatCheckoutTime } from "@/lib/checkout-slack";
+import {
+  localBumpAlertReport,
+  localGetReport,
+  localInsertAlert,
+  localListAlerts,
+  localListReports,
+} from "./local-store";
+import {
+  pgBumpAlertReport,
+  pgGetReport,
+  pgInsertAlert,
+  pgListAlerts,
+  pgListVehicleReports,
+} from "./postgres-store";
 import { sharedBackendMode } from "./shared-config";
 import { SharedOfficeAlert } from "./shared-types";
 
@@ -39,11 +54,15 @@ function factsFor(report: CheckoutReport) {
   };
 }
 
-function alertMessage(kind: CheckoutAlertKind, report: CheckoutReport): string {
+function alertMessage(
+  kind: CheckoutAlertKind,
+  report: CheckoutReport,
+  damageKeys?: string[] | null
+): string {
   const unit = formatUnitLabel(report.unitNumber, report.plate);
   if (kind === "status_needs_work") return `${unit} needs repair`;
   if (kind === "status_out_of_service") return `${unit} marked out of service`;
-  const details = alertDetailParts(alertDamageDetails(report));
+  const details = alertDetailParts(alertDamageDetails(report, damageKeys));
   return details.length
     ? `Damage reported on ${unit}: ${details.join(", ")}`
     : `Damage reported on ${unit}`;
@@ -60,12 +79,15 @@ function repairWebhook(route: SlackRoute): string | undefined {
 
 async function postRepairSlack(
   report: CheckoutReport,
-  alerts: SharedOfficeAlert[]
+  alerts: SharedOfficeAlert[],
+  history: CheckoutReport[]
 ): Promise<void> {
   if (!alerts.length || !postsRepairSlack(report.companyId)) return;
   const route = repairRoute(report.companyId);
   const unit = formatUnitLabel(report.unitNumber, report.plate);
   const origin = checkoutAppOrigin(process.env.APP_ORIGIN || process.env.NEXT_PUBLIC_APP_URL);
+  // A new damage alert lists only its new items; already-flagged damage is not repeated.
+  const damageKeys = alerts.find((alert) => alert.type === "damage_reported")?.damageKeys;
   const text = repairSlackText({
     unit,
     vehicle: `${report.year} ${report.make} ${report.model}`,
@@ -73,8 +95,13 @@ async function postRepairSlack(
     alertLines: alerts
       .filter((alert) => alert.type !== "damage_reported")
       .map((alert) => `*${alert.type.replace(/_/g, " ")}:* ${alert.message}`),
-    details: alertDamageDetails(report),
+    details: alertDamageDetails(report, damageKeys),
     checkUrl: officeCheckUrl(origin, report.id),
+    extraLines: beforeAfterSlackLines(
+      beforeAfterPairs(report, history, { keys: damageKeys }),
+      (id) => officeCheckUrl(origin, id),
+      formatCheckoutTime
+    ),
   });
   try {
     const result = await sendRepairSlack({
@@ -90,7 +117,21 @@ async function postRepairSlack(
   }
 }
 
-/** Create in-app alerts for damage / needs repair and post them when a webhook is set. */
+async function vehicleHistory(orgId: string, report: CheckoutReport): Promise<CheckoutReport[]> {
+  return sharedBackendMode() === "postgres"
+    ? pgListVehicleReports(orgId, report.vehicleId)
+    : (await localListReports()).filter(
+        (item) => item.vehicleId === report.vehicleId && !item.archivedAt
+      );
+}
+
+/**
+ * Create in-app alerts for damage / needs repair and post them to Slack.
+ * Damage already on an open alert for this unit (same area + item) bumps that
+ * alert (count, last check, last driver) with no new alert and no Slack/Bell DM.
+ * New damage still alerts. Archiving an alert means handled: a later report of
+ * the same damage starts a fresh alert.
+ */
 export async function recordCheckoutAlerts(
   orgId: string,
   report: CheckoutReport
@@ -98,44 +139,72 @@ export async function recordCheckoutAlerts(
   const mode = sharedBackendMode();
   if (mode === "unconfigured") return;
   const kinds = checkoutAlertKinds(factsFor(report));
+  let history: CheckoutReport[] | undefined;
   if (kinds.length) {
     const existing =
       mode === "postgres" ? await pgListAlerts(orgId, true) : await localListAlerts(true);
     const have = new Set(existing.map((alert) => alert.id));
     const created: SharedOfficeAlert[] = [];
+    const now = new Date().toISOString();
     for (const kind of kinds) {
       const id = checkoutAlertId(report.id, kind);
+      let damageKeys: string[] | undefined;
+      if (kind === "damage_reported") {
+        const keys = damageItemKeys(report);
+        if (keys.length) {
+          const plan = planDamageAlert({
+            reportId: report.id,
+            keys,
+            open: await openDamageAlerts(existing, report.vehicleId, (rid) =>
+              mode === "postgres" ? pgGetReport(orgId, rid) : localGetReport(rid)
+            ),
+          });
+          for (const bumpId of plan.bumpIds) {
+            const input = { reportId: report.id, actorName: report.driverName, at: now };
+            const bumped =
+              mode === "postgres"
+                ? await pgBumpAlertReport(orgId, bumpId, input)
+                : await localBumpAlertReport(bumpId, input);
+            console.info(`[alerts] report=${report.id} repeat-damage alert=${bumpId} bumped=${Boolean(bumped)}`);
+          }
+          if (!plan.newKeys.length) continue;
+          damageKeys = plan.newKeys;
+        }
+      }
       if (have.has(id)) continue;
       const alert: SharedOfficeAlert = {
         id,
         type: kind,
-        message: alertMessage(kind, report),
+        message: alertMessage(kind, report, damageKeys),
         vehicleId: report.vehicleId,
         vehiclePlate: formatUnitLabel(report.unitNumber, report.plate),
         actorName: report.driverName,
         reportId: report.id,
-        createdAt: new Date().toISOString(),
+        createdAt: now,
         read: false,
+        ...(damageKeys ? { damageKeys } : {}),
       };
       if (mode === "postgres") await pgInsertAlert(orgId, alert);
       else await localInsertAlert(alert);
       created.push(alert);
     }
-    await postRepairSlack(report, created);
+    if (created.length) {
+      history = await vehicleHistory(orgId, report).catch(() => []);
+      await postRepairSlack(report, created, history);
+    }
   }
-  await recordRepeatIssues(orgId, report);
+  await recordRepeatIssues(orgId, report, history);
 }
 
 /** Same unit, same issue on two or more checks. The office queue keeps it, and Ashley gets a direct note. */
-async function recordRepeatIssues(orgId: string, report: CheckoutReport): Promise<void> {
+async function recordRepeatIssues(
+  orgId: string,
+  report: CheckoutReport,
+  known?: CheckoutReport[]
+): Promise<void> {
   const mode = sharedBackendMode();
   if (mode === "unconfigured") return;
-  const history =
-    mode === "postgres"
-      ? await pgListVehicleReports(orgId, report.vehicleId)
-      : (await localListReports()).filter(
-          (item) => item.vehicleId === report.vehicleId && !item.archivedAt
-        );
+  const history = known ?? (await vehicleHistory(orgId, report));
   const repeats = repeatedIssues(
     report,
     history.filter((item) => item.id !== report.id)

@@ -1,6 +1,8 @@
 import { activeIssueFlagLabels } from "./inspection-form.ts";
 import type { CheckoutInspectionForm } from "./inspection-form.ts";
 import { cleanDamageNote, photoAngleLabel } from "./photo-flags.ts";
+import { ISSUE_FLAG_ITEMS } from "./inspection-form.ts";
+import { flagKey, markKey, noteKey, photoKey } from "./damage-keys.ts";
 import type { CheckoutReport, PhotoAngle } from "./types.ts";
 
 /** Bell, Rad Cab office. Damage alerts DM her. */
@@ -25,25 +27,43 @@ type DetailSource = Pick<CheckoutReport, "photos"> & {
   inspectionForm?: CheckoutInspectionForm | null;
 };
 
-export function alertDamageDetails(report: DetailSource): AlertDamageDetails {
+/**
+ * Damage lines for an alert. With `keys`, only those items are listed, so an
+ * alert made for new damage does not repeat damage already on an open alert.
+ */
+export function alertDamageDetails(
+  report: DetailSource,
+  keys?: readonly string[] | null
+): AlertDamageDetails {
   const form = report.inspectionForm ?? undefined;
   const damage = form?.damage ?? {};
+  const keep = (key: string) => !keys || keys.includes(key);
   const notes: string[] = [];
+  const notedSides = new Set<string>();
   for (const [key, label] of SIDES) {
     const text = cleanDamageNote(damage[key]);
-    if (text) notes.push(`${label}: ${text}`);
+    if (!text) continue;
+    notedSides.add(key);
+    if (keep(noteKey(key, text))) notes.push(`${label}: ${text}`);
   }
+  const issueFlags = keys
+    ? ISSUE_FLAG_ITEMS.filter((item) => form?.issueFlags?.[item.id] && keep(flagKey(item.id))).map(
+        (item) => item.label
+      )
+    : activeIssueFlagLabels(form);
   return {
-    issueFlags: activeIssueFlagLabels(form),
+    issueFlags,
     photos: report.photos
-      .filter((photo) => photo.flaggedDamage)
+      .filter((photo) => photo.flaggedDamage && keep(photoKey(photo.angle, cleanDamageNote(photo.damageNote))))
       .map((photo) => ({
         angle: photo.angle,
         label: photoAngleLabel(photo.angle),
         note: cleanDamageNote(photo.damageNote),
       })),
     notes,
-    marks: (damage.marks ?? []).map(String),
+    marks: (damage.marks ?? [])
+      .map(String)
+      .filter((side) => !keys || (!notedSides.has(side) && keep(markKey(side as (typeof SIDES)[number][0])))),
   };
 }
 
@@ -76,6 +96,8 @@ export function repairSlackText(input: {
   alertLines: string[];
   details: AlertDamageDetails;
   checkUrl: string;
+  /** Before / after photo lines and the like, above the check link. */
+  extraLines?: string[];
 }): string {
   const parts = alertDetailParts(input.details);
   return [
@@ -84,6 +106,7 @@ export function repairSlackText(input: {
     `*Driver:* ${input.driverName}`,
     ...input.alertLines,
     parts.length ? `*Details:*\n${parts.map((p) => `• ${p}`).join("\n")}` : "*Details:* none entered",
+    ...(input.extraLines ?? []),
     `<${input.checkUrl}|Open the check>`,
   ].join("\n");
 }
