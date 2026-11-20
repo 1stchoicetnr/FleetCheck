@@ -258,6 +258,8 @@ export interface PhotoFlagState {
   knownDamageId?: string;
   knownDamageAnswer?: "same" | "new";
   knownDamageAnsweredAt?: string;
+  /** Where the damage is on the car diagram (0..1, front of car at y = 0). */
+  damageSpot?: { x: number; y: number };
 }
 
 export interface VehiclePhoto {
@@ -278,6 +280,8 @@ export interface VehiclePhoto {
   /** Driver's answer: "same" (no alert) or "new" (alerts as normal). */
   knownDamageAnswer?: "same" | "new";
   knownDamageAnsweredAt?: string;
+  /** Driver's tap on the car diagram for flagged damage. Close-up is its own photo, angle "closeup_<slot>". */
+  damageSpot?: { x: number; y: number };
   /** Office review of the answer: false report (said new, was not) or missed damage (said same, was new). */
   damageReview?: { kind: "false_report" | "missed_damage"; by: string; at: string };
   /** Bot photo check result for this slot (off by default). */

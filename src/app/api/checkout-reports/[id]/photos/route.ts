@@ -1,3 +1,4 @@
+import { isUploadAngle } from "@/lib/damage-closeup";
 import { mayUpdateCheckout } from "@/lib/checkout-access";
 import { toClientReport } from "@/lib/photo-url";
 import { type ApiErrorContext, errorResponse } from "@/lib/server/api-error";
@@ -80,6 +81,7 @@ export async function POST(
       knownDamageId?: string;
       knownDamageAnswer?: string;
       knownDamageAnsweredAt?: string;
+      damageSpot?: unknown;
       photos?: Array<{
         angle?: PhotoAngle;
         dataUrl?: string;
@@ -92,6 +94,7 @@ export async function POST(
         knownDamageId?: string;
         knownDamageAnswer?: string;
         knownDamageAnsweredAt?: string;
+      damageSpot?: unknown;
       }>;
     };
     const batch = Array.isArray(body.photos) ? body.photos : null;
@@ -116,7 +119,7 @@ export async function POST(
         if (!photo.angle || !photo.dataUrl) {
           throw new RequestError("Each photo needs an angle and image", 400);
         }
-        if (!PHOTO_ANGLES.some((step) => step.angle === photo.angle)) {
+        if (!isUploadAngle(photo.angle)) {
           throw new RequestError("Unknown photo angle", 400);
         }
         assertPhotoDataUrl(photo.dataUrl);
@@ -142,6 +145,7 @@ export async function POST(
           knownDamageId: photo.knownDamageId,
           knownDamageAnswer: photo.knownDamageAnswer,
           knownDamageAnsweredAt: photo.knownDamageAnsweredAt,
+          damageSpot: photo.damageSpot,
         }))
       );
       const finished = await finishIfComplete(req, orgId, report);
@@ -165,7 +169,7 @@ export async function POST(
         { status: 400 }
       );
     }
-    if (!PHOTO_ANGLES.some((step) => step.angle === body.angle)) throw new RequestError("Unknown photo angle", 400);
+    if (!isUploadAngle(body.angle)) throw new RequestError("Unknown photo angle", 400);
     assertPhotoDataUrl(body.dataUrl);
     if (typeof body.damageNote === "string" && body.damageNote.length > 2000) {
       throw new RequestError("Damage note is too long", 400);
@@ -194,6 +198,7 @@ export async function POST(
         knownDamageId: body.knownDamageId,
         knownDamageAnswer: body.knownDamageAnswer,
         knownDamageAnsweredAt: body.knownDamageAnsweredAt,
+        damageSpot: body.damageSpot,
       }
     );
     const finished = await finishIfComplete(req, orgId, report);

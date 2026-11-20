@@ -48,6 +48,8 @@ import { recognizeOdometerDigits } from "@/lib/odometer-ocr";
 import { damageActor } from "@/lib/photo-flags";
 import { stampPhotoDataUrl } from "@/lib/photo-stamp";
 import { useCheckoutFeedback } from "@/components/checkout-feedback";
+import { DamageCloseUpPanel } from "@/components/damage-closeup-panel";
+import { closeUpAngle, closeUpMissing, needsCloseUp, type DamageSpot } from "@/lib/damage-closeup";
 import { primaryButtonClass } from "@/lib/button-styles";
 
 interface GuidedPhotoCaptureProps {
@@ -76,6 +78,11 @@ interface GuidedPhotoCaptureProps {
   /** Active known damage on this unit. On those slots the driver must answer Same / New. */
   knownDamage?: KnownDamagePrompt[];
   onKnownDamageAnswer?: (angle: PhotoAngle, knownDamageId: string, answer: "same" | "new") => void;
+  /** Slots the Precheck noted as damaged. They need a close-up too unless the driver said "Same as before". */
+  closeUpSlots?: PhotoAngle[];
+  /** Required damage close-up: diagram tap and close-up photo. Both must be set to turn it on. */
+  onDamageSpot?: (angle: PhotoAngle, spot: DamageSpot) => void;
+  onCloseUp?: (angle: PhotoAngle, dataUrl: string | null) => void;
 }
 
 export type KnownDamagePrompt = {
@@ -105,7 +112,11 @@ export function GuidedPhotoCapture({
   prior,
   knownDamage,
   onKnownDamageAnswer,
+  closeUpSlots = [],
+  onDamageSpot,
+  onCloseUp,
 }: GuidedPhotoCaptureProps) {
+  const closeUpOn = Boolean(onDamageSpot && onCloseUp);
   const requiredPhotos = steps.filter((p) => p.required);
   const acceptedCount = requiredPhotos.filter((p) => photos[p.angle]).length;
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -139,7 +150,17 @@ export function GuidedPhotoCapture({
   const value = current ? photos[current.angle] : undefined;
   const isLastStep = currentIndex === requiredPhotos.length - 1;
   const canGoPrev = currentIndex > 0;
+  /** Flagged damage here still needs its diagram tap or close-up. */
+  const closeUpGap =
+    closeUpOn && current && value
+      ? closeUpMissing(current.angle, photoFlags?.[current.angle], photos, closeUpSlots)
+      : null;
+  const closeUpHere =
+    closeUpOn && current && value
+      ? needsCloseUp(current.angle, photoFlags?.[current.angle], closeUpSlots)
+      : false;
   const canGoNext =
+    !closeUpGap &&
     currentIndex < requiredPhotos.length - 1 &&
     (testingBrowseMode ||
       !!photos[requiredPhotos[currentIndex + 1]?.angle] ||
@@ -171,13 +192,30 @@ export function GuidedPhotoCapture({
     if (answer === "new") onFlagDamage?.(current.angle, true);
     const dataUrl = knownAsk.dataUrl;
     setKnownAsk(null);
-    acceptAndAdvance(dataUrl);
+    acceptAndAdvance(dataUrl, answer === "new" ? "new" : answer);
   };
 
-  const acceptAndAdvance = (dataUrl: string) => {
+  const acceptAndAdvance = (dataUrl: string, knownAnswer?: "same" | "new") => {
     if (!current) return;
     onAccept(current.angle, dataUrl);
     setPickError("");
+    // Damage on this slot: stay here for the diagram tap and close-up.
+    const flags = photoFlags?.[current.angle];
+    if (
+      closeUpOn &&
+      needsCloseUp(
+        current.angle,
+        {
+          ...flags,
+          flaggedDamage: knownAnswer === "new" || Boolean(flags?.flaggedDamage),
+          knownDamageAnswer: knownAnswer ?? flags?.knownDamageAnswer,
+        },
+        closeUpSlots
+      ) &&
+      closeUpMissing(current.angle, { ...flags, flaggedDamage: true }, photos, closeUpSlots)
+    ) {
+      return;
+    }
 
     if (isLastStep) {
       setTimeout(() => onAllComplete(), 400);
@@ -592,6 +630,26 @@ export function GuidedPhotoCapture({
                     />
                   </label>
                 )}
+                {closeUpHere && onDamageSpot && onCloseUp && (
+                  <DamageCloseUpPanel
+                    label={current.label}
+                    spot={photoFlags?.[current.angle]?.damageSpot}
+                    closeUp={photos[closeUpAngle(current.angle)]}
+                    onSpot={(spot) => onDamageSpot(current.angle, spot)}
+                    onCloseUp={(dataUrl) => onCloseUp(current.angle, dataUrl)}
+                    onRetakeCloseUp={() => onCloseUp(current.angle, null)}
+                  />
+                )}
+                {closeUpHere && !closeUpGap && !testingBrowseMode && (
+                  <Button
+                    size="lg"
+                    className="w-full"
+                    onClick={() => (isLastStep ? onAllComplete() : goToStep(currentIndex + 1))}
+                  >
+                    {isLastStep ? "Done with photos" : "Next photo"}
+                    <ChevronRight className="h-5 w-5 ml-1" />
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   size="lg"
@@ -696,7 +754,8 @@ export function GuidedPhotoCapture({
             const damaged = !!photoFlags?.[p.angle]?.flaggedDamage;
             const isCurrent = i === currentIndex;
             const canView =
-              testingBrowseMode || done || i === firstIncompleteIndex;
+              (testingBrowseMode || done || i === firstIncompleteIndex) &&
+              (!closeUpGap || i === currentIndex);
             return (
               <button
                 key={p.angle}

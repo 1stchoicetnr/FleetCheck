@@ -15,7 +15,7 @@ export interface CompareReport extends DamageKeySource {
   id: string;
   completedAt: string;
   driverName: string;
-  photos: ReadonlyArray<Pick<VehiclePhoto, "angle" | "flaggedDamage" | "damageNote" | "dataUrl">>;
+  photos: ReadonlyArray<Pick<VehiclePhoto, "angle" | "flaggedDamage" | "damageNote" | "dataUrl"> & { damageSpot?: { x: number; y: number } }>;
 }
 
 export interface BeforeAfterPhoto {
@@ -34,6 +34,10 @@ export interface BeforeAfterPair {
   after?: BeforeAfterPhoto;
   /** Latest earlier check of this unit that has this photo slot. Missing = "No earlier photo". */
   before?: BeforeAfterPhoto;
+  /** The after photo is the driver's damage close-up (not the walkaround shot). */
+  afterIsCloseUp?: boolean;
+  /** Driver's tap on the car diagram. */
+  spot?: { x: number; y: number };
 }
 
 /** Photo slots to compare for these damage items, in item order, no repeats. */
@@ -53,7 +57,7 @@ function photoOf(report: CompareReport, angle: PhotoAngle, keepStored: boolean):
   if (!photo?.dataUrl) return undefined;
   return {
     reportId: report.id,
-    src: clientPhotoSrc(report.id, angle, photo.dataUrl),
+    src: clientPhotoSrc(report.id, photo.angle, photo.dataUrl),
     ...(keepStored ? { stored: photo.dataUrl } : {}),
     completedAt: report.completedAt,
     driverName: report.driverName,
@@ -87,11 +91,16 @@ export function beforeAfterPairs(
       before = photoOf(prior, angle, keepStored);
       if (before) break;
     }
+    // The required damage close-up is the "after" photo when there is one.
+    const closeUp = photoOf(report, `closeup_${angle}` as PhotoAngle, keepStored);
+    const spot = report.photos.find((p) => p.angle === angle)?.damageSpot;
     return {
       angle,
       label: photoAngleLabel(angle),
-      after: photoOf(report, angle, keepStored),
+      after: closeUp ?? photoOf(report, angle, keepStored),
       before,
+      ...(closeUp ? { afterIsCloseUp: true } : {}),
+      ...(spot ? { spot } : {}),
     };
   });
 }
@@ -125,8 +134,20 @@ export function beforeAfterSlackLines(
       const before = pair.before
         ? `<${checkUrl(pair.before.reportId)}|Before · ${formatTime(pair.before.completedAt)} · ${pair.before.driverName}>`
         : "No earlier photo";
-      const after = pair.after ? "After: this check" : "After: no photo on this check";
+      const where = spotText(pair.spot);
+      const after = pair.after
+        ? `After: ${pair.afterIsCloseUp ? "close-up on this check" : "this check"}${where ? ` · ${where}` : ""}`
+        : "After: no photo on this check";
       return `• ${pair.label}: ${before} | ${after}`;
     }),
   ];
+}
+
+/** "front left", "rear center" from the diagram tap (front of car at y = 0). */
+export function spotText(spot?: { x: number; y: number }): string | undefined {
+  if (!spot) return undefined;
+  const along = spot.y < 0.33 ? "front" : spot.y > 0.67 ? "rear" : "middle";
+  const across = spot.x < 0.36 ? "left" : spot.x > 0.64 ? "right" : "center";
+  if (along === "middle" && across === "center") return "roof / center";
+  return `${along} ${across}`;
 }
