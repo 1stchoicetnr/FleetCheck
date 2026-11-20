@@ -7,6 +7,8 @@ import { CheckoutAccountBanner } from "@/components/checkout-account-notice";
 import { CHECKOUT_ACCOUNT_MESSAGE } from "@/lib/checkout-account";
 import { Button } from "@/components/ui/button";
 import { GuidedPhotoCapture, type KnownDamagePrompt } from "@/components/guided-photo-capture";
+import { closeUpAngle, firstMissingCloseUp, precheckDamageSlots } from "@/lib/damage-closeup";
+import { photoAngleLabel } from "@/lib/photo-flags";
 import { SignaturePad } from "@/components/signature-pad";
 import { useAuth } from "@/hooks/use-auth";
 import { canStartCheckout } from "@/lib/fleet-config";
@@ -282,8 +284,14 @@ function CheckoutCapturePage() {
   );
   const redPark = isPrecheckRed(inspectionValid.ok ? inspectionValid.form : inspectionForm);
   const photosNeeded = !redPark;
+  // Damage needs its car-diagram tap and close-up before the photos count as done.
+  const precheckSlots = precheckDamageSlots(inspectionForm);
+  const closeUpGap = canSkipPhotosForTesting()
+    ? undefined
+    : firstMissingCloseUp(required.map((s) => s.angle), photoFlags, photos, precheckSlots);
   const photosComplete =
-    !photosNeeded || allFilled || canSkipPhotosForTesting() || photosReady;
+    (!photosNeeded || allFilled || canSkipPhotosForTesting() || photosReady) &&
+    (!photosNeeded || !closeUpGap);
   const canSubmit =
     photosComplete && Boolean(signatureDataUrl) && inspectionValid.ok;
 
@@ -334,6 +342,13 @@ function CheckoutCapturePage() {
         setPhase("photos");
         return;
       }
+    }
+    if (closeUpGap && !isPrecheckRed(inspectionValid.form)) {
+      setSubmitError(
+        `Damage on ${photoAngleLabel(closeUpGap).toLowerCase()} needs a tap on the car diagram and a close-up photo.`
+      );
+      setPhase("photos");
+      return;
     }
     setSubmitting(true);
     setSubmitError("");
@@ -396,6 +411,7 @@ function CheckoutCapturePage() {
     inspectionValid,
     required,
     photosReady,
+    closeUpGap,
   ]);
 
   if (loading || !draft || (!vehicle && !loadError)) {
@@ -781,10 +797,27 @@ function CheckoutCapturePage() {
           onAccept={(angle, url) => {
             setPhotos((prev) => ({ ...prev, [angle]: url }));
           }}
+          closeUpSlots={precheckSlots}
+          onDamageSpot={(angle, damageSpot) => {
+            setPhotoFlags((prev) => ({
+              ...prev,
+              [angle]: { ...prev[angle], flaggedDamage: prev[angle]?.flaggedDamage ?? false, damageSpot },
+            }));
+          }}
+          onCloseUp={(angle, url) => {
+            setPhotos((prev) => {
+              const next = { ...prev };
+              if (url) next[closeUpAngle(angle)] = url;
+              else delete next[closeUpAngle(angle)];
+              return next;
+            });
+          }}
           onClear={(angle) => {
             setPhotos((prev) => {
               const next = { ...prev };
               delete next[angle];
+              // Retaking the walkaround photo drops its close-up too.
+              delete next[closeUpAngle(angle)];
               return next;
             });
             setPhotoFlags((prev) => {
