@@ -1,3 +1,4 @@
+import type { VehicleOutOfService } from "./out-of-service";
 import type { StuckCheckRow } from "./stuck-checks";
 import type { CheckoutInspectionForm, Powertrain } from "./inspection-form";
 import {
@@ -34,6 +35,7 @@ export interface SharedVehicle {
   powertrain?: Powertrain;
   lastOilChangeMileage?: number;
   knownIssue?: VehicleKnownIssue;
+  outOfService?: VehicleOutOfService;
   createdAt: string;
 }
 
@@ -178,6 +180,20 @@ export async function setVehicleArchived(
     method: "PATCH",
     headers: { "x-office-pin": officePin },
     body: JSON.stringify({ archived }),
+  });
+  return data.vehicle;
+}
+
+/** Office may set Out of Service; only Manager/Owner may set it back to Ready. */
+export async function setVehicleOutOfService(
+  id: string,
+  outOfService: boolean,
+  reason?: string
+): Promise<SharedVehicle> {
+  const data = await api<{ vehicle: SharedVehicle }>(`/api/vehicles/${id}`, {
+    method: "PATCH",
+    headers: officePinHeader(),
+    body: JSON.stringify(outOfService ? { outOfService, reason } : { outOfService }),
   });
   return data.vehicle;
 }

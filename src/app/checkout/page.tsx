@@ -1,5 +1,6 @@
 "use client";
 
+import { OUT_OF_SERVICE_MESSAGE } from "@/lib/out-of-service";
 import { FormEvent, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "@/lib/types";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -244,6 +245,9 @@ function CheckoutStartPage() {
     driverName: driverName.trim() || user?.name,
   });
 
+  const blockedOutOfService =
+    !addingUnit && Boolean(selected?.outOfService) && type !== "check_in";
+
   const inferredPowertrain = inferPowertrain(
     make,
     model,
@@ -282,6 +286,10 @@ function CheckoutStartPage() {
     e.preventDefault();
     if (!user) {
       setError(CHECKOUT_ACCOUNT_MESSAGE);
+      return;
+    }
+    if (blockedOutOfService) {
+      setError(OUT_OF_SERVICE_MESSAGE);
       return;
     }
     const fieldErrors: string[] = [];
@@ -511,9 +519,22 @@ function CheckoutStartPage() {
                         <option key={v.id} value={v.id}>
                           {formatUnitLabel(v.unitNumber, v.plate)} — {v.year}{" "}
                           {v.make} {v.model}
+                          {v.outOfService ? " — OUT OF SERVICE" : ""}
                         </option>
                       ))}
                     </select>
+                    {blockedOutOfService && selected?.outOfService && (
+                      <div
+                        role="alert"
+                        className="mt-2 rounded-xl border-2 border-red-600 bg-red-50 p-3 text-red-800"
+                      >
+                        <p className="text-base font-bold">{OUT_OF_SERVICE_MESSAGE}</p>
+                        <p className="text-sm mt-1">
+                          Set by {selected.outOfService.by}
+                          {selected.outOfService.reason ? ` · ${selected.outOfService.reason}` : ""}
+                        </p>
+                      </div>
+                    )}
                     {showErrors && !vehicleId && (
                       <p className="text-sm font-medium text-red-600 mt-1.5">
                         Pick an active unit.
@@ -791,7 +812,7 @@ function CheckoutStartPage() {
                 type="submit"
                 size="xl"
                 className="w-full"
-                disabled={starting || (!addingUnit && !vehicleId)}
+                disabled={starting || (!addingUnit && !vehicleId) || blockedOutOfService}
               >
                 {starting ? "Starting…" : "Continue to Precheck"}
               </Button>

@@ -19,12 +19,14 @@ import { upkeepSoon } from "@/lib/server/checkout-upkeep";
 import {
   createReport,
   finishReportIfComplete,
+  getVehicle,
   listReportPage,
 } from "@/lib/server/checkout-repo";
 import { OfficeListStatus } from "@/lib/office-list";
 import { pollFinish } from "@/lib/checkout-finish";
 import type { CheckoutInspectionForm } from "@/lib/inspection-form";
 import { CheckoutType } from "@/lib/types";
+import { blocksCheckout, OUT_OF_SERVICE_MESSAGE } from "@/lib/out-of-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -143,6 +145,24 @@ export async function POST(req: NextRequest) {
       );
     }
     await assertDriverMayCheckVehicle(auth, body.vehicleId);
+    // Office set this unit Out of Service: no new check-outs. A check started
+    // before that (sat in a phone's outbox) still goes through.
+    const unitNow = await getVehicle(orgId, body.vehicleId);
+    if (
+      blocksCheckout(
+        unitNow?.outOfService,
+        body.type,
+        body.inspectionForm?.inspectedAt || body.capturedAt
+      )
+    ) {
+      console.log(
+        `[api-4xx] status=409 route=create report=key:${body.idempotencyKey ?? "none"} user=${auth.userId} code=out_of_service`
+      );
+      return NextResponse.json(
+        { error: OUT_OF_SERVICE_MESSAGE, code: "out_of_service" },
+        { status: 409 }
+      );
+    }
     // A check that sat on a shared phone keeps the driver who did it.
     const originalId =
       typeof body.originalDriverUserId === "string" ? body.originalDriverUserId.trim() : "";

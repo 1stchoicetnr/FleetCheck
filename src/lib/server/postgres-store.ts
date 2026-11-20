@@ -1,3 +1,4 @@
+import { parseOutOfService, type VehicleOutOfService } from "../out-of-service";
 import { neon } from "@neondatabase/serverless";
 import { SEEDED_COMPANIES, TURO_COMPANY_ID, shouldMoveUnitToTuro } from "@/lib/companies";
 import { FLEET_SEED_CREATED_AT, SEEDED_SERVER_FLEETS } from "@/lib/fleet-catalog";
@@ -141,7 +142,7 @@ let migrating: Promise<void> | null = null;
  * or one-time fix). While the database already has this version, a new server
  * instance skips the ~100 one-by-one setup queries and makes one quick check.
  */
-export const SCHEMA_VERSION = "2026-11-20.2";
+export const SCHEMA_VERSION = "2026-11-20.3";
 
 async function schemaIsCurrent(): Promise<boolean> {
   try {
@@ -257,6 +258,7 @@ async function runMigrateAndSeed(): Promise<void> {
   await sql`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS known_issue JSONB`;
   // Known damage list per unit (additive, nullable; null = none).
   await sql`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS known_damage JSONB`;
+  await sql`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS out_of_service JSONB`;
   await sql`ALTER TABLE checkout_reports ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ`;
   await sql`
     CREATE TABLE IF NOT EXISTS fleet_alerts (
@@ -527,6 +529,7 @@ function mapVehicleRow(row: Record<string, unknown>): SharedVehicle {
         ? undefined
         : Number(row.last_oil_change_mileage),
     knownIssue: mapKnownIssue(row.known_issue),
+    outOfService: parseOutOfService(row.out_of_service),
     createdAt: new Date(String(row.created_at)).toISOString(),
   };
 }
@@ -603,6 +606,7 @@ export async function pgUpsertVehicle(
     archivedAt: existing?.archivedAt,
     lastOilChangeMileage: existing?.lastOilChangeMileage,
     knownIssue: existing?.knownIssue,
+    outOfService: existing?.outOfService,
     powertrain: inferPowertrain(
       input.make,
       input.model,
@@ -718,6 +722,16 @@ export async function pgSetVehiclePowertrain(
     ...existing,
     powertrain,
   };
+}
+
+export async function pgSetVehicleOutOfService(
+  orgId: string,
+  id: string,
+  value: VehicleOutOfService | null
+): Promise<SharedVehicle | undefined> {
+  await pgMigrateAndSeed();
+  const ok = await orgData.setVehicleOutOfServiceRow(orgDb(), orgId, id, value ? JSON.stringify(value) : null);
+  return ok ? pgGetVehicle(orgId, id) : undefined;
 }
 
 export async function pgSetVehicleService(

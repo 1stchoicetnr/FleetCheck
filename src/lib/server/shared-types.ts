@@ -1,3 +1,4 @@
+import type { VehicleOutOfService } from "../out-of-service";
 import type { CheckoutInspectionForm, Powertrain } from "@/lib/inspection-form";
 import {
   CheckoutReport,
@@ -37,6 +38,8 @@ export interface SharedVehicle {
   powertrain?: Powertrain;
   lastOilChangeMileage?: number;
   knownIssue?: VehicleKnownIssue;
+  /** Office set this unit Out of Service. Absent = in service. */
+  outOfService?: VehicleOutOfService;
   createdAt: string;
 }
 
