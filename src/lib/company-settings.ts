@@ -11,6 +11,7 @@ import {
   RAD_CAB_COMPANY_ID,
   TURO_COMPANY_ID,
 } from "./company-rules";
+import { cleanRepairMentions, defaultRepairMentions, type RepairMention } from "./repair-report";
 
 const FIRST_CHOICE_COMPANY_ID = "company-1st-choice";
 const PINKIE_TOW_COMPANY_ID = "company-pinkie-tow";
@@ -37,6 +38,8 @@ export interface CompanySettingsDoc {
   pdfLogoDataUrl?: string;
   /** Only the fleets that differ from the default checkout Slack route. */
   checkoutSlack?: Partial<Record<string, CheckoutSlackRoute>>;
+  /** Only fleets whose repair-report mentions differ from the default (Rad Cab: Mark Corbett). */
+  repairMentions?: Partial<Record<string, RepairMention[]>>;
 }
 
 export interface PublicCompanySettings {
@@ -47,6 +50,8 @@ export interface PublicCompanySettings {
   slackWebhookSet: boolean;
   usingDefaults: boolean;
   checkoutSlack: Record<string, CheckoutSlackRoute>;
+  /** Who the repair report tags in Slack, per fleet. */
+  repairMentions: Record<string, RepairMention[]>;
 }
 
 export interface CompanySettingsPatch {
@@ -58,6 +63,7 @@ export interface CompanySettingsPatch {
   pdfLogoDataUrl?: string;
   clearPdfLogo?: boolean;
   checkoutSlack?: Partial<Record<string, Partial<CheckoutSlackRoute>>>;
+  repairMentions?: Partial<Record<string, RepairMention[]>>;
 }
 
 const FLEET_TYPES = Object.keys(FLEET_TYPE_LABELS) as FleetType[];
@@ -163,6 +169,21 @@ export function effectiveCheckoutSlack(
   return routes;
 }
 
+export function effectiveRepairMentions(
+  doc: CompanySettingsDoc | null | undefined
+): Record<string, RepairMention[]> {
+  const saved = doc?.repairMentions ?? {};
+  const out: Record<string, RepairMention[]> = {};
+  for (const fleet of CHECKOUT_SLACK_FLEETS) {
+    out[fleet.id] = cleanRepairMentions(saved[fleet.id]) ?? defaultRepairMentions(fleet.id);
+  }
+  return out;
+}
+
+function sameMentions(a: RepairMention[], b: RepairMention[]): boolean {
+  return a.length === b.length && a.every((m, i) => m.id === b[i].id && m.name === b[i].name);
+}
+
 export function effectiveCloverIds(doc: CompanySettingsDoc | null | undefined): string[] {
   if (!doc || !Array.isArray(doc.cloverCompanyIds)) return [RAD_CAB_COMPANY_ID];
   return doc.cloverCompanyIds.filter((id) => KNOWN_COMPANIES.has(id));
@@ -202,6 +223,7 @@ export function publicCompanySettings(
     slackWebhookSet: hook !== undefined,
     usingDefaults,
     checkoutSlack: effectiveCheckoutSlack(doc),
+    repairMentions: effectiveRepairMentions(doc),
   };
 }
 
@@ -287,6 +309,14 @@ function minimalDoc(doc: CompanySettingsDoc): CompanySettingsDoc {
     }
   }
   if (Object.keys(checkoutSlack).length) next.checkoutSlack = checkoutSlack;
+  const mentions = effectiveRepairMentions(doc);
+  const repairMentions: NonNullable<CompanySettingsDoc["repairMentions"]> = {};
+  for (const fleet of CHECKOUT_SLACK_FLEETS) {
+    if (!sameMentions(mentions[fleet.id], defaultRepairMentions(fleet.id))) {
+      repairMentions[fleet.id] = mentions[fleet.id];
+    }
+  }
+  if (Object.keys(repairMentions).length) next.repairMentions = repairMentions;
   return next;
 }
 
@@ -297,7 +327,8 @@ function settingsDocIsEmpty(doc: CompanySettingsDoc): boolean {
     doc.slackWebhook === undefined &&
     !doc.cloverCompanyIds &&
     !doc.pdfLogoDataUrl &&
-    !doc.checkoutSlack
+    !doc.checkoutSlack &&
+    !doc.repairMentions
   );
 }
 
@@ -344,6 +375,18 @@ export function mergeCompanySettings(
       };
     }
     base.checkoutSlack = current;
+  }
+  if (patch.repairMentions) {
+    const current = effectiveRepairMentions(base);
+    for (const [companyId, list] of Object.entries(patch.repairMentions)) {
+      if (!KNOWN_COMPANIES.has(companyId)) continue;
+      const clean = cleanRepairMentions(list);
+      if (clean === null) {
+        throw new CompanySettingsError("Repair mentions must be a list of Slack members.");
+      }
+      current[companyId] = clean;
+    }
+    base.repairMentions = current;
   }
   if (patch.clearPdfLogo) delete base.pdfLogoDataUrl;
   if (typeof patch.pdfLogoDataUrl === "string" && patch.pdfLogoDataUrl) {

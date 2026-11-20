@@ -304,6 +304,8 @@ export interface OfficeAlert {
     marks: string[];
     /** Before / after photos for each damaged slot. */
     compare?: import("./damage-before-after").BeforeAfterPair[];
+    /** Found by, last clean check, and every check in between. */
+    whoHadIt?: import("./repair-report").WhoHadItLast;
   };
 }
 

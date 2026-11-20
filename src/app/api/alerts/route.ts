@@ -1,6 +1,7 @@
 import { errorResponse } from "@/lib/server/api-error";
 import { getReport, listOfficeAlerts, listVehicleReports } from "@/lib/server/checkout-repo";
 import { beforeAfterPairs, pairsForClient } from "@/lib/damage-before-after";
+import { whoHadItLast } from "@/lib/repair-report";
 import type { CheckoutReport } from "@/lib/types";
 import { alertDamageDetails } from "@/lib/alert-details";
 import { clientPhotoSrc } from "@/lib/photo-url";
@@ -39,17 +40,17 @@ export async function GET(req: NextRequest) {
       const report = alert.reportId ? reports.get(alert.reportId) : undefined;
       if (!report) return alert;
       const details = alertDamageDetails(report);
-      const compare =
-        alert.type === "damage_reported" && !alert.archivedAt
-          ? pairsForClient(
-              beforeAfterPairs(report, await historyFor(alert.vehicleId))
-            )
-          : undefined;
+      const openDamage = alert.type === "damage_reported" && !alert.archivedAt;
+      const history = openDamage ? await historyFor(alert.vehicleId) : [];
+      const compare = openDamage ? pairsForClient(beforeAfterPairs(report, history)) : undefined;
+      // Who had the car last: found by, last clean check, everyone in between.
+      const whoHadIt = openDamage ? whoHadItLast(report, history) : undefined;
       return {
         ...alert,
         details: {
           ...details,
           compare,
+          whoHadIt,
           photos: details.photos.map((photo) => ({
             ...photo,
             src: clientPhotoSrc(

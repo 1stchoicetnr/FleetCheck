@@ -17,6 +17,8 @@ import { AppSettings } from "@/lib/types";
 import { SLACK_TEST_FOOTER, sendTestSlackAlert } from "@/lib/alerts";
 import { SLACK_CHANNEL_DEFAULTS } from "@/lib/slack-config";
 import { Bell, Save, Send } from "lucide-react";
+import { RepairMentionsEditor } from "@/components/repair-mentions-editor";
+import type { RepairMention } from "@/lib/repair-report";
 
 function ToggleRow({
   label,
@@ -61,12 +63,14 @@ export function NotificationSettingsPanel({
   const [routesReady, setRoutesReady] = useState(false);
   const [fleetNames, setFleetNames] = useState<Record<string, string>>({});
   const [routeError, setRouteError] = useState("");
+  const [mentions, setMentions] = useState<Record<string, RepairMention[]> | null>(null);
 
   useEffect(() => {
     getSettings().then(setSettings);
     void fetchCompanySettings()
       .then((next) => {
         setRoutes(next.checkoutSlack);
+        setMentions(next.repairMentions ?? null);
         setRoutesReady(true);
       })
       .catch(() => {
@@ -96,8 +100,14 @@ export function NotificationSettingsPanel({
         const checkoutSlack = Object.fromEntries(
           Object.entries(routes).filter(([id]) => !companyIds || allowed.has(id))
         );
-        const next = await saveCompanySettings({ checkoutSlack });
+        const repairMentions = mentions
+          ? Object.fromEntries(
+              Object.entries(mentions).filter(([id]) => !companyIds || allowed.has(id))
+            )
+          : undefined;
+        const next = await saveCompanySettings({ checkoutSlack, ...(repairMentions ? { repairMentions } : {}) });
         setRoutes(next.checkoutSlack);
+        setMentions(next.repairMentions ?? null);
         setRouteError("");
       } catch (err) {
         setRouteError(err instanceof Error ? err.message : "Could not save checkout posts.");
@@ -205,6 +215,24 @@ export function NotificationSettingsPanel({
             {routeError && <p className="text-sm font-medium text-red-700">{routeError}</p>}
           </CardContent>
         </Card>
+
+        {mentions && (
+          <Card>
+            <CardContent className="py-5 space-y-4">
+              <CardTitle>Repair report mentions</CardTitle>
+              <p className="text-sm text-gray-600">
+                New damage and units set Out of Service post a repair report to
+                #rad-cab-repairs (plus a DM to Bell). These people are tagged in it.
+                Rad Cab tags Mark Corbett by default. Saving does not send a message.
+              </p>
+              <RepairMentionsEditor
+                fleets={visibleFleets.map((fleet) => ({ id: fleet.id, name: fleetNames[fleet.id] || fleet.name }))}
+                mentions={mentions}
+                onChange={setMentions}
+              />
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardContent className="py-5 space-y-3">
