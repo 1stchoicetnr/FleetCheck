@@ -22,6 +22,8 @@ import { postAshleySlackDm } from "@/lib/ashley-slack";
 import { repeatProblemNote } from "@/lib/driver-tally";
 import { repeatedIssues } from "@/lib/repeat-issues";
 import { formatUnitLabel } from "@/lib/utils";
+import { beforeAfterPairs, beforeAfterSlackLines } from "@/lib/damage-before-after";
+import { formatCheckoutTime } from "@/lib/checkout-slack";
 import { localInsertAlert, localListAlerts, localListReports } from "./local-store";
 import { pgInsertAlert, pgListAlerts, pgListVehicleReports } from "./postgres-store";
 import { sharedBackendMode } from "./shared-config";
@@ -60,7 +62,8 @@ function repairWebhook(route: SlackRoute): string | undefined {
 
 async function postRepairSlack(
   report: CheckoutReport,
-  alerts: SharedOfficeAlert[]
+  alerts: SharedOfficeAlert[],
+  history: CheckoutReport[]
 ): Promise<void> {
   if (!alerts.length || !postsRepairSlack(report.companyId)) return;
   const route = repairRoute(report.companyId);
@@ -75,6 +78,11 @@ async function postRepairSlack(
       .map((alert) => `*${alert.type.replace(/_/g, " ")}:* ${alert.message}`),
     details: alertDamageDetails(report),
     checkUrl: officeCheckUrl(origin, report.id),
+    extraLines: beforeAfterSlackLines(
+      beforeAfterPairs(report, history),
+      (id) => officeCheckUrl(origin, id),
+      formatCheckoutTime
+    ),
   });
   try {
     const result = await sendRepairSlack({
@@ -98,6 +106,7 @@ export async function recordCheckoutAlerts(
   const mode = sharedBackendMode();
   if (mode === "unconfigured") return;
   const kinds = checkoutAlertKinds(factsFor(report));
+  let history: CheckoutReport[] | undefined;
   if (kinds.length) {
     const existing =
       mode === "postgres" ? await pgListAlerts(orgId, true) : await localListAlerts(true);
@@ -121,21 +130,31 @@ export async function recordCheckoutAlerts(
       else await localInsertAlert(alert);
       created.push(alert);
     }
-    await postRepairSlack(report, created);
+    if (created.length) {
+      history = await vehicleHistory(orgId, report).catch(() => []);
+      await postRepairSlack(report, created, history);
+    }
   }
-  await recordRepeatIssues(orgId, report);
+  await recordRepeatIssues(orgId, report, history);
+}
+
+async function vehicleHistory(orgId: string, report: CheckoutReport): Promise<CheckoutReport[]> {
+  return sharedBackendMode() === "postgres"
+    ? pgListVehicleReports(orgId, report.vehicleId)
+    : (await localListReports()).filter(
+        (item) => item.vehicleId === report.vehicleId && !item.archivedAt
+      );
 }
 
 /** Same unit, same issue on two or more checks. The office queue keeps it, and Ashley gets a direct note. */
-async function recordRepeatIssues(orgId: string, report: CheckoutReport): Promise<void> {
+async function recordRepeatIssues(
+  orgId: string,
+  report: CheckoutReport,
+  known?: CheckoutReport[]
+): Promise<void> {
   const mode = sharedBackendMode();
   if (mode === "unconfigured") return;
-  const history =
-    mode === "postgres"
-      ? await pgListVehicleReports(orgId, report.vehicleId)
-      : (await localListReports()).filter(
-          (item) => item.vehicleId === report.vehicleId && !item.archivedAt
-        );
+  const history = known ?? (await vehicleHistory(orgId, report));
   const repeats = repeatedIssues(
     report,
     history.filter((item) => item.id !== report.id)

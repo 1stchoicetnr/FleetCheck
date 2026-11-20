@@ -40,6 +40,17 @@ export type CheckoutPdfOptions = {
   steps?: PhotoStep[];
   logoDataUrl?: string;
   usesClover?: boolean;
+  /** Damage before/after pages: earlier photo of each damaged slot next to this check's. */
+  damageCompare?: PdfDamageCompare[];
+};
+
+export type PdfDamageCompare = {
+  label: string;
+  /** Data URL (server embeds stored photos first). */
+  beforeSrc?: string;
+  afterSrc?: string;
+  /** "Before · Nov 19, 2026, 7:11 AM PT · Ken Taylor" or "No earlier photo". */
+  beforeCaption: string;
 };
 
 async function inspektLogoDataUrl(): Promise<string | null> {
@@ -580,6 +591,46 @@ export async function generateCheckoutReportPDF(
         doc.setFont("helvetica", "normal");
         doc.setFontSize(10);
         doc.text("[Photo could not be embedded]", 14, top + 12);
+      }
+    }
+  }
+
+  const compare = options.damageCompare ?? [];
+  const perComparePage = 2;
+  for (let start = 0; start < compare.length; start += perComparePage) {
+    doc.addPage();
+    paintSectionRule(doc, "Damage: before and after", 18);
+    const slice = compare.slice(start, start + perComparePage);
+    const slotHeight = (pageHeight - 40) / perComparePage;
+    const colWidth = (pageWidth - 28 - 6) / 2;
+    for (let index = 0; index < slice.length; index += 1) {
+      const pair = slice[index];
+      const top = 30 + index * slotHeight;
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(11);
+      doc.text(pair.label, 14, top);
+      const cells: Array<{ src?: string; caption: string; empty: string }> = [
+        { src: pair.beforeSrc, caption: pair.beforeCaption, empty: "No earlier photo" },
+        { src: pair.afterSrc, caption: "After · this check", empty: "No photo on this check" },
+      ];
+      for (let col = 0; col < cells.length; col += 1) {
+        const cell = cells[col];
+        const x = 14 + col * (colWidth + 6);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+        doc.text(String(doc.splitTextToSize(cell.caption, colWidth)[0] ?? cell.caption), x, top + 6);
+        if (!cell.src) {
+          doc.text(cell.empty, x, top + 16);
+          continue;
+        }
+        try {
+          const dataUrl = await resolvePdfPhoto(cell.src);
+          const { width: imgW, height: imgH } = await getImageDimensions(dataUrl);
+          const { width, height } = fitInBox(imgW, imgH, colWidth, slotHeight - 16);
+          doc.addImage(dataUrl, pdfImageFormat(dataUrl), x, top + 9, width, height);
+        } catch {
+          doc.text("[Photo could not be embedded]", x, top + 16);
+        }
       }
     }
   }

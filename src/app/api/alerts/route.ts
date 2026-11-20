@@ -1,5 +1,7 @@
 import { errorResponse } from "@/lib/server/api-error";
-import { getReport, listOfficeAlerts } from "@/lib/server/checkout-repo";
+import { getReport, listOfficeAlerts, listVehicleReports } from "@/lib/server/checkout-repo";
+import { beforeAfterPairs, pairsForClient } from "@/lib/damage-before-after";
+import type { CheckoutReport } from "@/lib/types";
 import { alertDamageDetails } from "@/lib/alert-details";
 import { clientPhotoSrc } from "@/lib/photo-url";
 import { vehicleIdsInScope } from "@/lib/server/fleet-scope";
@@ -25,14 +27,29 @@ export async function GET(req: NextRequest) {
         ids.map(async (id) => [id, await getReport(auth.orgId, id).catch(() => undefined)] as const)
       )
     );
-    const withDetails = alerts.map((alert) => {
+    // Before / after photos: one history read per unit with an open damage alert.
+    const histories = new Map<string, Promise<CheckoutReport[]>>();
+    const historyFor = (vehicleId: string) => {
+      if (!histories.has(vehicleId)) {
+        histories.set(vehicleId, listVehicleReports(auth.orgId, vehicleId).catch(() => []));
+      }
+      return histories.get(vehicleId)!;
+    };
+    const withDetails = await Promise.all(alerts.map(async (alert) => {
       const report = alert.reportId ? reports.get(alert.reportId) : undefined;
       if (!report) return alert;
       const details = alertDamageDetails(report);
+      const compare =
+        alert.type === "damage_reported" && !alert.archivedAt
+          ? pairsForClient(
+              beforeAfterPairs(report, await historyFor(alert.vehicleId))
+            )
+          : undefined;
       return {
         ...alert,
         details: {
           ...details,
+          compare,
           photos: details.photos.map((photo) => ({
             ...photo,
             src: clientPhotoSrc(
@@ -43,7 +60,7 @@ export async function GET(req: NextRequest) {
           })),
         },
       };
-    });
+    }));
     return NextResponse.json(
       { alerts: withDetails },
       { headers: { "Cache-Control": "no-store" } }

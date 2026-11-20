@@ -12,6 +12,9 @@ import { ReviewStatusBadge } from "@/components/review-status-badge";
 import { DeliveryBadge } from "@/components/delivery-badge";
 import { legacyMissingNotes, stuckReason } from "@/lib/legacy-checkout";
 import { CheckoutPhotoComparison } from "@/components/checkout-photo-comparison";
+import { DamageBeforeAfter } from "@/components/damage-before-after";
+import { beforeAfterPairs, damageCompareAngles } from "@/lib/damage-before-after";
+import { damageItemKeys } from "@/lib/damage-keys";
 import {
   LightboxPhoto,
   OfficePhotoThumb,
@@ -77,6 +80,7 @@ export default function OfficeReportDetailPage() {
   const [report, setReport] = useState<CheckoutReport | null>(null);
   const [reportReady, setReportReady] = useState(false);
   const [priors, setPriors] = useState<CheckoutReport[]>([]);
+  const [damageHistory, setDamageHistory] = useState<CheckoutReport[] | null>(null);
   const [vehicle, setVehicle] = useState<SharedVehicle | null>(null);
   const [saveError, setSaveError] = useState("");
   const [company, setCompany] = useState<Company | null>(null);
@@ -155,6 +159,23 @@ export default function OfficeReportDetailPage() {
       cancelled = true;
     };
   }, [officeReady, tab, priorVehicleId, priorReportId]);
+
+  // Before / after for damaged slots: look back up to 20 earlier checks for each slot's photo.
+  const hasDamageSlots = report ? damageCompareAngles(damageItemKeys(report)).length > 0 : false;
+  useEffect(() => {
+    if (!officeReady || !hasDamageSlots || !priorVehicleId || !priorReportId) return;
+    let cancelled = false;
+    fetchPriorReports(priorVehicleId, priorReportId, 20)
+      .then((list) => {
+        if (!cancelled) setDamageHistory(list);
+      })
+      .catch(() => {
+        if (!cancelled) setDamageHistory([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [officeReady, hasDamageSlots, priorVehicleId, priorReportId]);
 
   useEffect(() => {
     void fetchCompanySettings().then(setCompanySettings).catch(() => {});
@@ -540,6 +561,19 @@ export default function OfficeReportDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          {hasDamageSlots && (
+            <Card className="border-red-200">
+              <CardContent className="py-4 space-y-3">
+                <CardTitle className="text-base">Damage: before and after</CardTitle>
+                {damageHistory === null ? (
+                  <p className="text-sm text-gray-500">Loading earlier photos…</p>
+                ) : (
+                  <DamageBeforeAfter pairs={beforeAfterPairs(report, damageHistory)} />
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardContent className="py-4 space-y-3">

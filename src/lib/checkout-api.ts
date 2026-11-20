@@ -277,6 +277,8 @@ export interface OfficeAlert {
   reportId?: string;
   createdAt: string;
   read: boolean;
+  readAt?: string;
+  readBy?: string;
   archivedAt?: string;
   /** Damage details read from the linked check. */
   details?: {
@@ -284,6 +286,8 @@ export interface OfficeAlert {
     photos: { angle: string; label: string; note?: string; src?: string }[];
     notes: string[];
     marks: string[];
+    /** Before / after photos for each damaged slot. */
+    compare?: import("./damage-before-after").BeforeAfterPair[];
   };
 }
 
@@ -304,6 +308,24 @@ export async function setOfficeAlertArchived(
     body: JSON.stringify({ archived }),
   });
   return data.alert;
+}
+
+/** Org-wide: read for everyone in the office. */
+export async function setOfficeAlertRead(id: string, read = true): Promise<OfficeAlert> {
+  const data = await api<{ alert: OfficeAlert }>(`/api/alerts/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ read }),
+  });
+  return data.alert;
+}
+
+/** Marks every open alert in your fleets read, for everyone. */
+export async function markAllOfficeAlertsRead(): Promise<number> {
+  const data = await api<{ count: number }>("/api/alerts/read-all", {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+  return data.count;
 }
 
 export async function deleteOfficeAlert(id: string): Promise<void> {
@@ -357,10 +379,12 @@ export async function fetchCheckoutReport(
 
 export async function fetchPriorReports(
   vehicleId: string,
-  currentId?: string
+  currentId?: string,
+  limit?: number
 ): Promise<CheckoutReport[]> {
   const params = new URLSearchParams({ vehicleId });
   if (currentId) params.set("currentId", currentId);
+  if (limit) params.set("limit", String(limit));
   const data = await api<{ reports: CheckoutReport[] }>(
     `/api/checkout-reports/priors?${params.toString()}`
   );

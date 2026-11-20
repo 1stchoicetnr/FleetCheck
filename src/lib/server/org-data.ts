@@ -955,6 +955,24 @@ export async function insertAlert(
   );
 }
 
+/** Org-wide read state. Returns the updated rows. */
+export async function setAlertsRead(
+  db: OrgDb,
+  orgId: string,
+  ids: string[],
+  read: boolean,
+  readAt: string | null,
+  readBy: string | null
+) {
+  if (!ids.length) return [];
+  return db.query(
+    `UPDATE fleet_alerts SET read = $1, read_at = $2, read_by = $3
+     WHERE org_id = $4 AND id = ANY($5::text[])
+     RETURNING *`,
+    [read, read ? readAt : null, read ? readBy : null, org(orgId), ids]
+  );
+}
+
 export async function setAlertArchivedAt(
   db: OrgDb,
   orgId: string,

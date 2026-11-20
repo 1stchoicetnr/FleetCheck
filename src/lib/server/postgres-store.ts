@@ -141,7 +141,7 @@ let migrating: Promise<void> | null = null;
  * or one-time fix). While the database already has this version, a new server
  * instance skips the ~100 one-by-one setup queries and makes one quick check.
  */
-export const SCHEMA_VERSION = "2026-11-02.1";
+export const SCHEMA_VERSION = "2026-11-20.1";
 
 async function schemaIsCurrent(): Promise<boolean> {
   try {
@@ -270,6 +270,9 @@ async function runMigrateAndSeed(): Promise<void> {
       archived_at TIMESTAMPTZ
     )
   `;
+  // Org-wide read state (additive, nullable; old rows = unread until marked).
+  await sql`ALTER TABLE fleet_alerts ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ`;
+  await sql`ALTER TABLE fleet_alerts ADD COLUMN IF NOT EXISTS read_by TEXT`;
   await sql`
     CREATE TABLE IF NOT EXISTS fleet_settings (
       id TEXT PRIMARY KEY,
@@ -966,6 +969,8 @@ type AlertRow = {
   created_at: string;
   read: boolean;
   archived_at: string | null;
+  read_at?: string | null;
+  read_by?: string | null;
 };
 
 function rowToAlert(row: AlertRow): SharedOfficeAlert {
@@ -979,6 +984,8 @@ function rowToAlert(row: AlertRow): SharedOfficeAlert {
     reportId: row.report_id ?? undefined,
     createdAt: new Date(row.created_at).toISOString(),
     read: Boolean(row.read),
+    readAt: row.read_at ? new Date(row.read_at).toISOString() : undefined,
+    readBy: row.read_by ?? undefined,
     archivedAt: row.archived_at ? new Date(row.archived_at).toISOString() : undefined,
   };
 }
@@ -1005,6 +1012,17 @@ export async function pgInsertAlert(orgId: string, alert: SharedOfficeAlert): Pr
     read: alert.read,
     archivedAt: alert.archivedAt ?? null,
   });
+}
+
+export async function pgSetAlertsRead(
+  orgId: string,
+  ids: string[],
+  read: boolean,
+  readBy: string | null
+): Promise<SharedOfficeAlert[]> {
+  await pgMigrateAndSeed();
+  const rows = await orgData.setAlertsRead(orgDb(), orgId, ids, read, new Date().toISOString(), readBy);
+  return (rows as AlertRow[]).map(rowToAlert);
 }
 
 export async function pgSetAlertArchived(

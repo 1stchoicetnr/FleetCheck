@@ -22,7 +22,10 @@ export async function GET(req: NextRequest) {
     } else if (auth.role === "driver") {
       await assertDriverMayCheckVehicle(auth, vehicleId);
     }
-    const reports = await getPriorReports(auth.orgId, vehicleId, currentId, 2);
+    // Default 2 (compare tab). Before/after photos look further back, capped at 20.
+    const asked = Number(req.nextUrl.searchParams.get("limit"));
+    const limit = Number.isInteger(asked) && asked > 0 ? Math.min(asked, 20) : 2;
+    const reports = await getPriorReports(auth.orgId, vehicleId, currentId, limit);
     return NextResponse.json(
       { reports: reports.map(priorReportForClient) },
       { headers: { "Cache-Control": "no-store" } }

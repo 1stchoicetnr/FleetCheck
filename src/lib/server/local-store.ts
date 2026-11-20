@@ -611,6 +611,36 @@ export async function localSetAlertArchived(
   });
 }
 
+export async function localSetAlertsRead(
+  ids: string[],
+  read: boolean,
+  readBy: string | null
+): Promise<SharedOfficeAlert[]> {
+  return enqueueWrite(async () => {
+    const store = await loadAndSeedUnlocked();
+    const alerts = store.alerts ?? [];
+    const at = new Date().toISOString();
+    const changed: SharedOfficeAlert[] = [];
+    for (let i = 0; i < alerts.length; i += 1) {
+      if (!ids.includes(alerts[i].id)) continue;
+      const next: SharedOfficeAlert = { ...alerts[i], read };
+      if (read) {
+        next.readAt = at;
+        if (readBy) next.readBy = readBy;
+        else delete next.readBy;
+      } else {
+        delete next.readAt;
+        delete next.readBy;
+      }
+      alerts[i] = next;
+      changed.push(next);
+    }
+    store.alerts = alerts;
+    if (changed.length) await writeStore(store);
+    return changed;
+  });
+}
+
 export async function localDeleteAlert(id: string): Promise<boolean> {
   return enqueueWrite(async () => {
     const store = await loadAndSeedUnlocked();

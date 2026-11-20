@@ -12,9 +12,12 @@ import { canManageOfficeRecords, canViewAlerts, isOwnerAccount } from "@/lib/fle
 import {
   deleteOfficeAlert,
   fetchOfficeAlerts,
+  markAllOfficeAlertsRead,
   OfficeAlert,
   setOfficeAlertArchived,
+  setOfficeAlertRead,
 } from "@/lib/checkout-api";
+import { DamageBeforeAfter } from "@/components/damage-before-after";
 import { isOfficeUnlocked } from "@/lib/office-auth";
 import {
   deleteAlert,
@@ -89,16 +92,28 @@ export default function AlertsPage() {
     }
   }, [user, loadAlerts]);
 
-  const handleMarkRead = async (id: string) => {
-    await markAlertRead(id);
-    setAlerts((prev) =>
-      prev.map((a) => (a.id === id ? { ...a, read: true } : a))
-    );
+  // Server alerts: read is saved on the server for the whole office, so it
+  // stays read after a reload and clears for Bell too. Device-only alerts stay local.
+  const handleMarkRead = async (alert: ListedAlert) => {
+    try {
+      if (alert.remote) await setOfficeAlertRead(alert.id, true);
+      else await markAlertRead(alert.id);
+      setAlerts((prev) =>
+        prev.map((a) => (a.id === alert.id ? { ...a, read: true } : a))
+      );
+    } catch (err) {
+      setOfficeNote(err instanceof Error ? err.message : "Could not mark this alert read.");
+    }
   };
 
   const handleMarkAllRead = async () => {
-    await markAllAlertsRead();
-    setAlerts((prev) => prev.map((a) => ({ ...a, read: true })));
+    try {
+      await markAllAlertsRead();
+      if (alerts.some((a) => a.remote && !a.read)) await markAllOfficeAlertsRead();
+      await loadAlerts();
+    } catch (err) {
+      setOfficeNote(err instanceof Error ? err.message : "Could not mark alerts read.");
+    }
   };
 
   const handlePending = async () => {
@@ -145,7 +160,7 @@ export default function AlertsPage() {
     return a.type === filter;
   });
 
-  const unreadCount = alerts.filter((a) => !a.read).length;
+  const unreadCount = alerts.filter((a) => !a.read && !a.archivedAt).length;
 
   const filterButtons: { key: FilterType; label: string }[] = [
     { key: "all", label: "All" },
@@ -266,6 +281,12 @@ export default function AlertsPage() {
                     </div>
                     <CardTitle className="text-sm mt-1">{alert.message}</CardTitle>
                     <AlertDetailsBlock alert={alert} />
+                    {alert.details?.compare && alert.details.compare.length > 0 && (
+                      <div className="mt-2">
+                        <DamageBeforeAfter pairs={alert.details.compare} compact />
+                      </div>
+                    )}
+
                     <p className="text-sm text-gray-600 mt-1">
                       {alert.vehiclePlate} · {alert.actorName}
                     </p>
@@ -286,7 +307,7 @@ export default function AlertsPage() {
                     size="sm"
                     variant="secondary"
                     className="w-full"
-                    onClick={() => handleMarkRead(alert.id)}
+                    onClick={() => void handleMarkRead(alert)}
                   >
                     Mark as read
                   </Button>
@@ -364,7 +385,8 @@ function AlertDetailsBlock({ alert }: { alert: ListedAlert }) {
     ...(d.notes.length === 0 && d.marks.length ? [`Marked: ${d.marks.join(", ")}`] : []),
   ];
   if (!lines.length) return null;
-  const thumbs = d.photos.filter((p) => p.src).slice(0, 3);
+  // Before/after pairs show the photos when present, so skip the plain thumbnails.
+  const thumbs = d.compare?.length ? [] : d.photos.filter((p) => p.src).slice(0, 3);
   return (
     <div className="mt-2 space-y-2">
       <ul className="text-sm text-gray-800 list-disc pl-5 space-y-0.5">

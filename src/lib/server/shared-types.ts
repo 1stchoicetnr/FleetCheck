@@ -100,6 +100,9 @@ export interface SharedOfficeAlert {
   reportId?: string;
   createdAt: string;
   read: boolean;
+  /** Org-wide read: when and by whom it was marked read. Old records have neither. */
+  readAt?: string;
+  readBy?: string;
   archivedAt?: string;
 }
 
