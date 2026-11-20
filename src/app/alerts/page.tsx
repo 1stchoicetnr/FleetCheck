@@ -11,6 +11,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { canManageOfficeRecords, canViewAlerts, isOwnerAccount } from "@/lib/fleet-config";
 import {
   deleteOfficeAlert,
+  fetchKnownDamageSummary,
   fetchOfficeAlerts,
   markAllOfficeAlertsRead,
   OfficeAlert,
@@ -18,6 +19,8 @@ import {
   setOfficeAlertRead,
 } from "@/lib/checkout-api";
 import { DamageBeforeAfter } from "@/components/damage-before-after";
+import { MarkKnownDamage } from "@/components/known-damage";
+import type { PhotoAngle } from "@/lib/types";
 import { isOfficeUnlocked } from "@/lib/office-auth";
 import {
   deleteAlert,
@@ -53,6 +56,12 @@ export default function AlertsPage() {
     action: "archive" | "delete";
   }>(null);
   const [busy, setBusy] = useState(false);
+  const [fixLater, setFixLater] = useState<Awaited<ReturnType<typeof fetchKnownDamageSummary>> | null>(null);
+
+  useEffect(() => {
+    if (!user || !canViewAlerts(user.role)) return;
+    fetchKnownDamageSummary().then(setFixLater).catch(() => setFixLater(null));
+  }, [user]);
 
   const loadAlerts = useCallback(async () => {
     const [items, settings] = await Promise.all([
@@ -212,6 +221,36 @@ export default function AlertsPage() {
           ))}
         </div>
 
+        {fixLater && fixLater.fixLater > 0 && (
+          <details className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            <summary className="cursor-pointer font-semibold">
+              Fix later: {fixLater.fixLater}
+              {fixLater.overdue ? ` · ${fixLater.overdue} overdue` : ""}
+            </summary>
+            <ul className="mt-1 space-y-1">
+              {fixLater.units.flatMap((unit) =>
+                unit.items
+                  .filter((item) => item.status === "fix_later")
+                  .map((item) => (
+                    <li key={item.id}>
+                      <Link href={`/vehicles/${encodeURIComponent(unit.vehicleId)}`} className="underline">
+                        {unit.unitNumber || unit.plate}
+                      </Link>{" "}
+                      · {item.description}
+                      {item.targetDate ? ` · target ${item.targetDate}` : ""}
+                      {item.targetDate && item.targetDate < fixLater.today ? " · OVERDUE" : ""}
+                    </li>
+                  ))
+              )}
+            </ul>
+          </details>
+        )}
+        {user && canManageOfficeRecords(user.role) && (
+          <Link href="/office/spot-check" className="block text-xs font-semibold text-gray-600 underline">
+            Weekly spot check: review a few &quot;Same as before&quot; answers
+          </Link>
+        )}
+
         {officeNote && (
           <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
             {officeNote}{" "}
@@ -286,6 +325,22 @@ export default function AlertsPage() {
                         <DamageBeforeAfter pairs={alert.details.compare} compact />
                       </div>
                     )}
+                    {alert.type === "damage_reported" &&
+                      !alert.archivedAt &&
+                      user &&
+                      canManageOfficeRecords(user.role) &&
+                      (alert.details?.compare ?? []).map((pair) => (
+                        <div key={`known-${pair.angle}`} className="mt-2">
+                          <p className="text-xs text-gray-500 mb-1">{pair.label}: mark as known damage</p>
+                          <MarkKnownDamage
+                            vehicleId={alert.vehicleId}
+                            angle={pair.angle as PhotoAngle}
+                            description={knownDamageDescription(alert, pair.angle)}
+                            sourceReportId={alert.reportId}
+                            sourceAlertId={alert.id}
+                          />
+                        </div>
+                      ))}
 
                     <p className="text-sm text-gray-600 mt-1">
                       {alert.vehiclePlate} · {alert.actorName}
@@ -410,4 +465,12 @@ function AlertDetailsBlock({ alert }: { alert: ListedAlert }) {
       )}
     </div>
   );
+}
+
+/** Prefill for "mark as known": the driver's note for that slot, else the first damage line. */
+function knownDamageDescription(alert: ListedAlert, angle: string): string {
+  const d = alert.details;
+  const photo = d?.photos.find((p) => p.angle === angle);
+  if (photo?.note) return photo.note;
+  return d?.notes[0]?.replace(/^[^:]+:\s*/, "") || "Damage";
 }

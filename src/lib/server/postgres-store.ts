@@ -141,7 +141,7 @@ let migrating: Promise<void> | null = null;
  * or one-time fix). While the database already has this version, a new server
  * instance skips the ~100 one-by-one setup queries and makes one quick check.
  */
-export const SCHEMA_VERSION = "2026-11-20.1";
+export const SCHEMA_VERSION = "2026-11-20.2";
 
 async function schemaIsCurrent(): Promise<boolean> {
   try {
@@ -255,6 +255,8 @@ async function runMigrateAndSeed(): Promise<void> {
   await sql`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS powertrain TEXT`;
   await sql`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS last_oil_change_mileage INT`;
   await sql`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS known_issue JSONB`;
+  // Known damage list per unit (additive, nullable; null = none).
+  await sql`ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS known_damage JSONB`;
   await sql`ALTER TABLE checkout_reports ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ`;
   await sql`
     CREATE TABLE IF NOT EXISTS fleet_alerts (

@@ -206,6 +206,39 @@ export async function getVehicle(db: OrgDb, orgId: string, id: string) {
   return rows[0];
 }
 
+/** Known damage list stored on the unit (JSONB array). */
+export async function getVehicleKnownDamage(db: OrgDb, orgId: string, vehicleId: string) {
+  const rows = await db.query(
+    "SELECT known_damage FROM vehicles WHERE id = $1 AND org_id = $2 LIMIT 1",
+    [vehicleId, org(orgId)]
+  );
+  if (!rows[0]) return undefined;
+  return rows[0].known_damage ?? [];
+}
+
+export async function setVehicleKnownDamage(
+  db: OrgDb,
+  orgId: string,
+  vehicleId: string,
+  list: unknown[]
+): Promise<boolean> {
+  const rows = await db.query(
+    "UPDATE vehicles SET known_damage = $1::jsonb WHERE id = $2 AND org_id = $3 RETURNING id",
+    [JSON.stringify(list), vehicleId, org(orgId)]
+  );
+  return Boolean(rows[0]);
+}
+
+/** Units in the org that have any known damage saved. */
+export async function listVehiclesWithKnownDamage(db: OrgDb, orgId: string) {
+  return db.query(
+    `SELECT id, unit_number, plate, company_id, fleet_id, known_damage
+     FROM vehicles
+     WHERE org_id = $1 AND known_damage IS NOT NULL AND archived_at IS NULL`,
+    [org(orgId)]
+  );
+}
+
 export async function vehiclesForFleet(db: OrgDb, orgId: string, companyId: string) {
   await assertFleetInOrg(db, orgId, companyId);
   return db.query(
@@ -827,13 +860,46 @@ export async function listDriverTallyChecks(
            CASE WHEN jsonb_typeof(r.photos) = 'array' THEN r.photos ELSE '[]'::jsonb END
          ) AS elem
          WHERE elem.value->>'qualityOverride' IN ('dark', 'blank', 'blur')
-       ) AS quality_overrides
+       ) AS quality_overrides,
+       (
+         SELECT COUNT(*)::int
+         FROM jsonb_array_elements(
+           CASE WHEN jsonb_typeof(r.photos) = 'array' THEN r.photos ELSE '[]'::jsonb END
+         ) AS elem
+         WHERE elem.value->'damageReview'->>'kind' = 'false_report'
+       ) AS false_reports,
+       (
+         SELECT COUNT(*)::int
+         FROM jsonb_array_elements(
+           CASE WHEN jsonb_typeof(r.photos) = 'array' THEN r.photos ELSE '[]'::jsonb END
+         ) AS elem
+         WHERE elem.value->'damageReview'->>'kind' = 'missed_damage'
+       ) AS missed_damage
      FROM checkout_reports r
      LEFT JOIN companies c ON c.id = r.company_id AND c.org_id = r.org_id
      WHERE r.org_id = $1
        AND r.archived_at IS NULL
        AND r.completed_at >= $2::timestamptz
        AND r.completed_at < $3::timestamptz`,
+    [org(orgId), start, end]
+  );
+}
+
+/** Photos answered "Same as before" in a window (weekly spot check). */
+export async function listSameAsBeforeAnswers(db: OrgDb, orgId: string, start: string, end: string) {
+  return db.query(
+    `SELECT r.id AS report_id, r.vehicle_id, r.unit_number, r.plate, r.driver_name, r.completed_at,
+       elem.value->>'angle' AS angle,
+       elem.value->>'knownDamageId' AS known_damage_id,
+       elem.value->>'knownDamageAnsweredAt' AS answered_at,
+       elem.value->'damageReview'->>'kind' AS review_kind
+     FROM checkout_reports r,
+       jsonb_array_elements(CASE WHEN jsonb_typeof(r.photos) = 'array' THEN r.photos ELSE '[]'::jsonb END) AS elem
+     WHERE r.org_id = $1
+       AND r.archived_at IS NULL
+       AND r.completed_at >= $2::timestamptz
+       AND r.completed_at < $3::timestamptz
+       AND elem.value->>'knownDamageAnswer' = 'same'`,
     [org(orgId), start, end]
   );
 }

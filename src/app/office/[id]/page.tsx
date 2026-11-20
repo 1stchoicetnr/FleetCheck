@@ -13,6 +13,9 @@ import { DeliveryBadge } from "@/components/delivery-badge";
 import { legacyMissingNotes, stuckReason } from "@/lib/legacy-checkout";
 import { CheckoutPhotoComparison } from "@/components/checkout-photo-comparison";
 import { DamageBeforeAfter } from "@/components/damage-before-after";
+import { KnownDamageAnswers, MarkKnownDamage } from "@/components/known-damage";
+import { fetchKnownDamage, type KnownDamageItem } from "@/lib/checkout-api";
+import { photoAngleLabel } from "@/lib/photo-flags";
 import { beforeAfterPairs, damageCompareAngles } from "@/lib/damage-before-after";
 import { damageItemKeys } from "@/lib/damage-keys";
 import {
@@ -81,6 +84,7 @@ export default function OfficeReportDetailPage() {
   const [reportReady, setReportReady] = useState(false);
   const [priors, setPriors] = useState<CheckoutReport[]>([]);
   const [damageHistory, setDamageHistory] = useState<CheckoutReport[] | null>(null);
+  const [knownDamage, setKnownDamage] = useState<KnownDamageItem[]>([]);
   const [vehicle, setVehicle] = useState<SharedVehicle | null>(null);
   const [saveError, setSaveError] = useState("");
   const [company, setCompany] = useState<Company | null>(null);
@@ -176,6 +180,29 @@ export default function OfficeReportDetailPage() {
       cancelled = true;
     };
   }, [officeReady, hasDamageSlots, priorVehicleId, priorReportId]);
+
+  // Known damage on this unit (for the driver's Same / New answers and "mark as known").
+  useEffect(() => {
+    if (!officeReady || !priorVehicleId) return;
+    let cancelled = false;
+    fetchKnownDamage(priorVehicleId)
+      .then((items) => {
+        if (!cancelled) setKnownDamage(items);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [officeReady, priorVehicleId]);
+
+  const reloadReport = async () => {
+    if (!report) return;
+    try {
+      setReport(await fetchCheckoutReport(report.id));
+    } catch {
+      /* keep the current view */
+    }
+  };
 
   useEffect(() => {
     void fetchCompanySettings().then(setCompanySettings).catch(() => {});
@@ -571,9 +598,34 @@ export default function OfficeReportDetailPage() {
                 ) : (
                   <DamageBeforeAfter pairs={beforeAfterPairs(report, damageHistory)} />
                 )}
+                {user &&
+                  canManageOfficeRecords(user.role) &&
+                  damageCompareAngles(damageItemKeys(report))
+                    .filter((angle) => !knownDamage.some((item) => item.angle === angle && !item.repairedAt))
+                    .map((angle) => (
+                      <div key={`known-${angle}`} className="space-y-1">
+                        <p className="text-xs text-gray-500">{photoAngleLabel(angle)}: mark as known damage</p>
+                        <MarkKnownDamage
+                          vehicleId={report.vehicleId}
+                          angle={angle}
+                          description={
+                            report.photos.find((p) => p.angle === angle)?.damageNote?.trim() || "Damage"
+                          }
+                          sourceReportId={report.id}
+                          onSaved={(item) => setKnownDamage((prev) => [...prev, item])}
+                        />
+                      </div>
+                    ))}
               </CardContent>
             </Card>
           )}
+
+          <KnownDamageAnswers
+            report={report}
+            known={knownDamage}
+            canReview={Boolean(user && canManageOfficeRecords(user.role))}
+            onReviewed={() => void reloadReport()}
+          />
 
           <Card>
             <CardContent className="py-4 space-y-3">

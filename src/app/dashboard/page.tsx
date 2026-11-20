@@ -16,7 +16,7 @@ import {
 import { AppHeader } from "@/components/app-header";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import { FleetStatusStats } from "@/components/fleet-status-stats";
-import { fetchCheckoutReports, fetchOfficeAlerts } from "@/lib/checkout-api";
+import { fetchCheckoutReports, fetchKnownDamageSummary, fetchOfficeAlerts } from "@/lib/checkout-api";
 import { getAlerts } from "@/lib/storage";
 import {
   Bell,
@@ -82,6 +82,7 @@ export default function DashboardPage() {
   const router = useRouter();
   const [reviewCount, setReviewCount] = useState<number | null>(null);
   const [alertCount, setAlertCount] = useState<number | null>(null);
+  const [fixLater, setFixLater] = useState<{ fixLater: number; overdue: number } | null>(null);
   const [pendingCount, setPendingCount] = useState<number | null>(null);
 
   useEffect(() => {
@@ -113,6 +114,12 @@ export default function DashboardPage() {
         if (!cancelled) setAlertCount(open);
       } catch {
         if (!cancelled) setAlertCount(null);
+      }
+      try {
+        const summary = await fetchKnownDamageSummary();
+        if (!cancelled) setFixLater({ fixLater: summary.fixLater, overdue: summary.overdue });
+      } catch {
+        if (!cancelled) setFixLater(null);
       }
     })();
     return () => {
@@ -192,7 +199,9 @@ export default function DashboardPage() {
                 ? "Fleet list, add, and archived units"
                 : id === "vehicles" && user.role === "driver"
                   ? "Units you can check out"
-                  : tile.desc;
+                  : id === "alerts" && fixLater && fixLater.fixLater > 0
+                    ? `${tile.desc} · Fix later: ${fixLater.fixLater}${fixLater.overdue ? ` (${fixLater.overdue} overdue)` : ""}`
+                    : tile.desc;
             return (
               <Link key={id} href={tile.href}>
                 <Card className="hover:shadow-md transition-shadow active:scale-[0.98]">

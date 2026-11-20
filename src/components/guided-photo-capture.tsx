@@ -73,7 +73,18 @@ interface GuidedPhotoCaptureProps {
     driverName: string;
     photos: Partial<Record<PhotoAngle, string>>;
   } | null;
+  /** Active known damage on this unit. On those slots the driver must answer Same / New. */
+  knownDamage?: KnownDamagePrompt[];
+  onKnownDamageAnswer?: (angle: PhotoAngle, knownDamageId: string, answer: "same" | "new") => void;
 }
+
+export type KnownDamagePrompt = {
+  id: string;
+  angle: PhotoAngle;
+  description: string;
+  note?: string;
+  sourceReportId?: string;
+};
 
 export function GuidedPhotoCapture({
   photos,
@@ -92,6 +103,8 @@ export function GuidedPhotoCapture({
   driverName,
   odometer,
   prior,
+  knownDamage,
+  onKnownDamageAnswer,
 }: GuidedPhotoCaptureProps) {
   const requiredPhotos = steps.filter((p) => p.required);
   const acceptedCount = requiredPhotos.filter((p) => photos[p.angle]).length;
@@ -132,7 +145,36 @@ export function GuidedPhotoCapture({
       !!photos[requiredPhotos[currentIndex + 1]?.angle] ||
       currentIndex + 1 === firstIncompleteIndex);
 
+  /** Photo waiting for the driver's Same / New answer on a known-damage slot. */
+  const [knownAsk, setKnownAsk] = useState<{ dataUrl: string; item: KnownDamagePrompt } | null>(null);
+  const knownForCurrent = current
+    ? knownDamage?.find((item) => item.angle === current.angle)
+    : undefined;
+
   const handleAccept = (dataUrl: string) => {
+    if (!current) return;
+    if (
+      knownForCurrent &&
+      onKnownDamageAnswer &&
+      photoFlags?.[current.angle]?.knownDamageId !== knownForCurrent.id
+    ) {
+      setKnownAsk({ dataUrl, item: knownForCurrent });
+      return;
+    }
+    acceptAndAdvance(dataUrl);
+  };
+
+  const answerKnown = (answer: "same" | "new") => {
+    if (!current || !knownAsk) return;
+    onKnownDamageAnswer?.(current.angle, knownAsk.item.id, answer);
+    // "New damage" alerts as normal: flag the slot so it goes to Slack and Bell.
+    if (answer === "new") onFlagDamage?.(current.angle, true);
+    const dataUrl = knownAsk.dataUrl;
+    setKnownAsk(null);
+    acceptAndAdvance(dataUrl);
+  };
+
+  const acceptAndAdvance = (dataUrl: string) => {
     if (!current) return;
     onAccept(current.angle, dataUrl);
     setPickError("");
@@ -273,6 +315,7 @@ export function GuidedPhotoCapture({
   };
 
   const goToStep = (index: number) => {
+    setKnownAsk(null);
     setPending(null);
     setOverrideOpen(false);
     setOverrideReason("");
@@ -335,7 +378,15 @@ export function GuidedPhotoCapture({
               )}
             </div>
 
-            {pending ? (
+            {knownAsk ? (
+              <KnownDamageQuestion
+                item={knownAsk.item}
+                photo={knownAsk.dataUrl}
+                label={current.label}
+                onAnswer={answerKnown}
+                onRetake={() => setKnownAsk(null)}
+              />
+            ) : pending ? (
               <div className="p-4 space-y-4">
                 <p className="text-2xl font-bold text-white text-center">
                   {pending.blockReason
@@ -749,4 +800,69 @@ async function readPhotoQuality(dataUrl: string): Promise<PhotoQualityIssue | nu
   context.drawImage(image, 0, 0, width, height);
   const data = context.getImageData(0, 0, width, height);
   return photoQualityIssue(data.data, width, height);
+}
+
+/** Known damage on this slot: show it and require Same as before / New damage. */
+function KnownDamageQuestion({
+  item,
+  photo,
+  label,
+  onAnswer,
+  onRetake,
+}: {
+  item: KnownDamagePrompt;
+  photo: string;
+  label: string;
+  onAnswer: (answer: "same" | "new") => void;
+  onRetake: () => void;
+}) {
+  const knownSrc = item.sourceReportId
+    ? `/api/checkout-reports/${encodeURIComponent(item.sourceReportId)}/photos/${encodeURIComponent(item.angle)}`
+    : "";
+  return (
+    <div className="p-4 space-y-3">
+      <div className="rounded-xl border border-amber-400/60 bg-amber-950/30 p-3 space-y-1">
+        <p className="text-sm font-bold text-amber-100">Known damage on {label}</p>
+        <p className="text-sm text-amber-100">{item.description}</p>
+        {item.note && <p className="text-xs text-amber-200">{item.note}</p>}
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <figure className="min-w-0">
+          <div className="aspect-[4/3] overflow-hidden rounded-lg border border-[#3a3a40] bg-black">
+            {knownSrc ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={knownSrc} alt="Known damage" className="h-full w-full object-cover" />
+            ) : (
+              <div className="flex h-full items-center justify-center text-xs text-[#8b8b93]">No photo</div>
+            )}
+          </div>
+          <figcaption className="mt-0.5 text-[11px] text-[#d4d4d8]">Before (known)</figcaption>
+        </figure>
+        <figure className="min-w-0">
+          <div className="aspect-[4/3] overflow-hidden rounded-lg border border-[#3a3a40] bg-black">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={photo} alt="Your photo" className="h-full w-full object-cover" />
+          </div>
+          <figcaption className="mt-0.5 text-[11px] text-[#d4d4d8]">Your photo</figcaption>
+        </figure>
+      </div>
+      <p className="text-sm font-semibold text-white">Is it the same as before?</p>
+      <div className="grid grid-cols-2 gap-2">
+        <Button size="lg" onClick={() => onAnswer("same")}>
+          Same as before
+        </Button>
+        <Button
+          size="lg"
+          variant="outline"
+          className="border-red-400/60 text-red-200 bg-red-950/40 hover:bg-red-950/60"
+          onClick={() => onAnswer("new")}
+        >
+          New damage
+        </Button>
+      </div>
+      <Button variant="outline" size="lg" className="w-full border-[#5c5c64] text-[#e4e4e7]" onClick={onRetake}>
+        Retake
+      </Button>
+    </div>
+  );
 }
