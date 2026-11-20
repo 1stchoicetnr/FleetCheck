@@ -25,6 +25,16 @@ import { formatUnitLabel } from "@/lib/utils";
 import { beforeAfterPairs, beforeAfterSlackLines } from "@/lib/damage-before-after";
 import { withoutKnownDamage } from "@/lib/known-damage";
 import { formatCheckoutTime } from "@/lib/checkout-slack";
+import { photoAngleLabel } from "@/lib/photo-flags";
+import {
+  defaultRepairMentions,
+  mentionLine,
+  repairReportText,
+  repairStatusText,
+  whoHadItLast,
+  whoHadItLastLines,
+  type RepairMention,
+} from "@/lib/repair-report";
 import { localInsertAlert, localListAlerts, localListReports } from "./local-store";
 import { pgInsertAlert, pgListAlerts, pgListVehicleReports } from "./postgres-store";
 import { sharedBackendMode } from "./shared-config";
@@ -61,30 +71,65 @@ function repairWebhook(route: SlackRoute): string | undefined {
   return process.env.SLACK_WEBHOOK_EQUIPMENT_ISSUES;
 }
 
-async function postRepairSlack(
+/** Who the repair report tags for this fleet (notification settings; Rad Cab defaults to Mark). */
+async function repairMentionsFor(orgId: string, companyId: string): Promise<RepairMention[]> {
+  try {
+    const { getPublicCompanySettings } = await import("./checkout-repo");
+    const settings = await getPublicCompanySettings(orgId);
+    return settings.repairMentions?.[companyId] ?? defaultRepairMentions(companyId);
+  } catch {
+    return defaultRepairMentions(companyId);
+  }
+}
+
+async function unitStatusText(orgId: string, report: { vehicleId: string }): Promise<string> {
+  try {
+    const { getVehicle } = await import("./checkout-repo");
+    const { listKnownDamage } = await import("./known-damage-repo");
+    const [vehicle, known] = await Promise.all([
+      getVehicle(orgId, report.vehicleId),
+      listKnownDamage(orgId, report.vehicleId).catch(() => []),
+    ]);
+    return repairStatusText({
+      outOfService: vehicle?.outOfService ?? null,
+      known: known.filter((k) => !k.repairedAt).map((k) => `${photoAngleLabel(k.angle)} ${k.description}`),
+    });
+  } catch {
+    return "In service";
+  }
+}
+
+/** Build the repair report for a damage check: unit, plate, damage, before/after, who found it, who had it last, status, link. */
+export async function buildDamageRepairReport(
+  orgId: string,
   report: CheckoutReport,
-  alerts: SharedOfficeAlert[],
-  history: CheckoutReport[]
-): Promise<void> {
-  if (!alerts.length || !postsRepairSlack(report.companyId)) return;
-  const route = repairRoute(report.companyId);
-  const unit = formatUnitLabel(report.unitNumber, report.plate);
+  history: CheckoutReport[],
+  options: { plainMentions?: boolean; banner?: string; extraAlertLines?: string[] } = {}
+): Promise<string> {
   const origin = checkoutAppOrigin(process.env.APP_ORIGIN || process.env.NEXT_PUBLIC_APP_URL);
-  const text = repairSlackText({
-    unit,
+  const checkUrl = (id: string) => officeCheckUrl(origin, id);
+  const [mentions, status] = await Promise.all([
+    repairMentionsFor(orgId, report.companyId),
+    unitStatusText(orgId, report),
+  ]);
+  return repairReportText({
+    kind: "damage",
+    banner: options.banner,
+    unit: report.unitNumber ? `Unit ${report.unitNumber}` : formatUnitLabel(report.unitNumber, report.plate),
+    plate: report.plate,
     vehicle: `${report.year} ${report.make} ${report.model}`,
-    driverName: report.driverName,
-    alertLines: alerts
-      .filter((alert) => alert.type !== "damage_reported")
-      .map((alert) => `*${alert.type.replace(/_/g, " ")}:* ${alert.message}`),
-    details: alertDamageDetails(report),
-    checkUrl: officeCheckUrl(origin, report.id),
-    extraLines: beforeAfterSlackLines(
-      beforeAfterPairs(report, history),
-      (id) => officeCheckUrl(origin, id),
-      formatCheckoutTime
-    ),
+    mention: mentionLine(mentions, options.plainMentions),
+    damage: [...(options.extraAlertLines ?? []), ...alertDetailParts(alertDamageDetails(report))],
+    beforeAfter: beforeAfterSlackLines(beforeAfterPairs(report, history), checkUrl, formatCheckoutTime),
+    whoHadIt: whoHadItLastLines(whoHadItLast(report, history), checkUrl, formatCheckoutTime),
+    status,
+    link: { url: checkUrl(report.id), label: "Open the check" },
   });
+}
+
+async function postRepairText(companyId: string, text: string, tag: string): Promise<void> {
+  if (!postsRepairSlack(companyId)) return;
+  const route = repairRoute(companyId);
   try {
     const result = await sendRepairSlack({
       text,
@@ -93,10 +138,25 @@ async function postRepairSlack(
       webhookUrl: repairWebhook(route),
       dmUserId: route === "rad_cab" ? BELL_SLACK_USER : null,
     });
-    console.info("[alerts] repair slack", report.id, result);
+    console.info("[alerts] repair slack", tag, result);
   } catch (err) {
     console.error("[alerts] slack post failed:", err);
   }
+}
+
+async function postRepairSlack(
+  orgId: string,
+  report: CheckoutReport,
+  alerts: SharedOfficeAlert[],
+  history: CheckoutReport[]
+): Promise<void> {
+  if (!alerts.length || !postsRepairSlack(report.companyId)) return;
+  const text = await buildDamageRepairReport(orgId, report, history, {
+    extraAlertLines: alerts
+      .filter((alert) => alert.type !== "damage_reported")
+      .map((alert) => alert.message),
+  });
+  await postRepairText(report.companyId, text, report.id);
 }
 
 /**
@@ -138,7 +198,7 @@ export async function recordCheckoutAlerts(
     }
     if (created.length) {
       history = await vehicleHistory(orgId, report).catch(() => []);
-      await postRepairSlack(report, created, history);
+      await postRepairSlack(orgId, report, created, history);
     }
   }
   await recordRepeatIssues(orgId, report, history);
@@ -229,6 +289,9 @@ export async function recordMissedDamageAlert(orgId: string, checked: CheckoutRe
   };
   if (mode === "postgres") await pgInsertAlert(orgId, alert);
   else await localInsertAlert(alert);
+  // Office confirmed it is new damage: the repair report goes out like any other.
+  const history = await vehicleHistory(orgId, report).catch(() => []);
+  await postRepairSlack(orgId, report, [alert], history);
   return true;
 }
 
@@ -254,5 +317,50 @@ export async function recordVehicleOutOfService(
   };
   if (mode === "postgres") await pgInsertAlert(orgId, alert);
   else await localInsertAlert(alert);
+  const text = await buildOutOfServiceRepairReport(orgId, vehicle);
+  await postRepairText(vehicle.companyId, text, alert.id);
   return alert;
+}
+
+/** Repair report for a unit the office set Out of Service: who set it, why, and who had it last. */
+export async function buildOutOfServiceRepairReport(
+  orgId: string,
+  vehicle: SharedVehicle,
+  options: { plainMentions?: boolean; banner?: string; history?: CheckoutReport[] } = {}
+): Promise<string> {
+  const origin = checkoutAppOrigin(process.env.APP_ORIGIN || process.env.NEXT_PUBLIC_APP_URL);
+  const checkUrl = (id: string) => officeCheckUrl(origin, id);
+  const history = (options.history ?? (await vehicleHistory(orgId, { vehicleId: vehicle.id } as CheckoutReport).catch(() => [])))
+    .filter((r) => r.completedAt)
+    .sort((a, b) => Date.parse(b.completedAt) - Date.parse(a.completedAt));
+  const [mentions, status] = await Promise.all([
+    repairMentionsFor(orgId, vehicle.companyId),
+    unitStatusText(orgId, { vehicleId: vehicle.id }),
+  ]);
+  const latest = history[0];
+  const recent = history.slice(0, 5).reverse();
+  const link = (r: CheckoutReport) => `<${checkUrl(r.id)}|${formatCheckoutTime(r.completedAt)} · ${r.driverName}>`;
+  const latestDamage = latest ? alertDetailParts(alertDamageDetails(withoutKnownDamage(latest))) : [];
+  return repairReportText({
+    kind: "out_of_service",
+    banner: options.banner,
+    unit: vehicle.unitNumber ? `Unit ${vehicle.unitNumber}` : formatUnitLabel(vehicle.unitNumber, vehicle.plate),
+    plate: vehicle.plate,
+    vehicle: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
+    mention: mentionLine(mentions, options.plainMentions),
+    damage: [
+      ...(vehicle.outOfService?.reason ? [`Reason: ${vehicle.outOfService.reason}`] : []),
+      ...latestDamage.map((d) => `Last check: ${d}`),
+    ],
+    beforeAfter: [],
+    whoHadIt: [
+      `*Set by:* ${vehicle.outOfService?.by ?? "Office"}${vehicle.outOfService ? ` · ${formatCheckoutTime(vehicle.outOfService.since)}` : ""}`,
+      "*Who had it last:*",
+      ...(recent.length ? recent.map((r) => `• ${link(r)}`) : ["• no checks on record"]),
+    ],
+    status,
+    link: latest
+      ? { url: checkUrl(latest.id), label: "Open the last check" }
+      : { url: `${origin}/vehicles/${vehicle.id}`, label: "Open the unit" },
+  });
 }
