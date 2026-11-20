@@ -306,7 +306,46 @@ export interface OfficeAlert {
     compare?: import("./damage-before-after").BeforeAfterPair[];
     /** Found by, last clean check, and every check in between. */
     whoHadIt?: import("./repair-report").WhoHadItLast;
+    /** Bot photo check findings (office queue only until confirmed). */
+    photoCheck?: PhotoCheckFinding[];
   };
+}
+
+export interface PhotoCheckFinding {
+  angle: string;
+  label: string;
+  summary: string;
+  confidence: number;
+  box?: import("./photo-check").ChangeBox;
+  againstKind: "clean" | "known";
+  review?: { verdict: "confirmed" | "dismissed"; by: string; at: string };
+  knownDamageAnswer?: "same" | "new";
+  after: { src: string; completedAt: string; driverName: string };
+  before?: { src: string; completedAt: string; driverName: string };
+}
+
+export async function reviewPhotoCheck(
+  reportId: string,
+  angle: string,
+  verdict: "confirm" | "dismiss"
+): Promise<{ ok: boolean; verdict?: string; alert?: string }> {
+  return api(`/api/checkout-reports/${reportId}/photo-check`, {
+    method: "POST",
+    headers: officePinHeader(),
+    body: JSON.stringify({ angle, verdict }),
+  });
+}
+
+export interface PhotoCheckStatus {
+  settings: import("./photo-check").PhotoCheckSettings;
+  spend: number;
+  calls: number;
+  gatewayConfigured: boolean;
+  model: string;
+}
+
+export async function fetchPhotoCheckStatus(): Promise<PhotoCheckStatus> {
+  return api<PhotoCheckStatus>("/api/photo-check/status", { headers: officePinHeader() });
 }
 
 export async function fetchOfficeAlerts(options?: {

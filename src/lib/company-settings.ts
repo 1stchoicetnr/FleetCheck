@@ -12,6 +12,7 @@ import {
   TURO_COMPANY_ID,
 } from "./company-rules";
 import { cleanRepairMentions, defaultRepairMentions, type RepairMention } from "./repair-report";
+import { cleanPhotoCheckSettings, PHOTO_CHECK_DEFAULT_CAP_USD, type PhotoCheckSettings } from "./photo-check";
 
 const FIRST_CHOICE_COMPANY_ID = "company-1st-choice";
 const PINKIE_TOW_COMPANY_ID = "company-pinkie-tow";
@@ -40,6 +41,8 @@ export interface CompanySettingsDoc {
   checkoutSlack?: Partial<Record<string, CheckoutSlackRoute>>;
   /** Only fleets whose repair-report mentions differ from the default (Rad Cab: Mark Corbett). */
   repairMentions?: Partial<Record<string, RepairMention[]>>;
+  /** Bot photo check (AI Gateway vision). Absent = off. */
+  photoCheck?: PhotoCheckSettings;
 }
 
 export interface PublicCompanySettings {
@@ -52,6 +55,7 @@ export interface PublicCompanySettings {
   checkoutSlack: Record<string, CheckoutSlackRoute>;
   /** Who the repair report tags in Slack, per fleet. */
   repairMentions: Record<string, RepairMention[]>;
+  photoCheck: PhotoCheckSettings;
 }
 
 export interface CompanySettingsPatch {
@@ -64,6 +68,7 @@ export interface CompanySettingsPatch {
   clearPdfLogo?: boolean;
   checkoutSlack?: Partial<Record<string, Partial<CheckoutSlackRoute>>>;
   repairMentions?: Partial<Record<string, RepairMention[]>>;
+  photoCheck?: Partial<PhotoCheckSettings>;
 }
 
 const FLEET_TYPES = Object.keys(FLEET_TYPE_LABELS) as FleetType[];
@@ -224,6 +229,7 @@ export function publicCompanySettings(
     usingDefaults,
     checkoutSlack: effectiveCheckoutSlack(doc),
     repairMentions: effectiveRepairMentions(doc),
+    photoCheck: cleanPhotoCheckSettings(doc?.photoCheck),
   };
 }
 
@@ -317,6 +323,8 @@ function minimalDoc(doc: CompanySettingsDoc): CompanySettingsDoc {
     }
   }
   if (Object.keys(repairMentions).length) next.repairMentions = repairMentions;
+  const photoCheck = cleanPhotoCheckSettings(doc.photoCheck);
+  if (photoCheck.enabled || photoCheck.monthlyCapUsd !== PHOTO_CHECK_DEFAULT_CAP_USD) next.photoCheck = photoCheck;
   return next;
 }
 
@@ -328,7 +336,8 @@ function settingsDocIsEmpty(doc: CompanySettingsDoc): boolean {
     !doc.cloverCompanyIds &&
     !doc.pdfLogoDataUrl &&
     !doc.checkoutSlack &&
-    !doc.repairMentions
+    !doc.repairMentions &&
+    !doc.photoCheck
   );
 }
 
@@ -387,6 +396,9 @@ export function mergeCompanySettings(
       current[companyId] = clean;
     }
     base.repairMentions = current;
+  }
+  if (patch.photoCheck) {
+    base.photoCheck = cleanPhotoCheckSettings({ ...cleanPhotoCheckSettings(base.photoCheck), ...patch.photoCheck });
   }
   if (patch.clearPdfLogo) delete base.pdfLogoDataUrl;
   if (typeof patch.pdfLogoDataUrl === "string" && patch.pdfLogoDataUrl) {

@@ -917,6 +917,25 @@ export async function listSameAsBeforeAnswers(db: OrgDb, orgId: string, start: s
   );
 }
 
+/** Bot photo check spend and calls since `since` (results live on the photos JSON). */
+export async function sumPhotoCheckSpend(
+  db: OrgDb,
+  orgId: string,
+  since: string
+): Promise<{ spend: number; calls: number }> {
+  const rows = await db.query(
+    `SELECT COALESCE(SUM((elem.value->'photoCheck'->>'costUsd')::numeric), 0) AS spend,
+       COUNT(*)::int AS calls
+     FROM checkout_reports r,
+       jsonb_array_elements(CASE WHEN jsonb_typeof(r.photos) = 'array' THEN r.photos ELSE '[]'::jsonb END) AS elem
+     WHERE r.org_id = $1
+       AND elem.value ? 'photoCheck'
+       AND (elem.value->'photoCheck'->>'at')::timestamptz >= $2::timestamptz`,
+    [org(orgId), since]
+  );
+  return { spend: Number(rows[0]?.spend ?? 0), calls: Number(rows[0]?.calls ?? 0) };
+}
+
 export async function readDriverTallySent(db: OrgDb, orgId: string): Promise<string[]> {
   await ensureDriverTallyColumn(db);
   const rows = await db.query(

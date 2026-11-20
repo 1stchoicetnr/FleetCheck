@@ -1105,6 +1105,20 @@ export async function setPhotoDamageReview(
   return mode === "postgres" ? pgPutReport(orgId, updated) : localPutReport(updated);
 }
 
+/** Save bot photo check results (and office decisions) on the report's photos. */
+export async function setPhotoChecks(
+  orgId: string,
+  reportId: string,
+  update: (photo: VehiclePhoto) => VehiclePhoto
+): Promise<CheckoutReport> {
+  const mode = assertConfigured();
+  const existing =
+    mode === "postgres" ? await pgGetReport(orgId, reportId) : await localGetReport(reportId);
+  if (!existing) throw new SharedBackendError("Checkout report not found", 404);
+  const updated = { ...existing, photos: existing.photos.map(update) };
+  return mode === "postgres" ? pgPutReport(orgId, updated) : localPutReport(updated);
+}
+
 export async function setReportArchived(
   orgId: string,
   id: string,

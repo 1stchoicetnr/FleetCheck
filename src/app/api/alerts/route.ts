@@ -1,3 +1,4 @@
+import { photoAngleLabel } from "@/lib/photo-flags";
 import { errorResponse } from "@/lib/server/api-error";
 import { getReport, listOfficeAlerts, listVehicleReports } from "@/lib/server/checkout-repo";
 import { beforeAfterPairs, pairsForClient } from "@/lib/damage-before-after";
@@ -45,12 +46,44 @@ export async function GET(req: NextRequest) {
       const compare = openDamage ? pairsForClient(beforeAfterPairs(report, history)) : undefined;
       // Who had the car last: found by, last clean check, everyone in between.
       const whoHadIt = openDamage ? whoHadItLast(report, history) : undefined;
+      // Bot photo check: both photos and the highlighted change, for Confirm / Dismiss.
+      const photoCheck =
+        alert.type === "photo_check"
+          ? await Promise.all(
+              report.photos
+                .filter((p) => p.photoCheck?.changed)
+                .map(async (p) => {
+                  const result = p.photoCheck!;
+                  const against =
+                    result.againstReportId === report.id
+                      ? report
+                      : (await historyFor(alert.vehicleId)).find((r) => r.id === result.againstReportId);
+                  const beforePhoto = against?.photos.find((x) => x.angle === p.angle);
+                  return {
+                    angle: p.angle,
+                    label: photoAngleLabel(p.angle),
+                    summary: result.summary,
+                    confidence: result.confidence,
+                    box: result.box,
+                    againstKind: result.againstKind,
+                    review: result.review,
+                    knownDamageAnswer: p.knownDamageAnswer,
+                    after: { src: clientPhotoSrc(report.id, p.angle, p.dataUrl), completedAt: report.completedAt, driverName: report.driverName },
+                    before:
+                      against && beforePhoto
+                        ? { src: clientPhotoSrc(against.id, p.angle, beforePhoto.dataUrl), completedAt: against.completedAt, driverName: against.driverName }
+                        : undefined,
+                  };
+                })
+            )
+          : undefined;
       return {
         ...alert,
         details: {
           ...details,
           compare,
           whoHadIt,
+          photoCheck,
           photos: details.photos.map((photo) => ({
             ...photo,
             src: clientPhotoSrc(

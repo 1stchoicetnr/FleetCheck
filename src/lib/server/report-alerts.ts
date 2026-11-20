@@ -202,6 +202,9 @@ export async function recordCheckoutAlerts(
     }
   }
   await recordRepeatIssues(orgId, report, history);
+  // Bot photo check (off by default): office queue only, after the response.
+  const { schedulePhotoCheck } = await import("./photo-check-wire");
+  schedulePhotoCheck(orgId, checked.id);
 }
 
 async function vehicleHistory(orgId: string, report: CheckoutReport): Promise<CheckoutReport[]> {
@@ -268,14 +271,23 @@ async function notifyAshleyRepeat(text: string): Promise<void> {
  * to the office queue. No Slack post (office is already looking at it).
  * Does nothing if the check already has a damage alert.
  */
-export async function recordMissedDamageAlert(orgId: string, checked: CheckoutReport): Promise<boolean> {
+export async function recordMissedDamageAlert(
+  orgId: string,
+  checked: CheckoutReport,
+  options: { fallbackId?: string } = {}
+): Promise<boolean> {
   const mode = sharedBackendMode();
   if (mode === "unconfigured") return false;
   const report = withoutKnownDamage(checked);
-  const id = checkoutAlertId(report.id, "damage_reported");
   const existing =
     mode === "postgres" ? await pgListAlerts(orgId, true) : await localListAlerts(true);
-  if (existing.some((alert) => alert.id === id)) return false;
+  let id = checkoutAlertId(report.id, "damage_reported");
+  if (existing.some((alert) => alert.id === id)) {
+    // The check already has a damage alert (e.g. the driver reported other damage).
+    // A confirmed photo-check finding still gets its own alert and repair report.
+    if (!options.fallbackId || existing.some((alert) => alert.id === options.fallbackId)) return false;
+    id = options.fallbackId;
+  }
   const alert: SharedOfficeAlert = {
     id,
     type: "damage_reported",
