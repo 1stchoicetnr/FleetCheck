@@ -121,6 +121,8 @@ export interface SharedStore {
   vehicles: SharedVehicle[];
   reports: CheckoutReport[];
   alerts?: SharedOfficeAlert[];
+  /** Local dev only: known damage per unit id. */
+  knownDamage?: Record<string, unknown[]>;
   users?: SharedAppUser[];
   settings?: FleetSettings;
   companySettings?: unknown;

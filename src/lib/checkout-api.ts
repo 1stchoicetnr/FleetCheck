@@ -598,3 +598,75 @@ export async function fetchStuckChecks(): Promise<{
 }> {
   return api("/api/checkout-reports/stuck");
 }
+
+// --- Known damage -------------------------------------------------------------
+
+export type KnownDamageItem = import("./known-damage").KnownDamage;
+
+export async function fetchKnownDamage(vehicleId: string): Promise<KnownDamageItem[]> {
+  const data = await api<{ items: KnownDamageItem[] }>(
+    `/api/vehicles/${encodeURIComponent(vehicleId)}/known-damage`
+  );
+  return data.items;
+}
+
+export async function addKnownDamage(
+  vehicleId: string,
+  input: import("./known-damage").KnownDamageInput
+): Promise<KnownDamageItem> {
+  const data = await api<{ item: KnownDamageItem }>(
+    `/api/vehicles/${encodeURIComponent(vehicleId)}/known-damage`,
+    { method: "POST", body: JSON.stringify(input) }
+  );
+  return data.item;
+}
+
+export async function updateKnownDamage(
+  vehicleId: string,
+  id: string,
+  patch: import("./known-damage").KnownDamagePatch
+): Promise<KnownDamageItem> {
+  const data = await api<{ item: KnownDamageItem }>(
+    `/api/vehicles/${encodeURIComponent(vehicleId)}/known-damage/${encodeURIComponent(id)}`,
+    { method: "PATCH", body: JSON.stringify(patch) }
+  );
+  return data.item;
+}
+
+export async function fetchKnownDamageSummary(): Promise<{
+  units: Array<{ vehicleId: string; unitNumber: string; plate: string; items: KnownDamageItem[] }>;
+  fixLater: number;
+  overdue: number;
+  today: string;
+}> {
+  return api("/api/known-damage");
+}
+
+export async function reviewDamageAnswer(
+  reportId: string,
+  angle: string,
+  verdict: "not_new" | "actually_new"
+): Promise<{ kind: string; alert: string }> {
+  return api(`/api/checkout-reports/${encodeURIComponent(reportId)}/damage-review`, {
+    method: "POST",
+    body: JSON.stringify({ angle, verdict }),
+  });
+}
+
+export type SpotCheckItem = {
+  key: string;
+  reportId: string;
+  vehicleId: string;
+  unitNumber: string;
+  plate: string;
+  driverName: string;
+  completedAt: string;
+  angle: string;
+  reviewKind?: string;
+  known: KnownDamageItem | null;
+  photoSrc: string;
+};
+
+export async function fetchSpotCheck(): Promise<{ items: SpotCheckItem[]; week: string; total: number }> {
+  return api("/api/known-damage/spot-check");
+}

@@ -39,6 +39,10 @@ export interface OutboxPhoto {
   /** Kept despite a dark/blank/blurry warning. Older queued checks do not have it. */
   qualityOverride?: PhotoQualityOverride;
   qualityOverrideReason?: string;
+  /** Answer to a known-damage question on this slot. Older queued checks do not have it. */
+  knownDamageId?: string;
+  knownDamageAnswer?: "same" | "new";
+  knownDamageAnsweredAt?: string;
 }
 
 /** One queued photo with the driver's marks. Missing marks (older drafts) stay absent. */
@@ -52,6 +56,9 @@ export function outboxPhoto(
     qualityNote?: string;
     qualityOverride?: PhotoQualityOverride;
     qualityOverrideReason?: string;
+    knownDamageId?: string;
+    knownDamageAnswer?: "same" | "new";
+    knownDamageAnsweredAt?: string;
   }
 ): OutboxPhoto {
   return {
@@ -63,6 +70,13 @@ export function outboxPhoto(
     qualityNote: flags?.qualityNote,
     qualityOverride: flags?.qualityOverride,
     qualityOverrideReason: flags?.qualityOverrideReason,
+    ...(flags?.knownDamageId && flags.knownDamageAnswer
+      ? {
+          knownDamageId: flags.knownDamageId,
+          knownDamageAnswer: flags.knownDamageAnswer,
+          knownDamageAnsweredAt: flags.knownDamageAnsweredAt,
+        }
+      : {}),
   };
 }
 

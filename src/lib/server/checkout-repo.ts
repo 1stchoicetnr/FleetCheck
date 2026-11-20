@@ -80,6 +80,7 @@ import {
 import { deleteStoredPhoto, persistCheckoutPhoto } from "./photo-store";
 import { recordCheckoutAlerts } from "./report-alerts";
 import { qualityOverrideFields } from "@/lib/photo-override";
+import { knownDamageFields } from "@/lib/known-damage";
 import { classifyStuckChecks, STUCK_LOOKBACK_DAYS } from "@/lib/stuck-checks";
 import { alertsReady } from "@/lib/alert-timing";
 import { sentMissingPhotoCount } from "@/lib/checkout-slack";
@@ -948,6 +949,9 @@ export async function addReportPhoto(
     qualityNote?: string;
     qualityOverride?: string;
     qualityOverrideReason?: string;
+    knownDamageId?: string;
+    knownDamageAnswer?: string;
+    knownDamageAnsweredAt?: string;
   }
 ): Promise<CheckoutReport> {
   const mode = assertConfigured();
@@ -965,6 +969,7 @@ export async function addReportPhoto(
     damageNote: cleanDamageNote(flags?.damageNote),
     qualityNote: cleanDamageNote(flags?.qualityNote),
     ...qualityOverrideFields(flags),
+    ...knownDamageFields(flags),
   };
   const saved = await savePhotosToReport(mode, orgId, existing, [photo]);
   if (flags?.flaggedDamage) {
@@ -985,6 +990,9 @@ export async function addReportPhotos(
     qualityNote?: string;
     qualityOverride?: string;
     qualityOverrideReason?: string;
+    knownDamageId?: string;
+    knownDamageAnswer?: string;
+    knownDamageAnsweredAt?: string;
   }>
 ): Promise<CheckoutReport> {
   const mode = assertConfigured();
@@ -1002,6 +1010,7 @@ export async function addReportPhotos(
         damageNote: cleanDamageNote(item.damageNote),
         qualityNote: cleanDamageNote(item.qualityNote),
         ...qualityOverrideFields(item),
+        ...knownDamageFields(item),
       };
       return photo;
     })
@@ -1053,6 +1062,25 @@ export async function patchReportPhotoFlags(
     void recordAlertsWhenReady(orgId, saved, "photo-flags");
   }
   return saved;
+}
+
+/** Office review mark on one photo (driver tally). Leaves the photo and its flags alone. */
+export async function setPhotoDamageReview(
+  orgId: string,
+  reportId: string,
+  angle: PhotoAngle,
+  review: { kind: "false_report" | "missed_damage"; by: string; at: string }
+): Promise<CheckoutReport> {
+  const mode = assertConfigured();
+  const existing =
+    mode === "postgres" ? await pgGetReport(orgId, reportId) : await localGetReport(reportId);
+  if (!existing) throw new SharedBackendError("Checkout report not found", 404);
+  if (!existing.photos.some((p) => p.angle === angle)) {
+    throw new SharedBackendError("Photo not found", 404);
+  }
+  const photos = existing.photos.map((p) => (p.angle === angle ? { ...p, damageReview: review } : p));
+  const updated = { ...existing, photos };
+  return mode === "postgres" ? pgPutReport(orgId, updated) : localPutReport(updated);
 }
 
 export async function setReportArchived(

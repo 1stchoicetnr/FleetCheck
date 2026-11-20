@@ -735,3 +735,26 @@ export async function localSetFeedbackDelivery(
     await writeStore(store);
   });
 }
+
+export async function localGetKnownDamage(vehicleId: string): Promise<unknown[] | undefined> {
+  const store = await localEnsureSeed();
+  if (!store.vehicles.some((vehicle) => vehicle.id === vehicleId)) return undefined;
+  return store.knownDamage?.[vehicleId] ?? [];
+}
+
+export async function localSetKnownDamage(vehicleId: string, list: unknown[]): Promise<boolean> {
+  return enqueueWrite(async () => {
+    const store = await loadAndSeedUnlocked();
+    if (!store.vehicles.some((vehicle) => vehicle.id === vehicleId)) return false;
+    store.knownDamage = { ...(store.knownDamage ?? {}), [vehicleId]: list };
+    await writeStore(store);
+    return true;
+  });
+}
+
+export async function localListKnownDamage(): Promise<Array<{ vehicle: SharedVehicle; list: unknown[] }>> {
+  const store = await localEnsureSeed();
+  return store.vehicles
+    .filter((vehicle) => !vehicle.archivedAt && store.knownDamage?.[vehicle.id]?.length)
+    .map((vehicle) => ({ vehicle, list: store.knownDamage?.[vehicle.id] ?? [] }));
+}

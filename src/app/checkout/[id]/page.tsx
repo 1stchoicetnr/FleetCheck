@@ -6,7 +6,7 @@ import { AppHeader } from "@/components/app-header";
 import { CheckoutAccountBanner } from "@/components/checkout-account-notice";
 import { CHECKOUT_ACCOUNT_MESSAGE } from "@/lib/checkout-account";
 import { Button } from "@/components/ui/button";
-import { GuidedPhotoCapture } from "@/components/guided-photo-capture";
+import { GuidedPhotoCapture, type KnownDamagePrompt } from "@/components/guided-photo-capture";
 import { SignaturePad } from "@/components/signature-pad";
 import { useAuth } from "@/hooks/use-auth";
 import { canStartCheckout } from "@/lib/fleet-config";
@@ -28,6 +28,7 @@ import {
 import {
   fetchCompanies,
   fetchCompanySettings,
+  fetchKnownDamage,
   fetchPriorReports,
   fetchVehicles,
   SharedVehicle,
@@ -116,6 +117,7 @@ function CheckoutCapturePage() {
   const [phase, setPhase] = useState<"inspect" | "photos" | "review">("inspect");
   const [companySettings, setCompanySettings] = useState<PublicCompanySettings | null>(null);
   const [showPrecheckErrors, setShowPrecheckErrors] = useState(false);
+  const [knownDamage, setKnownDamage] = useState<KnownDamagePrompt[]>([]);
   const [priorPhotos, setPriorPhotos] = useState<{
     driverName: string;
     photos: Partial<Record<PhotoAngle, string>>;
@@ -141,6 +143,15 @@ function CheckoutCapturePage() {
     const vehicleId = draft?.vehicleId;
     if (!vehicleId || phase !== "photos") return;
     let cancelled = false;
+    // Known damage on this unit: those slots ask Same as before / New damage.
+    // If it can't load (no signal), the walkaround works as before.
+    void fetchKnownDamage(vehicleId)
+      .then((items) => {
+        if (!cancelled) setKnownDamage(items.filter((item) => !item.repairedAt));
+      })
+      .catch(() => {
+        if (!cancelled) setKnownDamage([]);
+      });
     void fetchPriorReports(vehicleId)
       .then((reports) => {
         const prior = [...reports].sort(
@@ -750,6 +761,19 @@ function CheckoutCapturePage() {
           driverName={draft.driverName || user?.name}
           odometer={draft.odometer}
           prior={priorPhotos}
+          knownDamage={knownDamage}
+          onKnownDamageAnswer={(angle, knownDamageId, knownDamageAnswer) => {
+            setPhotoFlags((prev) => ({
+              ...prev,
+              [angle]: {
+                ...prev[angle],
+                flaggedDamage: knownDamageAnswer === "new" ? true : prev[angle]?.flaggedDamage ?? false,
+                knownDamageId,
+                knownDamageAnswer,
+                knownDamageAnsweredAt: new Date().toISOString(),
+              },
+            }));
+          }}
           steps={steps}
           testingBrowseMode={canSkipPhotosForTesting()}
           testingFinishLabel="Finish preview → Sign"

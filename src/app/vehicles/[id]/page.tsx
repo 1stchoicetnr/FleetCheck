@@ -22,6 +22,8 @@ import {
   canExportHistory,
 } from "@/lib/fleet-config";
 import { canEditVehicles } from "@/lib/role-access";
+import { canManageOfficeRecords, canViewAlerts } from "@/lib/fleet-config";
+import { KnownDamageSection } from "@/components/known-damage";
 import { isOfficeUnlocked } from "@/lib/office-auth";
 import { Vehicle, Fleet, CheckRecord, MaintenanceLogEntry, FUEL_LEVEL_LABELS } from "@/lib/types";
 import { formatDate, formatMileage, formatUnitLabel } from "@/lib/utils";
@@ -111,6 +113,7 @@ export default function VehicleDetailPage() {
               </p>
             </CardContent>
           </Card>
+          {canViewAlerts(user.role) && <KnownDamageSection vehicleId={vehicleId} canEdit={canManageOfficeRecords(user.role)} />}
           <Link href={`/office?unitId=${shared.id}`}>
             <Button className="w-full">Office reports</Button>
           </Link>
@@ -188,6 +191,7 @@ export default function VehicleDetailPage() {
             )}
           </CardContent>
         </Card>
+        {canViewAlerts(user.role) && <KnownDamageSection vehicleId={vehicleId} canEdit={canManageOfficeRecords(user.role)} />}
 
         <MaintenanceLogSection
           vehicle={vehicle}

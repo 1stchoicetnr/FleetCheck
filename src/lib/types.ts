@@ -255,6 +255,9 @@ export interface PhotoFlagState {
   qualityNote?: string;
   qualityOverride?: PhotoQualityOverride;
   qualityOverrideReason?: string;
+  knownDamageId?: string;
+  knownDamageAnswer?: "same" | "new";
+  knownDamageAnsweredAt?: string;
 }
 
 export interface VehiclePhoto {
@@ -270,6 +273,13 @@ export interface VehiclePhoto {
   qualityOverride?: PhotoQualityOverride;
   /** Quick reason for the override, e.g. "Too dark / night". */
   qualityOverrideReason?: string;
+  /** Known damage on this slot the driver was asked about. Absent on older photos. */
+  knownDamageId?: string;
+  /** Driver's answer: "same" (no alert) or "new" (alerts as normal). */
+  knownDamageAnswer?: "same" | "new";
+  knownDamageAnsweredAt?: string;
+  /** Office review of the answer: false report (said new, was not) or missed damage (said same, was new). */
+  damageReview?: { kind: "false_report" | "missed_damage"; by: string; at: string };
 }
 
 export type FuelLevel =

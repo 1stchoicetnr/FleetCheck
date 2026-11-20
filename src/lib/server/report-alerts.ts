@@ -23,6 +23,7 @@ import { repeatProblemNote } from "@/lib/driver-tally";
 import { repeatedIssues } from "@/lib/repeat-issues";
 import { formatUnitLabel } from "@/lib/utils";
 import { beforeAfterPairs, beforeAfterSlackLines } from "@/lib/damage-before-after";
+import { withoutKnownDamage } from "@/lib/known-damage";
 import { formatCheckoutTime } from "@/lib/checkout-slack";
 import { localInsertAlert, localListAlerts, localListReports } from "./local-store";
 import { pgInsertAlert, pgListAlerts, pgListVehicleReports } from "./postgres-store";
@@ -98,11 +99,16 @@ async function postRepairSlack(
   }
 }
 
-/** Create in-app alerts for damage / needs repair and post them when a webhook is set. */
+/**
+ * Create in-app alerts for damage / needs repair and post them when a webhook is set.
+ * Damage the driver confirmed as known ("Same as before") is left out, so a
+ * check with only known damage sends nothing. Checks with no answers alert as before.
+ */
 export async function recordCheckoutAlerts(
   orgId: string,
-  report: CheckoutReport
+  checked: CheckoutReport
 ): Promise<void> {
+  const report = withoutKnownDamage(checked);
   const mode = sharedBackendMode();
   if (mode === "unconfigured") return;
   const kinds = checkoutAlertKinds(factsFor(report));
@@ -195,4 +201,33 @@ async function notifyAshleyRepeat(text: string): Promise<void> {
   } catch {
     // The office flag is already saved.
   }
+}
+
+/**
+ * Office marked a "Same as before" answer as actually new: add the damage alert
+ * to the office queue. No Slack post (office is already looking at it).
+ * Does nothing if the check already has a damage alert.
+ */
+export async function recordMissedDamageAlert(orgId: string, checked: CheckoutReport): Promise<boolean> {
+  const mode = sharedBackendMode();
+  if (mode === "unconfigured") return false;
+  const report = withoutKnownDamage(checked);
+  const id = checkoutAlertId(report.id, "damage_reported");
+  const existing =
+    mode === "postgres" ? await pgListAlerts(orgId, true) : await localListAlerts(true);
+  if (existing.some((alert) => alert.id === id)) return false;
+  const alert: SharedOfficeAlert = {
+    id,
+    type: "damage_reported",
+    message: alertMessage("damage_reported", report),
+    vehicleId: report.vehicleId,
+    vehiclePlate: formatUnitLabel(report.unitNumber, report.plate),
+    actorName: report.driverName,
+    reportId: report.id,
+    createdAt: new Date().toISOString(),
+    read: false,
+  };
+  if (mode === "postgres") await pgInsertAlert(orgId, alert);
+  else await localInsertAlert(alert);
+  return true;
 }

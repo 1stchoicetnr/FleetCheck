@@ -9,6 +9,10 @@ export type TallyCheck = {
   companyName?: string | null;
   /** Photos kept despite a dark/blank/blurry warning on this check. */
   qualityOverrides?: number;
+  /** Office marked a "New damage" report on this check as not new. */
+  falseReports?: number;
+  /** Office marked a "Same as before" answer on this check as actually new. */
+  missedDamage?: number;
 };
 
 export type TallyWindow = {
@@ -151,10 +155,16 @@ type Counts = {
   fail: number;
   pending: number;
   overrides: number;
+  falseReports: number;
+  missedDamage: number;
 };
 
 function emptyCounts(): Counts {
-  return { total: 0, pass: 0, conditional: 0, fail: 0, pending: 0, overrides: 0 };
+  return { total: 0, pass: 0, conditional: 0, fail: 0, pending: 0, overrides: 0, falseReports: 0, missedDamage: 0 };
+}
+
+function countOf(value: unknown): number {
+  return Math.max(0, Math.floor(Number(value) || 0));
 }
 
 export function driverTallyText(window: TallyWindow, checks: TallyCheck[]): string | null {
@@ -174,7 +184,9 @@ export function driverTallyText(window: TallyWindow, checks: TallyCheck[]): stri
     else if (check.reviewStatus === "conditional") counts.conditional += 1;
     else if (check.reviewStatus === "fail") counts.fail += 1;
     else counts.pending += 1;
-    counts.overrides += Math.max(0, Math.floor(Number(check.qualityOverrides) || 0));
+    counts.overrides += countOf(check.qualityOverrides);
+    counts.falseReports += countOf(check.falseReports);
+    counts.missedDamage += countOf(check.missedDamage);
     byDriver.set(name, counts);
   }
   const lines = [...byDriver.entries()]
@@ -185,7 +197,11 @@ export function driverTallyText(window: TallyWindow, checks: TallyCheck[]): stri
       const kept = counts.overrides
         ? ` · ${counts.overrides} low-quality ${counts.overrides === 1 ? "photo" : "photos"} kept`
         : "";
-      return `${name} — ${counts.total} ${noun} · ${counts.pass} pass · ${counts.conditional} conditional · ${counts.fail} fail${pending}${kept}`;
+      const falseReports = counts.falseReports
+        ? ` · ${counts.falseReports} false damage ${counts.falseReports === 1 ? "report" : "reports"}`
+        : "";
+      const missed = counts.missedDamage ? ` · ${counts.missedDamage} missed damage` : "";
+      return `${name} — ${counts.total} ${noun} · ${counts.pass} pass · ${counts.conditional} conditional · ${counts.fail} fail${pending}${kept}${falseReports}${missed}`;
     });
   return [`*Inspekt driver tally · ${window.label}*`, ...lines].join("\n");
 }
