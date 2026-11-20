@@ -28,7 +28,7 @@ import { formatCheckoutTime } from "@/lib/checkout-slack";
 import { localInsertAlert, localListAlerts, localListReports } from "./local-store";
 import { pgInsertAlert, pgListAlerts, pgListVehicleReports } from "./postgres-store";
 import { sharedBackendMode } from "./shared-config";
-import { SharedOfficeAlert } from "./shared-types";
+import { SharedOfficeAlert, type SharedVehicle } from "./shared-types";
 
 function factsFor(report: CheckoutReport) {
   const flags = report.inspectionForm?.issueFlags;
@@ -230,4 +230,29 @@ export async function recordMissedDamageAlert(orgId: string, checked: CheckoutRe
   if (mode === "postgres") await pgInsertAlert(orgId, alert);
   else await localInsertAlert(alert);
   return true;
+}
+
+/** Office set a unit Out of Service: one alert in the office queue. */
+export async function recordVehicleOutOfService(
+  orgId: string,
+  vehicle: SharedVehicle,
+  _req?: Request
+): Promise<SharedOfficeAlert | undefined> {
+  const mode = sharedBackendMode();
+  if (mode === "unconfigured" || !vehicle.outOfService) return undefined;
+  const unit = formatUnitLabel(vehicle.unitNumber, vehicle.plate);
+  const oos = vehicle.outOfService;
+  const alert: SharedOfficeAlert = {
+    id: `oos:${vehicle.id}:${oos.since}`,
+    type: "status_out_of_service",
+    message: `${unit} set Out of Service by ${oos.by}${oos.reason ? `: ${oos.reason}` : ""}`,
+    vehicleId: vehicle.id,
+    vehiclePlate: unit,
+    actorName: oos.by,
+    createdAt: oos.since,
+    read: false,
+  };
+  if (mode === "postgres") await pgInsertAlert(orgId, alert);
+  else await localInsertAlert(alert);
+  return alert;
 }
