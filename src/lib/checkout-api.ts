@@ -1,3 +1,4 @@
+import type { VehicleOutOfService } from "./out-of-service";
 import type { StuckCheckRow } from "./stuck-checks";
 import type { CheckoutInspectionForm, Powertrain } from "./inspection-form";
 import {
@@ -34,6 +35,7 @@ export interface SharedVehicle {
   powertrain?: Powertrain;
   lastOilChangeMileage?: number;
   knownIssue?: VehicleKnownIssue;
+  outOfService?: VehicleOutOfService;
   createdAt: string;
 }
 
@@ -182,6 +184,20 @@ export async function setVehicleArchived(
   return data.vehicle;
 }
 
+/** Office may set Out of Service; only Manager/Owner may set it back to Ready. */
+export async function setVehicleOutOfService(
+  id: string,
+  outOfService: boolean,
+  reason?: string
+): Promise<SharedVehicle> {
+  const data = await api<{ vehicle: SharedVehicle }>(`/api/vehicles/${id}`, {
+    method: "PATCH",
+    headers: officePinHeader(),
+    body: JSON.stringify(outOfService ? { outOfService, reason } : { outOfService }),
+  });
+  return data.vehicle;
+}
+
 export async function setVehiclePowertrain(
   id: string,
   powertrain: Powertrain,
@@ -288,6 +304,8 @@ export interface OfficeAlert {
     marks: string[];
     /** Before / after photos for each damaged slot. */
     compare?: import("./damage-before-after").BeforeAfterPair[];
+    /** Found by, last clean check, and every check in between. */
+    whoHadIt?: import("./repair-report").WhoHadItLast;
   };
 }
 

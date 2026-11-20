@@ -39,15 +39,22 @@ export async function PATCH(req: Request) {
     let auth = session;
     if (session.role === "manager") {
       const extra = COMPANY_WIDE_KEYS.filter((key) => body[key] !== undefined);
-      if (extra.length > 0 || !body.checkoutSlack) {
+      if (extra.length > 0 || (!body.checkoutSlack && !body.repairMentions)) {
         throw new AuthError("Company-wide settings stay with the owner.", 403);
       }
       const companies = (await companyIdsInScope(session)) || [];
-      const requested = Object.keys(body.checkoutSlack);
+      // Managers edit checkout posts and repair-report mentions for their own fleets.
+      const requested = [
+        ...Object.keys(body.checkoutSlack ?? {}),
+        ...Object.keys(body.repairMentions ?? {}),
+      ];
       if (requested.length < 1 || requested.some((id) => !companies.includes(id))) {
         throw new AuthError("That fleet is outside your fleets.", 403);
       }
-      patch = { checkoutSlack: body.checkoutSlack };
+      patch = {
+        ...(body.checkoutSlack ? { checkoutSlack: body.checkoutSlack } : {}),
+        ...(body.repairMentions ? { repairMentions: body.repairMentions } : {}),
+      };
     } else {
       auth = await assertOwnerAccess(req);
     }

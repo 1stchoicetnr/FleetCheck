@@ -1,3 +1,4 @@
+import type { VehicleOutOfService } from "../out-of-service";
 import { mkdir, readFile, writeFile } from "fs/promises";
 import path from "path";
 import {
@@ -372,6 +373,7 @@ export async function localUpsertVehicle(
       archivedAt: existing?.archivedAt,
       lastOilChangeMileage: existing?.lastOilChangeMileage,
       knownIssue: existing?.knownIssue,
+      outOfService: existing?.outOfService,
       powertrain: inferPowertrain(
         input.make,
         input.model,
@@ -476,6 +478,23 @@ export async function localSetVehiclePowertrain(
     };
     await writeStore(store);
     return store.vehicles[idx];
+  });
+}
+
+export async function localSetVehicleOutOfService(
+  id: string,
+  value: VehicleOutOfService | null
+): Promise<SharedVehicle | undefined> {
+  return enqueueWrite(async () => {
+    const store = await loadAndSeedUnlocked();
+    const idx = store.vehicles.findIndex((v) => v.id === id);
+    if (idx < 0) return undefined;
+    const next = { ...store.vehicles[idx] };
+    if (value) next.outOfService = value;
+    else delete next.outOfService;
+    store.vehicles[idx] = next;
+    await writeStore(store);
+    return next;
   });
 }
 

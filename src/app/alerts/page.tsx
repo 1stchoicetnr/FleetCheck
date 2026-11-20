@@ -19,6 +19,7 @@ import {
   setOfficeAlertRead,
 } from "@/lib/checkout-api";
 import { DamageBeforeAfter } from "@/components/damage-before-after";
+import { WhoHadItLastBlock } from "@/components/who-had-it-last";
 import { MarkKnownDamage } from "@/components/known-damage";
 import type { PhotoAngle } from "@/lib/types";
 import { isOfficeUnlocked } from "@/lib/office-auth";
@@ -325,6 +326,7 @@ export default function AlertsPage() {
                         <DamageBeforeAfter pairs={alert.details.compare} compact />
                       </div>
                     )}
+                    {alert.details?.whoHadIt && <WhoHadItLastBlock info={alert.details.whoHadIt} />}
                     {alert.type === "damage_reported" &&
                       !alert.archivedAt &&
                       user &&

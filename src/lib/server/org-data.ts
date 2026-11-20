@@ -323,6 +323,19 @@ export async function setVehiclePowertrainRow(
   if (!rows[0]) throw new OrgAccessError();
 }
 
+export async function setVehicleOutOfServiceRow(
+  db: OrgDb,
+  orgId: string,
+  id: string,
+  json: string | null
+): Promise<boolean> {
+  const rows = await db.query(
+    "UPDATE vehicles SET out_of_service = CAST($1 AS jsonb) WHERE id = $2 AND org_id = $3 RETURNING id",
+    [json, id, org(orgId)]
+  );
+  return Boolean(rows[0]);
+}
+
 export async function setVehicleServiceRow(
   db: OrgDb,
   orgId: string,

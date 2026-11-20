@@ -283,10 +283,14 @@ function VehicleCard({
           </div>
           <span
             className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-              archived ? "bg-gray-200 text-gray-700" : "bg-emerald-100 text-emerald-800"
+              archived
+                ? "bg-gray-200 text-gray-700"
+                : vehicle.outOfService
+                  ? "bg-red-600 text-white"
+                  : "bg-emerald-100 text-emerald-800"
             }`}
           >
-            {archived ? "Archived" : "Active"}
+            {archived ? "Archived" : vehicle.outOfService ? "Out of Service" : "Active"}
           </span>
         </div>
         {!archived && (

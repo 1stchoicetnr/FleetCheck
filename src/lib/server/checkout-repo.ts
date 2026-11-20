@@ -1,3 +1,4 @@
+import type { VehicleOutOfService } from "@/lib/out-of-service";
 import {
   mergeCompanySettings,
   parseCompanySettings,
@@ -71,6 +72,7 @@ import {
   localSetVehicleArchived,
   localSetVehiclePowertrain,
   localSetVehicleService,
+  localSetVehicleOutOfService,
   localUpsertVehicle,
   localGetFleetSettings,
   localReadCompanySettings,
@@ -140,6 +142,7 @@ import {
   pgSetVehicleArchived,
   pgSetVehiclePowertrain,
   pgSetVehicleService,
+  pgSetVehicleOutOfService,
   pgUpsertVehicle,
   pgGetFleetSettings,
   pgReadCompanySettings,
@@ -408,6 +411,20 @@ export async function setVehicleService(
     mode === "postgres"
       ? await pgSetVehicleService(orgId, id, next)
       : await localSetVehicleService(id, next);
+  if (!vehicle) throw new SharedBackendError("Unit not found", 404);
+  return vehicle;
+}
+
+export async function setVehicleOutOfService(
+  orgId: string,
+  id: string,
+  value: VehicleOutOfService | null
+): Promise<SharedVehicle> {
+  const mode = assertConfigured();
+  const vehicle =
+    mode === "postgres"
+      ? await pgSetVehicleOutOfService(orgId, id, value)
+      : await localSetVehicleOutOfService(id, value);
   if (!vehicle) throw new SharedBackendError("Unit not found", 404);
   return vehicle;
 }
