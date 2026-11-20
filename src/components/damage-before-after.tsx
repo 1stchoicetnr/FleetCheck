@@ -1,7 +1,8 @@
 "use client";
 
 import { formatCheckoutTime } from "@/lib/checkout-slack";
-import { beforeCaption, type BeforeAfterPair } from "@/lib/damage-before-after";
+import { beforeCaption, spotText, type BeforeAfterPair } from "@/lib/damage-before-after";
+import { CarDiagram } from "@/components/car-diagram";
 
 /**
  * Side-by-side photos for each damaged slot: the unit's latest earlier photo of
@@ -21,8 +22,11 @@ export function DamageBeforeAfter({
     <div className="space-y-3">
       {pairs.map((pair) => (
         <div key={pair.angle}>
-          <p className="text-xs font-semibold text-gray-700 mb-1">{pair.label}</p>
-          <div className="grid grid-cols-2 gap-2">
+          <p className="text-xs font-semibold text-gray-700 mb-1">
+            {pair.label}
+            {pair.spot ? ` · ${spotText(pair.spot)}` : ""}
+          </p>
+          <div className={pair.spot ? "grid grid-cols-[1fr_1fr_auto] gap-2" : "grid grid-cols-2 gap-2"}>
             <Slot
               src={pair.before?.src}
               alt={`${pair.label} before`}
@@ -33,10 +37,15 @@ export function DamageBeforeAfter({
             <Slot
               src={pair.after?.src}
               alt={`${pair.label} after`}
-              caption="After · this check"
+              caption={pair.afterIsCloseUp ? "After · close-up, this check" : "After · this check"}
               box={box}
               empty="No photo on this check"
             />
+            {pair.spot && (
+              <div className="flex items-start justify-center" title="Where the driver marked the damage">
+                <CarDiagram spot={pair.spot} size={compact ? 80 : 110} />
+              </div>
+            )}
           </div>
         </div>
       ))}

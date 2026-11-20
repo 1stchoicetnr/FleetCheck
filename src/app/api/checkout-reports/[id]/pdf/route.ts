@@ -1,6 +1,6 @@
 import { errorResponse } from "@/lib/server/api-error";
 import { getPublicCompanySettings, getReport, listVehicleReports } from "@/lib/server/checkout-repo";
-import { beforeAfterPairs, beforeCaption } from "@/lib/damage-before-after";
+import { beforeAfterPairs, beforeCaption, spotText } from "@/lib/damage-before-after";
 import { formatCheckoutTime } from "@/lib/checkout-slack";
 import { answerLabel } from "@/lib/known-damage";
 import { listKnownDamage } from "@/lib/server/known-damage-repo";
@@ -62,7 +62,9 @@ export async function GET(
       plate: report.plate,
       damageCompare: [
         ...pairs.map((pair) => ({
-          label: pair.label,
+          label: [pair.label, spotText(pair.spot), pair.afterIsCloseUp ? "after = close-up" : undefined]
+            .filter(Boolean)
+            .join(" · "),
           beforeSrc: pair.before?.stored,
           afterSrc: pair.after?.stored,
           beforeCaption: beforeCaption(pair, formatCheckoutTime),

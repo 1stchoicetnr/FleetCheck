@@ -10,7 +10,14 @@ export function reportHasPhotoDamage(report: Pick<CheckoutReport, "photos">): bo
 }
 
 export function photoAngleLabel(angle: PhotoAngle): string {
-  return PHOTO_ANGLES.find((step) => step.angle === angle)?.label ?? angle;
+  const found = PHOTO_ANGLES.find((step) => step.angle === angle)?.label;
+  if (found) return found;
+  // Damage close-up photos are stored as "closeup_<slot>".
+  if (angle.startsWith("closeup_")) {
+    const base = PHOTO_ANGLES.find((step) => step.angle === angle.slice(8))?.label;
+    if (base) return `${base} close-up`;
+  }
+  return angle;
 }
 
 export function flaggedDamageAngles(report: Pick<CheckoutReport, "photos">): PhotoAngle[] {

@@ -83,6 +83,7 @@ import { deleteStoredPhoto, persistCheckoutPhoto } from "./photo-store";
 import { recordCheckoutAlerts } from "./report-alerts";
 import { qualityOverrideFields } from "@/lib/photo-override";
 import { knownDamageFields } from "@/lib/known-damage";
+import { damageSpotFields } from "@/lib/damage-closeup";
 import { classifyStuckChecks, STUCK_LOOKBACK_DAYS } from "@/lib/stuck-checks";
 import { alertsReady } from "@/lib/alert-timing";
 import { sentMissingPhotoCount } from "@/lib/checkout-slack";
@@ -969,6 +970,7 @@ export async function addReportPhoto(
     knownDamageId?: string;
     knownDamageAnswer?: string;
     knownDamageAnsweredAt?: string;
+    damageSpot?: unknown;
   }
 ): Promise<CheckoutReport> {
   const mode = assertConfigured();
@@ -987,6 +989,7 @@ export async function addReportPhoto(
     qualityNote: cleanDamageNote(flags?.qualityNote),
     ...qualityOverrideFields(flags),
     ...knownDamageFields(flags),
+    ...damageSpotFields(flags),
   };
   const saved = await savePhotosToReport(mode, orgId, existing, [photo]);
   if (flags?.flaggedDamage) {
@@ -1010,6 +1013,7 @@ export async function addReportPhotos(
     knownDamageId?: string;
     knownDamageAnswer?: string;
     knownDamageAnsweredAt?: string;
+    damageSpot?: unknown;
   }>
 ): Promise<CheckoutReport> {
   const mode = assertConfigured();
@@ -1028,6 +1032,7 @@ export async function addReportPhotos(
         qualityNote: cleanDamageNote(item.qualityNote),
         ...qualityOverrideFields(item),
         ...knownDamageFields(item),
+        ...damageSpotFields(item),
       };
       return photo;
     })

@@ -43,6 +43,7 @@ export interface OutboxPhoto {
   knownDamageId?: string;
   knownDamageAnswer?: "same" | "new";
   knownDamageAnsweredAt?: string;
+  damageSpot?: { x: number; y: number };
 }
 
 /** One queued photo with the driver's marks. Missing marks (older drafts) stay absent. */
@@ -59,6 +60,7 @@ export function outboxPhoto(
     knownDamageId?: string;
     knownDamageAnswer?: "same" | "new";
     knownDamageAnsweredAt?: string;
+  damageSpot?: { x: number; y: number };
   }
 ): OutboxPhoto {
   return {
@@ -77,6 +79,7 @@ export function outboxPhoto(
           knownDamageAnsweredAt: flags.knownDamageAnsweredAt,
         }
       : {}),
+    ...(flags?.damageSpot ? { damageSpot: flags.damageSpot } : {}),
   };
 }
 
