@@ -1129,14 +1129,9 @@ export async function listOfficeAlerts(
   includeArchived = false
 ): Promise<SharedOfficeAlert[]> {
   const mode = assertConfigured();
-  const alerts =
-    mode === "postgres"
-      ? await pgListAlerts(orgId, includeArchived)
-      : await localListAlerts(includeArchived);
-  return alerts.map((alert) => ({
-    ...alert,
-    reportCount: 1 + (alert.reportIds?.length ?? 0),
-  }));
+  return mode === "postgres"
+    ? pgListAlerts(orgId, includeArchived)
+    : localListAlerts(includeArchived);
 }
 
 /** Org-wide read state: once anyone in the office marks it read, it is read for everyone. */

@@ -641,33 +641,6 @@ export async function localSetAlertsRead(
   });
 }
 
-export async function localBumpAlertReport(
-  id: string,
-  input: { reportId: string; actorName: string; at: string }
-): Promise<SharedOfficeAlert | undefined> {
-  return enqueueWrite(async () => {
-    const store = await loadAndSeedUnlocked();
-    const alerts = store.alerts ?? [];
-    const idx = alerts.findIndex((alert) => alert.id === id);
-    if (idx < 0 || alerts[idx].archivedAt) return undefined;
-    const reportIds = alerts[idx].reportIds ?? [];
-    if (reportIds.includes(input.reportId)) return undefined;
-    const nextIds = [...reportIds, input.reportId];
-    const next: SharedOfficeAlert = {
-      ...alerts[idx],
-      reportIds: nextIds,
-      reportCount: 1 + nextIds.length,
-      lastReportId: input.reportId,
-      lastActorName: input.actorName,
-      lastReportedAt: input.at,
-    };
-    alerts[idx] = next;
-    store.alerts = alerts;
-    await writeStore(store);
-    return next;
-  });
-}
-
 export async function localDeleteAlert(id: string): Promise<boolean> {
   return enqueueWrite(async () => {
     const store = await loadAndSeedUnlocked();

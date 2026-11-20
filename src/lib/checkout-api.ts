@@ -280,11 +280,6 @@ export interface OfficeAlert {
   readAt?: string;
   readBy?: string;
   archivedAt?: string;
-  /** Times this damage was reported (1 + later checks that repeated it). */
-  reportCount?: number;
-  lastReportedAt?: string;
-  lastReportId?: string;
-  lastActorName?: string;
   /** Damage details read from the linked check. */
   details?: {
     issueFlags: string[];

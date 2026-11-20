@@ -38,11 +38,11 @@ export async function GET(req: NextRequest) {
     const withDetails = await Promise.all(alerts.map(async (alert) => {
       const report = alert.reportId ? reports.get(alert.reportId) : undefined;
       if (!report) return alert;
-      const details = alertDamageDetails(report, alert.damageKeys);
+      const details = alertDamageDetails(report);
       const compare =
         alert.type === "damage_reported" && !alert.archivedAt
           ? pairsForClient(
-              beforeAfterPairs(report, await historyFor(alert.vehicleId), { keys: alert.damageKeys })
+              beforeAfterPairs(report, await historyFor(alert.vehicleId))
             )
           : undefined;
       return {

@@ -270,14 +270,9 @@ async function runMigrateAndSeed(): Promise<void> {
       archived_at TIMESTAMPTZ
     )
   `;
-  // Org-wide read state and repeat-damage counts (additive, nullable; old rows = unread, reported once).
+  // Org-wide read state (additive, nullable; old rows = unread until marked).
   await sql`ALTER TABLE fleet_alerts ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ`;
   await sql`ALTER TABLE fleet_alerts ADD COLUMN IF NOT EXISTS read_by TEXT`;
-  await sql`ALTER TABLE fleet_alerts ADD COLUMN IF NOT EXISTS damage_keys JSONB`;
-  await sql`ALTER TABLE fleet_alerts ADD COLUMN IF NOT EXISTS report_ids JSONB`;
-  await sql`ALTER TABLE fleet_alerts ADD COLUMN IF NOT EXISTS last_reported_at TIMESTAMPTZ`;
-  await sql`ALTER TABLE fleet_alerts ADD COLUMN IF NOT EXISTS last_report_id TEXT`;
-  await sql`ALTER TABLE fleet_alerts ADD COLUMN IF NOT EXISTS last_actor_name TEXT`;
   await sql`
     CREATE TABLE IF NOT EXISTS fleet_settings (
       id TEXT PRIMARY KEY,
@@ -976,27 +971,9 @@ type AlertRow = {
   archived_at: string | null;
   read_at?: string | null;
   read_by?: string | null;
-  damage_keys?: unknown;
-  report_ids?: unknown;
-  last_reported_at?: string | null;
-  last_report_id?: string | null;
-  last_actor_name?: string | null;
 };
 
-function jsonStringList(value: unknown): string[] | undefined {
-  let list = value;
-  if (typeof list === "string") {
-    try {
-      list = JSON.parse(list);
-    } catch {
-      return undefined;
-    }
-  }
-  return Array.isArray(list) ? list.map(String) : undefined;
-}
-
 function rowToAlert(row: AlertRow): SharedOfficeAlert {
-  const reportIds = jsonStringList(row.report_ids) ?? [];
   return {
     id: row.id,
     type: row.type,
@@ -1010,12 +987,6 @@ function rowToAlert(row: AlertRow): SharedOfficeAlert {
     readAt: row.read_at ? new Date(row.read_at).toISOString() : undefined,
     readBy: row.read_by ?? undefined,
     archivedAt: row.archived_at ? new Date(row.archived_at).toISOString() : undefined,
-    damageKeys: jsonStringList(row.damage_keys),
-    reportIds,
-    reportCount: 1 + reportIds.length,
-    lastReportedAt: row.last_reported_at ? new Date(row.last_reported_at).toISOString() : undefined,
-    lastReportId: row.last_report_id ?? undefined,
-    lastActorName: row.last_actor_name ?? undefined,
   };
 }
 
@@ -1040,7 +1011,6 @@ export async function pgInsertAlert(orgId: string, alert: SharedOfficeAlert): Pr
     createdAt: alert.createdAt,
     read: alert.read,
     archivedAt: alert.archivedAt ?? null,
-    damageKeys: alert.damageKeys ?? null,
   });
 }
 
@@ -1053,16 +1023,6 @@ export async function pgSetAlertsRead(
   await pgMigrateAndSeed();
   const rows = await orgData.setAlertsRead(orgDb(), orgId, ids, read, new Date().toISOString(), readBy);
   return (rows as AlertRow[]).map(rowToAlert);
-}
-
-export async function pgBumpAlertReport(
-  orgId: string,
-  id: string,
-  input: { reportId: string; actorName: string; at: string }
-): Promise<SharedOfficeAlert | undefined> {
-  await pgMigrateAndSeed();
-  const row = await orgData.bumpAlertReport(orgDb(), orgId, id, input);
-  return row ? rowToAlert(row as AlertRow) : undefined;
 }
 
 export async function pgSetAlertArchived(

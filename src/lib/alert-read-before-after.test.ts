@@ -1,13 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PGlite } from "@electric-sql/pglite";
-import {
-  damageItemKeys,
-  normalizeDamageText,
-  openDamageAlerts,
-  planDamageAlert,
-  repeatReportLine,
-} from "./damage-keys.ts";
+import { damageItemKeys, normalizeDamageText } from "./damage-keys.ts";
 import { alertDamageDetails, alertDetailParts, repairSlackText } from "./alert-details.ts";
 import {
   beforeAfterPairs,
@@ -16,7 +10,7 @@ import {
   damageCompareAngles,
   pairsForClient,
 } from "./damage-before-after.ts";
-import { bumpAlertReport, insertAlert, listAlerts, setAlertsRead, type OrgDb } from "./server/org-data.ts";
+import { insertAlert, listAlerts, setAlertsRead, type OrgDb } from "./server/org-data.ts";
 
 const fmt = (iso: string) => iso.slice(0, 10);
 
@@ -40,7 +34,7 @@ function check(id: string, completedAt: string, extra: Partial<R> = {}): R {
 
 const bumper = { damage: { front: "Bumper damage" } } as unknown as R["inspectionForm"];
 
-// --- Fix 2: damage keys and the plan ------------------------------------------------------
+// --- Damage keys (pick the photo slots for before/after) ------------------------------------------------------
 
 test("damage text is keyed without case, extra spaces, or trailing punctuation", () => {
   assert.equal(normalizeDamageText("  Bumper   DAMAGE. "), "bumper damage");
@@ -70,103 +64,13 @@ test("each damage item gets an area + item key", () => {
   ]);
 });
 
-test("Ken's Unit 8 bumper on the next check bumps the open alert, no new alert", () => {
-  const nov20 = check("nov20", "2026-11-20T16:42:00Z", { inspectionForm: bumper });
-  const plan = planDamageAlert({
-    reportId: nov20.id,
-    keys: damageItemKeys({ ...nov20, inspectionForm: { damage: { front: "bumper damage." } } as never }),
-    open: [{ id: "nov19:damage_reported", reportId: "nov19", keys: ["front|bumper damage"], reportIds: [] }],
-  });
-  assert.deepEqual(plan, { newKeys: [], bumpIds: ["nov19:damage_reported"] });
-});
-
-test("damage in a new area still makes a new alert, listing only the new item", () => {
-  const plan = planDamageAlert({
-    reportId: "nov21",
-    keys: ["front|bumper damage", "rear|dent"],
-    open: [{ id: "old", reportId: "nov19", keys: ["front|bumper damage"], reportIds: [] }],
-  });
-  assert.deepEqual(plan, { newKeys: ["rear|dent"], bumpIds: ["old"] });
-});
-
-test("archived alerts are not open, so the same damage starts a fresh alert", async () => {
-  const open = await openDamageAlerts(
-    [
-      {
-        id: "old",
-        type: "damage_reported",
-        vehicleId: "v8",
-        reportId: "nov19",
-        createdAt: "2026-11-19T15:11:00Z",
-        archivedAt: "2026-11-19T20:00:00Z",
-        damageKeys: ["front|bumper damage"],
-      },
-    ],
-    "v8",
-    async () => undefined
-  );
-  assert.deepEqual(open, []);
-  assert.deepEqual(planDamageAlert({ reportId: "n", keys: ["front|bumper damage"], open }), {
-    newKeys: ["front|bumper damage"],
-    bumpIds: [],
-  });
-});
-
-test("older alerts without stored keys get them from their check; newest open alert wins; other units ignored", async () => {
-  const open = await openDamageAlerts(
-    [
-      { id: "a19", type: "damage_reported", vehicleId: "v8", reportId: "nov19", createdAt: "2026-11-19T15:11:00Z" },
-      { id: "a20", type: "damage_reported", vehicleId: "v8", reportId: "nov20", createdAt: "2026-11-20T16:42:00Z" },
-      { id: "x", type: "damage_reported", vehicleId: "v9", reportId: "z", createdAt: "2026-11-20T16:42:00Z" },
-      { id: "nw", type: "status_needs_work", vehicleId: "v8", reportId: "nov20", createdAt: "2026-11-20T16:42:00Z" },
-    ],
-    "v8",
-    async () => check("r", "2026-11-19T15:11:00Z", { inspectionForm: bumper })
-  );
-  assert.deepEqual(open.map((a) => a.id), ["a20", "a19"]);
-  assert.deepEqual(open[0].keys, ["front|bumper damage"]);
-  const plan = planDamageAlert({ reportId: "nov21", keys: ["front|bumper damage"], open });
-  assert.deepEqual(plan.bumpIds, ["a20"]);
-});
-
-test("the same check is counted once, even when alerts are recorded again", () => {
-  const open = [{ id: "old", reportId: "nov19", keys: ["front|bumper damage"], reportIds: ["nov20"] }];
-  assert.deepEqual(planDamageAlert({ reportId: "nov20", keys: ["front|bumper damage"], open }), {
-    newKeys: [],
-    bumpIds: [],
-  });
-  // The check's own alert covers its own items: no bump, no second alert.
-  const own = [{ id: "nov20:damage_reported", reportId: "nov20", keys: ["rear|dent"], reportIds: [] }];
-  assert.deepEqual(planDamageAlert({ reportId: "nov20", keys: ["rear|dent"], open: own }), {
-    newKeys: [],
-    bumpIds: [],
-  });
-});
-
-test("safety and refuse-to-drive always alert, even when already flagged", () => {
-  const open = [{ id: "old", reportId: "a", keys: ["flag:safety", "flag:needsrepair"], reportIds: [] }];
-  assert.deepEqual(
-    planDamageAlert({ reportId: "b", keys: ["flag:safety", "flag:needsrepair"], open }),
-    { newKeys: ["flag:safety"], bumpIds: ["old"] }
-  );
-});
-
-test("a new alert's text lists only its new items", () => {
+test("alert details can be narrowed to some items", () => {
   const report = {
     photos: [{ angle: "rear" as const, flaggedDamage: true, damageNote: "Dent", dataUrl: "" }],
     inspectionForm: { damage: { front: "Bumper damage" } } as never,
   };
   assert.deepEqual(alertDetailParts(alertDamageDetails(report)), ["Rear photo (Dent)", "Front: Bumper damage"]);
   assert.deepEqual(alertDetailParts(alertDamageDetails(report, ["rear|dent"])), ["Rear photo (Dent)"]);
-});
-
-test("the alert card says how many times and who reported it last", () => {
-  assert.equal(repeatReportLine({ reportCount: 1 }, fmt), "");
-  assert.equal(repeatReportLine({}, fmt), "");
-  assert.equal(
-    repeatReportLine({ reportCount: 3, lastReportedAt: "2026-11-20T16:42:00Z", lastActorName: "Ken Taylor" }, fmt),
-    "Reported 3 times · last 2026-11-20 by Ken Taylor"
-  );
 });
 
 // --- Fix 3: before / after ----------------------------------------------------------------
@@ -259,7 +163,7 @@ test("Slack lines link the earlier check (sign-in required) and the post keeps i
   assert.doesNotMatch(text, /blob\.vercel-storage/);
 });
 
-// --- Fix 1 + 2 storage: org-wide read and repeat counts (Postgres via PGlite) ---------------
+// --- Fix 1 storage: org-wide read (Postgres via PGlite) ---------------
 
 const ORG = "org-test";
 
@@ -278,11 +182,6 @@ async function alertsDb(): Promise<{ pg: PGlite; db: OrgDb }> {
     -- Same additive migration the app runs.
     ALTER TABLE fleet_alerts ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ;
     ALTER TABLE fleet_alerts ADD COLUMN IF NOT EXISTS read_by TEXT;
-    ALTER TABLE fleet_alerts ADD COLUMN IF NOT EXISTS damage_keys JSONB;
-    ALTER TABLE fleet_alerts ADD COLUMN IF NOT EXISTS report_ids JSONB;
-    ALTER TABLE fleet_alerts ADD COLUMN IF NOT EXISTS last_reported_at TIMESTAMPTZ;
-    ALTER TABLE fleet_alerts ADD COLUMN IF NOT EXISTS last_report_id TEXT;
-    ALTER TABLE fleet_alerts ADD COLUMN IF NOT EXISTS last_actor_name TEXT;
   `);
   const db: OrgDb = {
     async query(text, params) {
@@ -315,25 +214,4 @@ test("old alerts read as unread; marking read is saved for everyone and scoped t
   assert.equal(old.read, false);
   assert.equal(old.read_by, null);
   assert.deepEqual(await setAlertsRead(db, ORG, [], true, null, null), []);
-});
-
-test("a repeat bumps the open alert once per check, and never an archived one", async () => {
-  const { db } = await alertsDb();
-  await insertAlert(db, ORG, {
-    id: "n:damage_reported", type: "damage_reported", message: "m", vehicleId: "v8",
-    vehiclePlate: "Unit 8", actorName: "Ken Taylor", reportId: "n", createdAt: "2026-11-20T16:42:00Z",
-    read: false, archivedAt: null, damageKeys: ["front|bumper damage"],
-  });
-  const at = "2026-11-21T15:00:00Z";
-  const first = await bumpAlertReport(db, ORG, "n:damage_reported", { reportId: "r1", actorName: "Amber", at });
-  assert.deepEqual(first?.report_ids, ["r1"]);
-  assert.deepEqual(first?.damage_keys, ["front|bumper damage"]);
-  assert.equal(first?.last_actor_name, "Amber");
-  assert.equal(await bumpAlertReport(db, ORG, "n:damage_reported", { reportId: "r1", actorName: "Amber", at }), undefined);
-  const second = await bumpAlertReport(db, ORG, "n:damage_reported", { reportId: "r2", actorName: "Chris", at });
-  assert.deepEqual(second?.report_ids, ["r1", "r2"]);
-  assert.equal(await bumpAlertReport(db, "org-other", "n:damage_reported", { reportId: "r3", actorName: "X", at }), undefined);
-  // Old alert, archived: no bump (archive = handled).
-  await db.query("UPDATE fleet_alerts SET archived_at = now() WHERE id = 'old:damage_reported' AND org_id = $1", [ORG]);
-  assert.equal(await bumpAlertReport(db, ORG, "old:damage_reported", { reportId: "r4", actorName: "Ken", at }), undefined);
 });

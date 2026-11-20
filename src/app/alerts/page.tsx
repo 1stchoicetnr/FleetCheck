@@ -17,7 +17,6 @@ import {
   setOfficeAlertArchived,
   setOfficeAlertRead,
 } from "@/lib/checkout-api";
-import { repeatReportLine } from "@/lib/damage-keys";
 import { DamageBeforeAfter } from "@/components/damage-before-after";
 import { isOfficeUnlocked } from "@/lib/office-auth";
 import {
@@ -287,11 +286,7 @@ export default function AlertsPage() {
                         <DamageBeforeAfter pairs={alert.details.compare} compact />
                       </div>
                     )}
-                    {repeatReportLine(alert, formatCheckoutTime) && (
-                      <p className="text-xs font-semibold text-red-700 mt-1">
-                        {repeatReportLine(alert, formatCheckoutTime)}
-                      </p>
-                    )}
+
                     <p className="text-sm text-gray-600 mt-1">
                       {alert.vehiclePlate} · {alert.actorName}
                     </p>

@@ -104,15 +104,6 @@ export interface SharedOfficeAlert {
   readAt?: string;
   readBy?: string;
   archivedAt?: string;
-  /** Damage items this alert covers (see damage-keys.ts). Old records have none. */
-  damageKeys?: string[];
-  /** Later checks that repeated this damage instead of making a new alert. */
-  reportIds?: string[];
-  /** 1 + reportIds.length. */
-  reportCount?: number;
-  lastReportedAt?: string;
-  lastReportId?: string;
-  lastActorName?: string;
 }
 
 export interface SharedAppUser {
