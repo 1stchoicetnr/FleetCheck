@@ -132,3 +132,25 @@ export function closeUpPhoto<T extends Pick<VehiclePhoto, "angle" | "dataUrl">>(
   const id = closeUpAngle(angle);
   return photos.find((p) => p.angle === id && p.dataUrl);
 }
+
+/** Every accepted slot still missing its close-up or diagram tap, in walkaround order. */
+export function missingCloseUps(
+  angles: readonly PhotoAngle[],
+  flags: Partial<Record<string, SlotFlags>> | undefined,
+  photos: Partial<Record<string, string>>,
+  precheckSlots: readonly PhotoAngle[]
+): Array<{ angle: PhotoAngle; spot: boolean; photo: boolean }> {
+  const out: Array<{ angle: PhotoAngle; spot: boolean; photo: boolean }> = [];
+  for (const angle of angles) {
+    if (!photos[angle]) continue;
+    const gap = closeUpMissing(angle, flags?.[angle], photos, precheckSlots);
+    if (gap) out.push({ angle, ...gap });
+  }
+  return out;
+}
+
+/** Driver-facing text for what a damage slot still needs. */
+export function closeUpGapText(label: string, gap: { spot: boolean; photo: boolean }): string {
+  const parts = [gap.spot ? "tap the car diagram" : "", gap.photo ? "take the close-up" : ""].filter(Boolean);
+  return `${label} damage: ${parts.join(" and ")}`;
+}

@@ -10,6 +10,8 @@ import { GuidedPhotoCapture, type KnownDamagePrompt } from "@/components/guided-
 import { closeUpAngle, firstMissingCloseUp, precheckDamageSlots } from "@/lib/damage-closeup";
 import { photoAngleLabel } from "@/lib/photo-flags";
 import { SignaturePad } from "@/components/signature-pad";
+import { CheckoutMissingList } from "@/components/checkout-missing-list";
+import { blockerButtonLabel, checkoutBlockers, type CheckoutBlocker } from "@/lib/checkout-blockers";
 import { useAuth } from "@/hooks/use-auth";
 import { canStartCheckout } from "@/lib/fleet-config";
 import { canSkipPhotosForTesting } from "@/lib/dev-config";
@@ -120,6 +122,7 @@ function CheckoutCapturePage() {
   const [companySettings, setCompanySettings] = useState<PublicCompanySettings | null>(null);
   const [showPrecheckErrors, setShowPrecheckErrors] = useState(false);
   const [knownDamage, setKnownDamage] = useState<KnownDamagePrompt[]>([]);
+  const [photoJump, setPhotoJump] = useState<{ angle: PhotoAngle; seq: number } | null>(null);
   const [priorPhotos, setPriorPhotos] = useState<{
     driverName: string;
     photos: Partial<Record<PhotoAngle, string>>;
@@ -289,11 +292,51 @@ function CheckoutCapturePage() {
   const closeUpGap = canSkipPhotosForTesting()
     ? undefined
     : firstMissingCloseUp(required.map((s) => s.angle), photoFlags, photos, precheckSlots);
-  const photosComplete =
-    (!photosNeeded || allFilled || canSkipPhotosForTesting() || photosReady) &&
-    (!photosNeeded || !closeUpGap);
-  const canSubmit =
-    photosComplete && Boolean(signatureDataUrl) && inspectionValid.ok;
+  /** Every walkaround photo is taken (close-ups may still be missing). */
+  const photosFilled = !photosNeeded || allFilled || canSkipPhotosForTesting() || photosReady;
+  // One list of what is still missing. The driver always sees it with a
+  // tap-to-jump, and the button shows the first reason instead of a count that
+  // already reads "done" (the old "Review when 27/27 photos are filled").
+  const blockers = checkoutBlockers({
+    precheckOk: inspectionValid.ok,
+    precheckError: inspectionValid.ok ? undefined : inspectionValid.error,
+    redPark,
+    steps,
+    photos,
+    flags: photoFlags,
+    precheckSlots,
+    skipPhotos: canSkipPhotosForTesting(),
+    photosReady,
+    signed: Boolean(signatureDataUrl),
+  });
+  const canSubmit = blockers.length === 0;
+
+  const jumpToBlocker = (blocker: CheckoutBlocker) => {
+    if (blocker.kind === "precheck") {
+      setShowPrecheckErrors(true);
+      setPhase("inspect");
+      window.setTimeout(() => {
+        const invalid = document.querySelector<HTMLElement>(
+          "[data-precheck-field].border-red-500, [data-precheck-field] .border-red-500, [data-precheck-field] .text-red-600"
+        );
+        invalid
+          ?.closest("[data-precheck-field]")
+          ?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 80);
+      return;
+    }
+    if (blocker.kind === "signature") {
+      setPhase(redPark ? "inspect" : "photos");
+      window.setTimeout(() => {
+        document
+          .querySelector<HTMLElement>("[data-signature-pad]")
+          ?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 80);
+      return;
+    }
+    setPhase("photos");
+    setPhotoJump((prev) => ({ angle: blocker.angle, seq: (prev?.seq ?? 0) + 1 }));
+  };
 
   const tryContinueToPhotos = () => {
     if (!canContinueToPhotos(inspectionForm, powertrain, inspectionOptions)) {
@@ -583,8 +626,8 @@ function CheckoutCapturePage() {
                 else setPhase("inspect");
                 return;
               }
-              if (!photosComplete || !signatureDataUrl) {
-                tryContinueToPhotos();
+              if (blockers.length) {
+                jumpToBlocker(blockers[0]);
                 return;
               }
               setPhase("review");
@@ -699,8 +742,15 @@ function CheckoutCapturePage() {
               </div>
             )}
             {submitError && <p className="text-sm text-red-600 font-medium">{submitError}</p>}
+            <CheckoutMissingList blockers={blockers} onJump={jumpToBlocker} />
             <Button size="xl" className="w-full" onClick={handleSubmit} disabled={submitting || !canSubmit}>
-              {submitting ? uploadProgress || "Submitting…" : draft.type === "check_in" ? "Submit check-in" : "Submit checkout"}
+              {submitting
+                ? uploadProgress || "Submitting…"
+                : !canSubmit
+                  ? blockerButtonLabel(blockers)
+                  : draft.type === "check_in"
+                    ? "Submit check-in"
+                    : "Submit checkout"}
             </Button>
           </div>
         ) : phase === "inspect" ? (
@@ -746,6 +796,7 @@ function CheckoutCapturePage() {
                 {submitError && (
                   <p className="text-sm text-red-600 font-medium">{submitError}</p>
                 )}
+                <CheckoutMissingList blockers={blockers} onJump={jumpToBlocker} />
                 <Button
                   size="xl"
                   className="w-full"
@@ -798,6 +849,7 @@ function CheckoutCapturePage() {
             setPhotos((prev) => ({ ...prev, [angle]: url }));
           }}
           closeUpSlots={precheckSlots}
+          jumpTo={photoJump}
           onDamageSpot={(angle, damageSpot) => {
             setPhotoFlags((prev) => ({
               ...prev,
@@ -889,8 +941,8 @@ function CheckoutCapturePage() {
           </Button>
         )}
 
-        {photosComplete && (
-          <div className="checkout-photos-signature bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
+        {photosFilled && (
+          <div data-signature-pad className="checkout-photos-signature bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
             <div>
               <h3 className="text-base font-bold text-gray-900">
                 Driver signature
@@ -917,6 +969,8 @@ function CheckoutCapturePage() {
           <p className="text-sm text-red-600 font-medium">{submitError}</p>
         )}
 
+        {photosFilled && <CheckoutMissingList blockers={blockers} onJump={jumpToBlocker} />}
+
         <div className="photo-step-submit-dock sticky bottom-0 -mx-4 px-4 pt-3 pb-6 safe-bottom bg-gray-50/95 border-t border-gray-200">
           <Button
             size="xl"
@@ -924,15 +978,11 @@ function CheckoutCapturePage() {
             onClick={() => setPhase("review")}
             disabled={submitting || !canSubmit}
           >
-            {!inspectionValid.ok
-                ? "Finish Precheck"
-                : redPark
-                  ? "Park it — go back to Precheck to sign"
-                : !photosComplete
-                ? `Review when ${required.filter((s) => photos[s.angle]).length}/${required.length} photos are filled`
-                : !signatureDataUrl
-                  ? "Sign above to review"
-                  : "Review report"}
+            {redPark && inspectionValid.ok
+              ? "Park it — go back to Precheck to sign"
+              : canSubmit
+                ? "Review report"
+                : blockerButtonLabel(blockers)}
           </Button>
         </div>
           </>

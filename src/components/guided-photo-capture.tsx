@@ -49,7 +49,14 @@ import { damageActor } from "@/lib/photo-flags";
 import { stampPhotoDataUrl } from "@/lib/photo-stamp";
 import { useCheckoutFeedback } from "@/components/checkout-feedback";
 import { DamageCloseUpPanel } from "@/components/damage-closeup-panel";
-import { closeUpAngle, closeUpMissing, needsCloseUp, type DamageSpot } from "@/lib/damage-closeup";
+import {
+  closeUpAngle,
+  closeUpGapText,
+  closeUpMissing,
+  missingCloseUps,
+  needsCloseUp,
+  type DamageSpot,
+} from "@/lib/damage-closeup";
 import { primaryButtonClass } from "@/lib/button-styles";
 
 interface GuidedPhotoCaptureProps {
@@ -83,6 +90,8 @@ interface GuidedPhotoCaptureProps {
   /** Required damage close-up: diagram tap and close-up photo. Both must be set to turn it on. */
   onDamageSpot?: (angle: PhotoAngle, spot: DamageSpot) => void;
   onCloseUp?: (angle: PhotoAngle, dataUrl: string | null) => void;
+  /** Page asked to show this slot (tap-to-jump from "Still needed"). Bump seq to jump again. */
+  jumpTo?: { angle: PhotoAngle; seq: number } | null;
 }
 
 export type KnownDamagePrompt = {
@@ -115,6 +124,7 @@ export function GuidedPhotoCapture({
   closeUpSlots = [],
   onDamageSpot,
   onCloseUp,
+  jumpTo,
 }: GuidedPhotoCaptureProps) {
   const closeUpOn = Boolean(onDamageSpot && onCloseUp);
   const requiredPhotos = steps.filter((p) => p.required);
@@ -126,7 +136,30 @@ export function GuidedPhotoCapture({
     return idx === -1 ? requiredPhotos.length - 1 : idx;
   }, [photos, requiredPhotos]);
 
-  const [viewIndex, setViewIndex] = useState(0);
+  /** Accepted damage slots still missing the diagram tap or close-up (any slot, not just the one on screen). */
+  const closeUpGaps = useMemo(
+    () =>
+      closeUpOn && !testingBrowseMode
+        ? missingCloseUps(
+            requiredPhotos.map((p) => p.angle),
+            photoFlags,
+            photos,
+            closeUpSlots
+          )
+        : [],
+    [closeUpOn, testingBrowseMode, requiredPhotos, photoFlags, photos, closeUpSlots]
+  );
+  const gapAngles = new Set(closeUpGaps.map((gap) => gap.angle));
+
+  // Coming back to the photos (iPhone reloaded the page after the camera,
+  // tab switch, Precheck edit) must land on what is unfinished, not photo 1.
+  const [viewIndex, setViewIndex] = useState(() => {
+    if (testingBrowseMode) return 0;
+    const gapIndex = closeUpGaps.length
+      ? requiredPhotos.findIndex((p) => p.angle === closeUpGaps[0].angle)
+      : -1;
+    return gapIndex >= 0 ? Math.min(gapIndex, firstIncompleteIndex) : firstIncompleteIndex;
+  });
   const [busy, setBusy] = useState(false);
   const [pickError, setPickError] = useState("");
   const [cameraOff, setCameraOff] = useState(false);
@@ -146,7 +179,9 @@ export function GuidedPhotoCapture({
     ? viewIndex
     : Math.min(viewIndex, firstIncompleteIndex);
   const current = requiredPhotos[currentIndex];
-  const allComplete = acceptedCount === requiredPhotos.length;
+  const allAccepted = acceptedCount === requiredPhotos.length;
+  /** All photos taken AND every damage close-up done. */
+  const allComplete = allAccepted && closeUpGaps.length === 0;
   const value = current ? photos[current.angle] : undefined;
   const isLastStep = currentIndex === requiredPhotos.length - 1;
   const canGoPrev = currentIndex > 0;
@@ -361,6 +396,22 @@ export function GuidedPhotoCapture({
     setViewIndex(index);
   };
 
+  const jumpSeq = jumpTo?.seq;
+  const jumpAngle = jumpTo?.angle;
+  useEffect(() => {
+    if (!jumpSeq || !jumpAngle) return;
+    const index = requiredPhotos.findIndex((p) => p.angle === jumpAngle);
+    if (index < 0) return;
+    goToStep(index);
+    window.setTimeout(() => {
+      document
+        .querySelector<HTMLElement>(".photo-step-shell")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
+    // Only a new jump request should move the driver.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jumpSeq]);
+
   const feedback = useCheckoutFeedback();
   const photoStepLabel = current?.label;
   const photoStepTotal = requiredPhotos.length;
@@ -388,7 +439,9 @@ export function GuidedPhotoCapture({
           label={
             testingBrowseMode
               ? `Preview — step ${currentIndex + 1} of ${requiredPhotos.length}`
-              : `Photos — ${acceptedCount} of ${requiredPhotos.length} accepted`
+              : closeUpGaps.length
+                ? `Photos — ${acceptedCount} of ${requiredPhotos.length} accepted · ${closeUpGaps.length} damage close-up${closeUpGaps.length === 1 ? "" : "s"} left`
+                : `Photos — ${acceptedCount} of ${requiredPhotos.length} accepted`
           }
         />
       </div>
@@ -750,21 +803,26 @@ export function GuidedPhotoCapture({
 
         <div className="flex gap-1 overflow-x-auto pb-1 flex-1">
           {requiredPhotos.map((p, i) => {
+            const gap = gapAngles.has(p.angle);
             const done = !!photos[p.angle];
             const damaged = !!photoFlags?.[p.angle]?.flaggedDamage;
             const isCurrent = i === currentIndex;
             const canView =
-              (testingBrowseMode || done || i === firstIncompleteIndex) &&
-              (!closeUpGap || i === currentIndex);
+              gap ||
+              ((testingBrowseMode || done || i === firstIncompleteIndex) &&
+                (!closeUpGap || i === currentIndex));
             return (
               <button
                 key={p.angle}
                 type="button"
                 disabled={!canView}
                 onClick={() => canView && goToStep(i)}
-                title={p.label}
+                title={gap ? `${p.label}: damage close-up needed` : p.label}
+                aria-label={gap ? `${p.label}: damage close-up needed` : p.label}
                 className={`flex-shrink-0 min-w-[44px] h-11 px-1.5 rounded-lg text-xs font-bold transition-colors disabled:opacity-100 ${
-                  !canView
+                  gap
+                    ? `bg-amber-400 text-amber-950 ${isCurrent ? "ring-2 ring-amber-200" : ""}`
+                    : !canView
                     ? "bg-[#2a2a2e] text-[#d4d4d8] cursor-not-allowed"
                     : damaged
                     ? "bg-[#b91c1c] text-white"
@@ -775,7 +833,7 @@ export function GuidedPhotoCapture({
                     : "bg-[#3a3a40] text-[#e4e4e7]"
                 }`}
               >
-                {done ? "✓" : i + 1}
+                {gap ? "!" : done ? "✓" : i + 1}
               </button>
             );
           })}
@@ -792,6 +850,31 @@ export function GuidedPhotoCapture({
           </Button>
         )}
       </div>
+
+      {allAccepted && !testingBrowseMode && closeUpGaps.length > 0 && (
+        <div
+          className="photo-step-closeup-gaps rounded-xl border-2 border-amber-500 bg-amber-50 p-3 space-y-2"
+          data-testid="closeup-gaps"
+        >
+          <p className="text-sm font-bold text-amber-950">
+            All photos taken. Damage still needs a close-up:
+          </p>
+          {closeUpGaps.map((gap) => {
+            const index = requiredPhotos.findIndex((p) => p.angle === gap.angle);
+            const label = requiredPhotos[index]?.label ?? gap.angle;
+            return (
+              <button
+                key={gap.angle}
+                type="button"
+                onClick={() => goToStep(index)}
+                className="w-full min-h-[44px] rounded-lg border border-amber-400 bg-white px-3 py-2 text-left text-sm font-semibold text-amber-950"
+              >
+                {closeUpGapText(label, gap)} — tap to go
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {allComplete && !testingBrowseMode && (
         <p className="text-center text-green-700 font-semibold text-sm bg-green-50 rounded-xl py-3 border border-green-200">
