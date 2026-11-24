@@ -12,7 +12,6 @@ import {
   alertDetailParts,
   BELL_SLACK_USER,
   officeCheckUrl,
-  repairSlackText,
   sendRepairSlack,
 } from "@/lib/alert-details";
 import { checkoutAppOrigin } from "@/lib/checkout-slack";
@@ -22,17 +21,21 @@ import { postAshleySlackDm } from "@/lib/ashley-slack";
 import { repeatProblemNote } from "@/lib/driver-tally";
 import { repeatedIssues } from "@/lib/repeat-issues";
 import { formatUnitLabel } from "@/lib/utils";
-import { beforeAfterPairs, beforeAfterSlackLines } from "@/lib/damage-before-after";
 import { withoutKnownDamage } from "@/lib/known-damage";
 import { formatCheckoutTime } from "@/lib/checkout-slack";
 import { photoAngleLabel } from "@/lib/photo-flags";
+import { activeIssueFlagLabels } from "@/lib/inspection-form";
+import { damageSlotsOnCheck, onFileDamage, splitNewDamage } from "@/lib/on-file-damage";
 import {
+  damageSummaryItems,
+  damageSummaryText,
+  mentionText,
+  shortDamagePostText,
+  shortUnitLabel,
   defaultRepairMentions,
   mentionLine,
   repairReportText,
   repairStatusText,
-  whoHadItLast,
-  whoHadItLastLines,
   type RepairMention,
 } from "@/lib/repair-report";
 import { localInsertAlert, localListAlerts, localListReports } from "./local-store";
@@ -99,32 +102,44 @@ async function unitStatusText(orgId: string, report: { vehicleId: string }): Pro
   }
 }
 
-/** Build the repair report for a damage check: unit, plate, damage, before/after, who found it, who had it last, status, link. */
+/**
+ * The short repair post for a damage check (3 lines): unit, what's new, who
+ * found it and when, in/out of service, and the check link with the tag.
+ * Before/after, who had it since, and the last clean check are on the check page.
+ */
 export async function buildDamageRepairReport(
   orgId: string,
   report: CheckoutReport,
-  history: CheckoutReport[],
+  _history: CheckoutReport[],
   options: { plainMentions?: boolean; banner?: string; extraAlertLines?: string[] } = {}
 ): Promise<string> {
   const origin = checkoutAppOrigin(process.env.APP_ORIGIN || process.env.NEXT_PUBLIC_APP_URL);
-  const checkUrl = (id: string) => officeCheckUrl(origin, id);
-  const [mentions, status] = await Promise.all([
+  const [mentions, outOfService] = await Promise.all([
     repairMentionsFor(orgId, report.companyId),
-    unitStatusText(orgId, report),
+    unitOutOfService(orgId, report),
   ]);
-  return repairReportText({
-    kind: "damage",
+  return shortDamagePostText({
     banner: options.banner,
-    unit: report.unitNumber ? `Unit ${report.unitNumber}` : formatUnitLabel(report.unitNumber, report.plate),
-    plate: report.plate,
-    vehicle: `${report.year} ${report.make} ${report.model}`,
-    mention: mentionLine(mentions, options.plainMentions),
-    damage: [...(options.extraAlertLines ?? []), ...alertDetailParts(alertDamageDetails(report))],
-    beforeAfter: beforeAfterSlackLines(beforeAfterPairs(report, history), checkUrl, formatCheckoutTime),
-    whoHadIt: whoHadItLastLines(whoHadItLast(report, history), checkUrl, formatCheckoutTime),
-    status,
-    link: { url: checkUrl(report.id), label: "Open the check" },
+    unitLabel: shortUnitLabel(report),
+    summary: damageSummaryText(damageSummaryItems(report), [
+      ...(options.extraAlertLines ?? []),
+      ...activeIssueFlagLabels(report.inspectionForm),
+    ]),
+    foundBy: report.driverName,
+    foundAt: report.completedAt,
+    outOfService,
+    url: officeCheckUrl(origin, report.id),
+    mention: mentionText(mentions, options.plainMentions),
   });
+}
+
+async function unitOutOfService(orgId: string, report: { vehicleId: string }): Promise<boolean> {
+  try {
+    const { getVehicle } = await import("./checkout-repo");
+    return Boolean((await getVehicle(orgId, report.vehicleId))?.outOfService);
+  } catch {
+    return false;
+  }
 }
 
 async function postRepairText(companyId: string, text: string, tag: string): Promise<void> {
@@ -151,11 +166,8 @@ async function postRepairSlack(
   history: CheckoutReport[]
 ): Promise<void> {
   if (!alerts.length || !postsRepairSlack(report.companyId)) return;
-  const text = await buildDamageRepairReport(orgId, report, history, {
-    extraAlertLines: alerts
-      .filter((alert) => alert.type !== "damage_reported")
-      .map((alert) => alert.message),
-  });
+  // Issue flags (needs repair, safety, ...) are listed from the check itself.
+  const text = await buildDamageRepairReport(orgId, report, history);
   await postRepairText(report.companyId, text, report.id);
 }
 
@@ -168,11 +180,30 @@ export async function recordCheckoutAlerts(
   orgId: string,
   checked: CheckoutReport
 ): Promise<void> {
-  const report = withoutKnownDamage(checked);
   const mode = sharedBackendMode();
   if (mode === "unconfigured") return;
-  const kinds = checkoutAlertKinds(factsFor(report));
+  let report = withoutKnownDamage(checked);
   let history: CheckoutReport[] | undefined;
+  // Damage already on file for this unit (known, or reported earlier and not
+  // reviewed) is recorded on the check but does not alert again.
+  if (damageSlotsOnCheck(report).length) {
+    history = await vehicleHistory(orgId, report).catch(() => []);
+    const { listKnownDamage } = await import("./known-damage-repo");
+    const known = await listKnownDamage(orgId, report.vehicleId).catch(() => []);
+    const split = splitNewDamage(
+      report,
+      onFileDamage(history.filter((item) => item.id !== report.id), known, report.completedAt || new Date().toISOString())
+    );
+    if (split.repeats.length) {
+      console.info(
+        "[alerts] damage already on file, no new-damage alert",
+        report.id,
+        split.repeats.map((r) => `${r.angle}<-${r.onFile.id}`).join(",")
+      );
+    }
+    report = split.report;
+  }
+  const kinds = checkoutAlertKinds(factsFor(report));
   if (kinds.length) {
     const existing =
       mode === "postgres" ? await pgListAlerts(orgId, true) : await localListAlerts(true);
@@ -197,7 +228,7 @@ export async function recordCheckoutAlerts(
       created.push(alert);
     }
     if (created.length) {
-      history = await vehicleHistory(orgId, report).catch(() => []);
+      history ??= await vehicleHistory(orgId, report).catch(() => []);
       await postRepairSlack(orgId, report, created, history);
     }
   }

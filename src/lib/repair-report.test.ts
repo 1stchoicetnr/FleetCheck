@@ -140,3 +140,54 @@ test("repair report carries unit, plate, damage, before/after, who, status, link
 test("Slack text converts to Markdown for a preview", () => {
   assert.equal(slackToMarkdown("*For:* Mark\n• <https://a/b|Nov 4 · Chris>"), "**For:** Mark\n• [Nov 4 · Chris](https://a/b)");
 });
+
+// --- Short post ---------------------------------------------------------------
+
+import {
+  damageSummaryItems,
+  damageSummaryText,
+  mentionText,
+  shortDamagePostText,
+  shortPacificTime,
+  shortUnitLabel,
+} from "./repair-report.ts";
+
+test("short post: 3 lines, unit, what's new, who found it, status, link and tag", () => {
+  const items = damageSummaryItems({
+    photos: [{ angle: "front", flaggedDamage: true }],
+    inspectionForm: { damage: { left: "Bumper scrapes", rear: "Bumper scrapes" } } as never,
+  });
+  const text = shortDamagePostText({
+    unitLabel: shortUnitLabel({ unitNumber: "#9", make: "Dodge", model: "GR Caravan" }),
+    summary: damageSummaryText(items),
+    foundBy: "Ken Taylor",
+    foundAt: "2026-11-23T19:49:00Z",
+    url: "https://fleet-check-eight.vercel.app/office/abc",
+    mention: mentionText([MARK_CORBETT]),
+  });
+  assert.equal(
+    text,
+    [
+      "*#9 Caravan, new damage:* bumper scrapes (left and rear); damage (front)",
+      "Found by Ken Taylor, 11/23 11:49 AM PT · In service",
+      "<https://fleet-check-eight.vercel.app/office/abc|Open the check> · <@U07RCTY13J5>",
+    ].join("\n")
+  );
+  assert.ok(!/Before|Had it since|Last clean/.test(text));
+  assert.match(shortDamagePostText({ unitLabel: "#5", summary: "x", foundBy: "A", foundAt: "2026-11-23T19:49:00Z", url: "u", outOfService: true }), /· Out of service\n/);
+  assert.match(shortDamagePostText({ unitLabel: "#5", summary: "x", foundBy: "A", foundAt: "2026-11-23T19:49:00Z", url: "u", mention: mentionText([MARK_CORBETT], true) }), /· Mark Corbett$/);
+});
+
+test("short unit labels", () => {
+  assert.equal(shortUnitLabel({ unitNumber: "05", make: "Chrysler", model: "200" }), "#5 Chrysler 200");
+  assert.equal(shortUnitLabel({ unitNumber: "#11 Chrysler 200", make: "Chrysler", model: "200" }), "#11 Chrysler 200");
+  assert.equal(shortUnitLabel({ unitNumber: "2", make: "Chrysler", model: "Town & Country" }), "#2 Town & Country");
+  assert.equal(shortUnitLabel({ unitNumber: "", plate: "CXB9373", make: "Dodge", model: "GR Caravan" }), "CXB9373 Caravan");
+  assert.equal(shortPacificTime("2026-11-24T05:15:00Z"), "11/23 9:15 PM PT");
+});
+
+test("summary is cut short when long", () => {
+  const long = damageSummaryText([{ where: "front", what: "x".repeat(300) }]);
+  assert.ok(long.length <= 160 && long.endsWith("…"));
+  assert.equal(damageSummaryText([], ["Needs repair"]), "needs repair");
+});

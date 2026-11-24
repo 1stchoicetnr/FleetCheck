@@ -7,6 +7,8 @@ import { CheckoutAccountBanner } from "@/components/checkout-account-notice";
 import { CHECKOUT_ACCOUNT_MESSAGE } from "@/lib/checkout-account";
 import { Button } from "@/components/ui/button";
 import { GuidedPhotoCapture, type KnownDamagePrompt } from "@/components/guided-photo-capture";
+import { onFileDamage, reportedDamagePrompts } from "@/lib/on-file-damage";
+import type { KnownDamageItem } from "@/lib/checkout-api";
 import { closeUpAngle, firstMissingCloseUp, precheckDamageSlots } from "@/lib/damage-closeup";
 import { photoAngleLabel } from "@/lib/photo-flags";
 import { SignaturePad } from "@/components/signature-pad";
@@ -148,30 +150,31 @@ function CheckoutCapturePage() {
     const vehicleId = draft?.vehicleId;
     if (!vehicleId || phase !== "photos") return;
     let cancelled = false;
-    // Known damage on this unit: those slots ask Same as before / New damage.
+    // Damage on file for this unit (known, or reported on an earlier check and
+    // not reviewed yet): those slots ask Same as before / New damage.
     // If it can't load (no signal), the walkaround works as before.
-    void fetchKnownDamage(vehicleId)
-      .then((items) => {
-        if (!cancelled) setKnownDamage(items.filter((item) => !item.repairedAt));
-      })
-      .catch(() => {
-        if (!cancelled) setKnownDamage([]);
-      });
-    void fetchPriorReports(vehicleId)
-      .then((reports) => {
-        const prior = [...reports].sort(
-          (a, b) => Date.parse(b.completedAt) - Date.parse(a.completedAt)
-        )[0];
-        if (!prior || cancelled) return;
-        const photos: Partial<Record<PhotoAngle, string>> = {};
-        for (const photo of prior.photos) {
-          if (photo.dataUrl) photos[photo.angle] = photo.dataUrl;
-        }
-        setPriorPhotos({ driverName: prior.driverName, photos });
-      })
-      .catch(() => {
-        if (!cancelled) setPriorPhotos(null);
-      });
+    void Promise.all([
+      fetchKnownDamage(vehicleId).catch(() => [] as KnownDamageItem[]),
+      fetchPriorReports(vehicleId, undefined, 20).catch(() => [] as CheckoutReport[]),
+    ]).then(([known, reports]) => {
+      if (cancelled) return;
+      const now = new Date().toISOString();
+      const onFile = onFileDamage(reports, known, now);
+      const prompts: KnownDamagePrompt[] = [
+        ...known.filter((item) => !item.repairedAt),
+        ...reportedDamagePrompts(onFile, formatCheckoutTime),
+      ];
+      setKnownDamage(prompts);
+      const prior = [...reports].sort(
+        (a, b) => Date.parse(b.completedAt) - Date.parse(a.completedAt)
+      )[0];
+      if (!prior) return;
+      const photos: Partial<Record<PhotoAngle, string>> = {};
+      for (const photo of prior.photos) {
+        if (photo.dataUrl) photos[photo.angle] = photo.dataUrl;
+      }
+      setPriorPhotos({ driverName: prior.driverName, photos });
+    });
     return () => {
       cancelled = true;
     };
