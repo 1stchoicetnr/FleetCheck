@@ -80,7 +80,7 @@ export default function SpotCheckPage() {
                     </p>
                     <div className="grid grid-cols-2 gap-2">
                       {[
-                        { src: knownSrc, caption: item.known ? `Known · ${formatCheckoutTime(item.known.createdAt)}` : "Known damage (removed)" },
+                        { src: knownSrc, caption: item.known ? (item.known.createdAt ? `Known · ${formatCheckoutTime(item.known.createdAt)}` : "Earlier report") : "Known damage (removed)" },
                         { src: item.photoSrc, caption: `${item.driverName} · ${formatCheckoutTime(item.completedAt)}` },
                       ].map((cell) => (
                         <figure key={cell.caption} className="min-w-0">

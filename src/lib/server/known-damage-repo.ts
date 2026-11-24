@@ -57,12 +57,15 @@ export async function addKnownDamage(
   by: string
 ): Promise<KnownDamage> {
   const list = await readList(orgId, vehicleId);
+  const { repaired, ...rest } = input;
+  const now = new Date().toISOString();
   const item: KnownDamage = {
     id: `kd_${randomUUID().slice(0, 12)}`,
     vehicleId,
-    ...input,
-    createdAt: new Date().toISOString(),
+    ...rest,
+    createdAt: now,
     createdBy: by,
+    ...(repaired ? { repairedAt: now, repairedBy: by } : {}),
   };
   await writeList(orgId, vehicleId, [...list, item]);
   return item;

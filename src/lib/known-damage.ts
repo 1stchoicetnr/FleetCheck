@@ -133,6 +133,8 @@ export type KnownDamageInput = {
   targetDate?: string;
   sourceReportId?: string;
   sourceAlertId?: string;
+  /** Office: "Already repaired" on reported damage. Saved as repaired right away. */
+  repaired?: boolean;
 };
 
 /** Validate an office "mark as known" request. Returns an error message or the clean input. */
@@ -158,6 +160,7 @@ export function cleanKnownDamageInput(body: unknown): KnownDamageInput | { error
     ...(targetDate ? { targetDate } : {}),
     ...(typeof input.sourceReportId === "string" && input.sourceReportId ? { sourceReportId: input.sourceReportId } : {}),
     ...(typeof input.sourceAlertId === "string" && input.sourceAlertId ? { sourceAlertId: input.sourceAlertId } : {}),
+    ...(input.repaired === true ? { repaired: true } : {}),
   };
 }
 

@@ -1,6 +1,8 @@
 import { RAD_CAB_COMPANY_ID } from "./company-rules.ts";
 import { damageItemKeys } from "./damage-keys.ts";
-import { damageCompareAngles, type CompareReport } from "./damage-before-after.ts";
+import { damageCompareAngles, SIDE_PHOTO_ANGLE, type CompareReport } from "./damage-before-after.ts";
+import { DAMAGE_SIDES, type CheckoutInspectionForm } from "./inspection-form.ts";
+import { cleanDamageNote, photoAngleLabel } from "./photo-flags.ts";
 import { withoutKnownDamage } from "./known-damage.ts";
 import type { PhotoAngle, VehiclePhoto } from "./types.ts";
 
@@ -48,6 +50,12 @@ export function mentionLine(mentions: readonly RepairMention[], plain = false): 
   if (!mentions.length) return undefined;
   const who = mentions.map((m) => (plain ? m.name : `<@${m.id}>`)).join(" ");
   return `*For:* ${who}`;
+}
+
+/** "<@U07RCTY13J5>" for the short post; names only when `plain`. */
+export function mentionText(mentions: readonly RepairMention[], plain = false): string | undefined {
+  if (!mentions.length) return undefined;
+  return mentions.map((m) => (plain ? m.name : `<@${m.id}>`)).join(" ");
 }
 
 export interface CheckRef {
@@ -177,4 +185,129 @@ export function slackToMarkdown(text: string): string {
   return text
     .replace(/<(https?:[^|>]+)\|([^>]+)>/g, "[$2]($1)")
     .replace(/(^|[\s(])\*([^*\n]+)\*/g, "$1**$2**");
+}
+
+// --- Short damage post (#rad-cab-repairs and Bell's DM) -----------------------
+
+/** "#9 Caravan", "#5 Chrysler 200", "#11 Chrysler 200" (unit already names the car). */
+export function shortUnitLabel(input: { unitNumber?: string; make?: string; model?: string; plate?: string }): string {
+  const raw = (input.unitNumber ?? "").trim().replace(/^unit\s+/i, "").replace(/^#\s*/, "");
+  const model = (input.model ?? "").trim().replace(/^(gr|grand)\s+/i, "");
+  const make = (input.make ?? "").trim();
+  const car = model && /[a-z]{3,}/i.test(model) ? model : [make, model].filter(Boolean).join(" ");
+  if (!raw) return [input.plate?.trim(), car].filter(Boolean).join(" ") || "Unit";
+  const match = /^0*(\d+)(.*)$/.exec(raw);
+  const number = match ? `#${match[1] || "0"}${match[2]}` : raw;
+  // Unit names like "#11 Chrysler 200" already say which car it is.
+  if (/[a-z]{3,}/i.test(match ? match[2] : raw)) return number;
+  return car ? `${number} ${car}` : number;
+}
+
+/** "11/23 11:49 AM PT". */
+export function shortPacificTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Los_Angeles",
+      month: "numeric",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    })
+      .formatToParts(date)
+      .map((p) => [p.type, p.value])
+  );
+  return `${parts.month}/${parts.day} ${parts.hour}:${parts.minute} ${parts.dayPeriod} PT`;
+}
+
+const lowerFirst = (text: string) => (/^[A-Z][a-z]/.test(text) ? text[0].toLowerCase() + text.slice(1) : text);
+
+function joinWords(words: string[]): string {
+  if (words.length <= 1) return words.join("");
+  return `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
+}
+
+export interface DamageSummaryItem {
+  /** "front", "rear", "driver side doors". */
+  where: string;
+  /** Driver's words; empty when the driver only flagged it. */
+  what?: string;
+}
+
+/**
+ * One line for the post: same words on several sides are grouped.
+ * "bumper damage (front and rear); dent (left)". Long lists are cut with "…".
+ */
+export function damageSummaryText(items: readonly DamageSummaryItem[], extra: readonly string[] = [], max = 160): string {
+  const groups: Array<{ what: string; key: string; where: string[] }> = [];
+  for (const item of items) {
+    const what = item.what?.trim() ? lowerFirst(item.what.trim().replace(/[.\s]+$/, "")) : "damage";
+    const key = what.toLowerCase();
+    const where = item.where.toLowerCase();
+    const group = groups.find((g) => g.key === key);
+    if (group) {
+      if (!group.where.includes(where)) group.where.push(where);
+    } else groups.push({ what, key, where: [where] });
+  }
+  const parts = [
+    ...extra.map((e) => lowerFirst(e.trim())).filter(Boolean),
+    ...groups.map((g) => `${g.what} (${joinWords(g.where)})`),
+  ];
+  const text = parts.join("; ") || "damage reported";
+  return text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text;
+}
+
+export interface ShortDamagePostInput {
+  unitLabel: string;
+  summary: string;
+  foundBy: string;
+  foundAt: string;
+  outOfService?: boolean;
+  url: string;
+  mention?: string;
+  banner?: string;
+}
+
+/**
+ * The 3-line repair post:
+ *   *#9 Caravan, new damage:* bumper scrapes (left and rear)
+ *   Found by Ken Taylor, 11/23 11:49 AM PT · In service
+ *   <Open the check> · @Mark Corbett
+ * Before/after, who had it, and the last clean check are on the check page.
+ */
+export function shortDamagePostText(input: ShortDamagePostInput): string {
+  const when = shortPacificTime(input.foundAt);
+  return [
+    ...(input.banner ? [input.banner, ""] : []),
+    `*${input.unitLabel}, new damage:* ${input.summary}`,
+    `Found by ${input.foundBy}${when ? `, ${when}` : ""} · ${input.outOfService ? "Out of service" : "In service"}`,
+    `<${input.url}|Open the check>${input.mention ? ` · ${input.mention}` : ""}`,
+  ].join("\n");
+}
+
+const SIDE_WORD: Record<string, string> = { front: "front", rear: "rear", left: "left", right: "right" };
+
+/** What the short post lists: Precheck notes and marks by side, then flagged photos not already covered. */
+export function damageSummaryItems(report: {
+  photos: ReadonlyArray<Pick<VehiclePhoto, "angle" | "flaggedDamage" | "damageNote">>;
+  inspectionForm?: CheckoutInspectionForm | null;
+}): DamageSummaryItem[] {
+  const items: DamageSummaryItem[] = [];
+  const covered = new Map<string, string | undefined>();
+  const damage = report.inspectionForm?.damage ?? {};
+  const marks = new Set((damage.marks ?? []).map(String));
+  for (const side of DAMAGE_SIDES) {
+    const note = cleanDamageNote(damage[side.id]);
+    if (!note && !marks.has(side.id)) continue;
+    items.push({ where: SIDE_WORD[side.id] ?? side.label.toLowerCase(), what: note });
+    covered.set(SIDE_PHOTO_ANGLE[side.id] ?? side.id, note?.toLowerCase());
+  }
+  for (const photo of report.photos) {
+    if (!photo.flaggedDamage) continue;
+    const note = cleanDamageNote(photo.damageNote);
+    if (covered.has(photo.angle) && (!note || covered.get(photo.angle) === note.toLowerCase())) continue;
+    items.push({ where: photoAngleLabel(photo.angle).toLowerCase(), what: note });
+  }
+  return items;
 }

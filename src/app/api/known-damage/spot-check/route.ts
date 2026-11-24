@@ -1,5 +1,6 @@
 import { errorResponse } from "@/lib/server/api-error";
 import { spotCheckPicks } from "@/lib/known-damage";
+import { parseReportedDamageId } from "@/lib/on-file-damage";
 import { tallyWindows } from "@/lib/driver-tally";
 import { listSameAsBeforeAnswers } from "@/lib/server/org-data";
 import { listKnownDamageUnits } from "@/lib/server/known-damage-repo";
@@ -47,7 +48,7 @@ export async function GET(req: Request) {
         completedAt: new Date(String(row.completed_at)).toISOString(),
         angle: String(row.angle),
         reviewKind: row.review_kind ? String(row.review_kind) : undefined,
-        known: known.get(String(row.known_damage_id)) ?? null,
+        known: known.get(String(row.known_damage_id)) ?? reportedAsKnown(String(row.known_damage_id), String(row.vehicle_id)),
         photoSrc: `/api/checkout-reports/${encodeURIComponent(String(row.report_id))}/photos/${encodeURIComponent(String(row.angle))}`,
       })),
       week,
@@ -57,4 +58,20 @@ export async function GET(req: Request) {
   } catch (err) {
     return errorResponse(err, "Failed to load the spot check");
   }
+}
+
+/** "Same as before" about reported (not yet reviewed) damage: show the first report's photo. */
+function reportedAsKnown(id: string, vehicleId: string) {
+  const ref = parseReportedDamageId(id);
+  if (!ref) return null;
+  return {
+    id,
+    vehicleId,
+    angle: ref.angle,
+    description: "Reported earlier, not reviewed yet",
+    status: "not_fixing" as const,
+    sourceReportId: ref.reportId,
+    createdAt: "",
+    createdBy: "",
+  };
 }

@@ -100,6 +100,8 @@ export type KnownDamagePrompt = {
   description: string;
   note?: string;
   sourceReportId?: string;
+  /** Reported on an earlier check, not reviewed by the office yet. */
+  reported?: boolean;
 };
 
 export function GuidedPhotoCapture({
@@ -964,7 +966,9 @@ function KnownDamageQuestion({
   return (
     <div className="p-4 space-y-3">
       <div className="rounded-xl border border-amber-400/60 bg-amber-950/30 p-3 space-y-1">
-        <p className="text-sm font-bold text-amber-100">Known damage on {label}</p>
+        <p className="text-sm font-bold text-amber-100">
+          {item.reported ? `Already reported on ${label}` : `Known damage on ${label}`}
+        </p>
         <p className="text-sm text-amber-100">{item.description}</p>
         {item.note && <p className="text-xs text-amber-200">{item.note}</p>}
       </div>
@@ -978,7 +982,9 @@ function KnownDamageQuestion({
               <div className="flex h-full items-center justify-center text-xs text-[#8b8b93]">No photo</div>
             )}
           </div>
-          <figcaption className="mt-0.5 text-[11px] text-[#d4d4d8]">Before (known)</figcaption>
+          <figcaption className="mt-0.5 text-[11px] text-[#d4d4d8]">
+            {item.reported ? "Before (reported)" : "Before (known)"}
+          </figcaption>
         </figure>
         <figure className="min-w-0">
           <div className="aspect-[4/3] overflow-hidden rounded-lg border border-[#3a3a40] bg-black">

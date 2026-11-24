@@ -13,6 +13,9 @@ import { DeliveryBadge } from "@/components/delivery-badge";
 import { legacyMissingNotes, stuckReason } from "@/lib/legacy-checkout";
 import { CheckoutPhotoComparison } from "@/components/checkout-photo-comparison";
 import { DamageBeforeAfter } from "@/components/damage-before-after";
+import { WhoHadItLastBlock } from "@/components/who-had-it-last";
+import { whoHadItLast } from "@/lib/repair-report";
+import { onFileDamage, splitNewDamage } from "@/lib/on-file-damage";
 import { KnownDamageAnswers, MarkKnownDamage } from "@/components/known-damage";
 import { fetchKnownDamage, type KnownDamageItem } from "@/lib/checkout-api";
 import { photoAngleLabel } from "@/lib/photo-flags";
@@ -596,7 +599,13 @@ export default function OfficeReportDetailPage() {
                 {damageHistory === null ? (
                   <p className="text-sm text-gray-500">Loading earlier photos…</p>
                 ) : (
-                  <DamageBeforeAfter pairs={beforeAfterPairs(report, damageHistory)} />
+                  <>
+                    <DamageBeforeAfter pairs={beforeAfterPairs(report, damageHistory)} />
+                    <OnFileOnThisCheck report={report} history={damageHistory} known={knownDamage} />
+                    {damageHistory.length > 0 && (
+                      <WhoHadItLastBlock info={whoHadItLast(report, damageHistory)} />
+                    )}
+                  </>
                 )}
                 {user &&
                   canManageOfficeRecords(user.role) &&
@@ -994,6 +1003,42 @@ function DamageNoteEditor({
           {saving ? "Saving…" : "Save note"}
         </button>
       )}
+    </div>
+  );
+}
+
+/**
+ * Damage on this check that was already on file (known, or reported on an
+ * earlier check). It did not post to Slack again; this is where it is recorded.
+ */
+function OnFileOnThisCheck({
+  report,
+  history,
+  known,
+}: {
+  report: CheckoutReport;
+  history: CheckoutReport[];
+  known: KnownDamageItem[];
+}) {
+  const { repeats } = splitNewDamage(report, onFileDamage(history, known, report.completedAt));
+  if (!repeats.length) return null;
+  return (
+    <div className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900 space-y-1">
+      <p className="font-semibold">Already on file (no new-damage post):</p>
+      <ul className="list-disc pl-4 space-y-0.5">
+        {repeats.map((r) => (
+          <li key={r.angle}>
+            {photoAngleLabel(r.angle)}: {r.description} — {r.onFile.source === "known" ? "known damage" : "reported"}{" "}
+            {formatCheckoutTime(r.onFile.firstReportedAt)} by {r.onFile.firstReportedBy}
+            {r.onFile.source === "reported" && r.onFile.sourceReportId ? (
+              <>
+                {" "}
+                (<a className="underline" href={`/office/${encodeURIComponent(r.onFile.sourceReportId)}`}>first report</a>, not reviewed yet)
+              </>
+            ) : null}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

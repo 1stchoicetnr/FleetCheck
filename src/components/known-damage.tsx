@@ -6,9 +6,12 @@ import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import {
   addKnownDamage,
   fetchKnownDamage,
+  fetchPriorReports,
   updateKnownDamage,
   type KnownDamageItem,
 } from "@/lib/checkout-api";
+import { onFileDamage, parseReportedDamageId, type OnFileDamage } from "@/lib/on-file-damage";
+import type { CheckoutReport } from "@/lib/types";
 import { formatCheckoutTime } from "@/lib/checkout-slack";
 import {
   KNOWN_DAMAGE_STATUS_LABELS,
@@ -139,12 +142,18 @@ export function MarkKnownDamage({
 /** Vehicle page: active known damage, Fix later list with target dates and overdue badges, Repaired. */
 export function KnownDamageSection({ vehicleId, canEdit }: { vehicleId: string; canEdit: boolean }) {
   const [items, setItems] = useState<KnownDamageItem[] | null>(null);
+  const [checks, setChecks] = useState<CheckoutReport[]>([]);
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState("");
 
   const load = useCallback(async () => {
     try {
-      setItems(await fetchKnownDamage(vehicleId));
+      const [known, recent] = await Promise.all([
+        fetchKnownDamage(vehicleId),
+        fetchPriorReports(vehicleId, undefined, 20).catch(() => [] as CheckoutReport[]),
+      ]);
+      setItems(known);
+      setChecks(recent);
       setError("");
     } catch (err) {
       setItems([]);
@@ -173,6 +182,25 @@ export function KnownDamageSection({ vehicleId, canEdit }: { vehicleId: string; 
   const fixLater = fixLaterList(items ?? [], today);
   const notFixing = active.filter((item) => item.status === "not_fixing");
   const done = (items ?? []).filter((item) => item.repairedAt);
+  const reported = items === null ? [] : onFileDamage(checks, items, new Date().toISOString()).filter((i) => i.source === "reported");
+
+  const reportedRepaired = async (item: OnFileDamage) => {
+    setBusyId(item.id);
+    try {
+      await addKnownDamage(vehicleId, {
+        angle: item.angle,
+        description: item.description,
+        status: "not_fixing",
+        sourceReportId: item.sourceReportId,
+        repaired: true,
+      });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update.");
+    } finally {
+      setBusyId("");
+    }
+  };
 
   return (
     <Card>
@@ -180,10 +208,55 @@ export function KnownDamageSection({ vehicleId, canEdit }: { vehicleId: string; 
         <CardTitle className="text-base">Known damage</CardTitle>
         {items === null ? (
           <p className="text-sm text-gray-500">Loading…</p>
-        ) : active.length === 0 ? (
+        ) : active.length === 0 && reported.length === 0 ? (
           <p className="text-sm text-gray-500">No known damage on this unit.</p>
         ) : null}
         {error && <p className="text-sm text-red-600">{error}</p>}
+        {reported.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+              Reported, not reviewed yet ({reported.length})
+            </p>
+            <p className="text-xs text-gray-500">
+              Already posted once. Later checks that see it again are recorded here, not posted again.
+            </p>
+            {reported.map((item) => (
+              <div key={item.id} className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-2">
+                <p className="text-sm font-semibold text-gray-900">
+                  {photoAngleLabel(item.angle)}: {item.description}
+                </p>
+                <p className="text-xs text-gray-600">
+                  First reported {formatCheckoutTime(item.firstReportedAt)} by {item.firstReportedBy}
+                  {item.sightings > 1 && item.lastSeenAt
+                    ? ` · seen on ${item.sightings} checks, last ${formatCheckoutTime(item.lastSeenAt)} by ${item.lastSeenBy}`
+                    : ""}
+                  {item.sourceReportId ? (
+                    <>
+                      {" · "}
+                      <a className="underline" href={`/office/${encodeURIComponent(item.sourceReportId)}`}>
+                        Open the check
+                      </a>
+                    </>
+                  ) : null}
+                </p>
+                {canEdit && (
+                  <>
+                    <MarkKnownDamage
+                      vehicleId={vehicleId}
+                      angle={item.angle}
+                      description={item.description}
+                      sourceReportId={item.sourceReportId}
+                      onSaved={() => void load()}
+                    />
+                    <Button size="sm" variant="outline" disabled={busyId === item.id} onClick={() => void reportedRepaired(item)}>
+                      {busyId === item.id ? "Saving…" : "Repaired"}
+                    </Button>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
         {fixLater.length > 0 && (
           <div className="space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
@@ -314,7 +387,21 @@ export function KnownDamageAnswers({
       <CardContent className="py-4 space-y-3">
         <CardTitle className="text-base">Known damage check</CardTitle>
         {rows.map((photo) => {
-          const item = known.find((k) => k.id === photo.knownDamageId);
+          const reportedRef = parseReportedDamageId(photo.knownDamageId);
+          const item: KnownDamageItem | undefined =
+            known.find((k) => k.id === photo.knownDamageId) ??
+            (reportedRef
+              ? {
+                  id: photo.knownDamageId!,
+                  vehicleId: report.vehicleId,
+                  angle: reportedRef.angle as PhotoAngle,
+                  description: "Reported on an earlier check",
+                  status: "not_fixing",
+                  sourceReportId: reportedRef.reportId,
+                  createdAt: "",
+                  createdBy: "",
+                }
+              : undefined);
           const knownSrc = item ? knownDamagePhotoSrc(item) : "";
           const same = photo.knownDamageAnswer === "same";
           const reviewed = photo.damageReview;
@@ -325,7 +412,7 @@ export function KnownDamageAnswers({
                 {item ? `: ${item.description}` : ""}
               </p>
               <div className="grid grid-cols-2 gap-2">
-                <PhotoBox src={knownSrc} caption={item ? `Known · ${formatCheckoutTime(item.createdAt)}` : "Known damage (removed)"} />
+                <PhotoBox src={knownSrc} caption={item ? (item.createdAt ? `Known · ${formatCheckoutTime(item.createdAt)}` : "Earlier report") : "Known damage (removed)"} />
                 <PhotoBox src={photo.dataUrl} caption={`This check · ${report.driverName}`} />
               </div>
               <p className={`text-sm font-semibold ${same ? "text-gray-700" : "text-red-700"}`}>

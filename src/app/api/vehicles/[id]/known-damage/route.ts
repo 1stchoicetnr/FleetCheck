@@ -1,5 +1,5 @@
 import { errorResponse } from "@/lib/server/api-error";
-import { cleanKnownDamageInput, activeKnownDamage } from "@/lib/known-damage";
+import { cleanKnownDamageInput } from "@/lib/known-damage";
 import { addKnownDamage, listKnownDamage } from "@/lib/server/known-damage-repo";
 import { assertDriverMayCheckVehicle } from "@/lib/server/driver-fleets";
 import { assertVehicleInScope } from "@/lib/server/fleet-scope";
@@ -16,7 +16,9 @@ function actor(auth: { name?: string; email?: string; source: string }): string 
 
 /**
  * Office: every known-damage record on the unit (repaired included).
- * Driver allowed to check the unit: active items only, for the photo-step question.
+ * Driver allowed to check the unit: the photo-step question needs active items,
+ * and repaired ones (slot + time only) so damage reported before a repair is
+ * not asked about again.
  */
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -41,7 +43,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const all = await listKnownDamage(orgId, id);
     const items = office
       ? all
-      : activeKnownDamage(all).map((item) => ({
+      : all.map((item) => ({
           id: item.id,
           vehicleId: item.vehicleId,
           angle: item.angle,
@@ -50,6 +52,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
           status: item.status,
           sourceReportId: item.sourceReportId,
           createdAt: item.createdAt,
+          ...(item.repairedAt ? { repairedAt: item.repairedAt } : {}),
         }));
     return NextResponse.json({ items }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
