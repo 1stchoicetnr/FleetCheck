@@ -20,6 +20,7 @@ export function OfflineBanner() {
   const signedIn = Boolean(user) || loading;
   const lines = outboxLines(items, { signedIn, role: user?.role });
   const needsSignIn = waiting && !signedIn;
+  const yesterdayOnly = lines.length > 0 && lines.every((line) => line.previousDayNote);
 
   async function onClear(id: string, label: string) {
     const ok = window.confirm(
@@ -67,7 +68,7 @@ export function OfflineBanner() {
             disabled={retrying || !online}
             className="min-h-10 rounded-lg bg-amber-700 px-3 text-sm font-bold text-white disabled:opacity-60"
           >
-            {retrying ? "Retrying…" : "Retry"}
+            {retrying ? "Retrying…" : yesterdayOnly && online ? "Finish sending" : "Retry"}
           </button>
         )}
         {waiting && lines.length > 0 && (
@@ -89,6 +90,9 @@ export function OfflineBanner() {
                 {line.unit} · {line.driver} · {line.when}
               </div>
               <div className="text-xs">{line.problem}</div>
+              {line.previousDayNote && line.previousDayNote !== line.problem && (
+                <div className="text-xs">{line.previousDayNote}</div>
+              )}
               {line.canClear && (
                 <button
                   type="button"
