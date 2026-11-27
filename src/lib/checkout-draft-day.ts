@@ -29,6 +29,17 @@ export function draftIsPreviousPacificDay(
   return false;
 }
 
+/** The draft id was built from this unit's base id (same day, or a fresh copy of it). */
+export function draftIdBelongsToBase(draftId: string, baseId: string): boolean {
+  return draftId === baseId || draftId.startsWith(`${baseId}-`);
+}
+
+/** The checkout draft id contains this vehicle id, so the photos belong to that unit. */
+export function draftMatchesVehicle(draftId: string, vehicleId: string): boolean {
+  if (!draftId || !vehicleId) return false;
+  return draftId.includes(`-${vehicleId}-`);
+}
+
 /** Stable id for today's check of this driver, unit, and type. */
 export function checkoutDraftIdForDay(baseId: string, now: Date = new Date()): string {
   const day = pacificCalendarDay(undefined, now) ?? "undated";
@@ -139,9 +150,12 @@ export function chooseCheckoutDraft(input: {
     deleteDraftIds: choice.deleteDraftIds.filter((id) => id !== choice.id),
   });
 
-  if (input.editingId) {
-    const edited = input.drafts.find((draft) => draft.id === input.editingId) ?? null;
-    const same = reusableToday(edited, input.editingId, waiting, datedId, now, deleteDraftIds);
+  // Edit header can change the unit. Photos stay with the unit that took them.
+  const editingId =
+    input.editingId && draftIdBelongsToBase(input.editingId, input.baseId) ? input.editingId : undefined;
+  if (editingId) {
+    const edited = input.drafts.find((draft) => draft.id === editingId) ?? null;
+    const same = reusableToday(edited, editingId, waiting, datedId, now, deleteDraftIds);
     if (same) return finish(same);
     return finish({
       id: waiting.includes(datedId) ? freshCheckoutDraftId(datedId, waiting, now.getTime()) : datedId,

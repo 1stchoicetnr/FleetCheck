@@ -1,7 +1,11 @@
 import { damageItemKeys } from "./damage-keys.ts";
 import { damageCompareAngles } from "./damage-before-after.ts";
 import { cleanKnownDamageInput, withoutKnownDamage, type KnownDamageInput } from "./known-damage.ts";
+import { normalizeChangeBox, type ChangeBox } from "./photo-box.ts";
+import { normalizePlate } from "./plate.ts";
 import type { PhotoAngle, VehiclePhoto } from "./types.ts";
+
+export type { ChangeBox };
 
 /**
  * Bot photo check: after a check, compare each outside photo slot with the
@@ -50,14 +54,6 @@ export function cleanPhotoCheckSettings(value: unknown): PhotoCheckSettings {
     enabled: v.enabled === true,
     monthlyCapUsd: Math.min(PHOTO_CHECK_CAP_MAX_USD, Math.max(0, Math.round(cap * 100) / 100)),
   };
-}
-
-/** Normalized box on the AFTER photo, 0..1. */
-export interface ChangeBox {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
 }
 
 export interface PhotoCheckResult {
@@ -130,10 +126,18 @@ type HistoryPhoto = Pick<VehiclePhoto, "angle" | "dataUrl" | "flaggedDamage" | "
 
 export interface HistoryCheck {
   id: string;
+  /** Set on a stored check. Two checks compare only when this matches. */
+  vehicleId?: string;
   completedAt: string;
   driverName: string;
   photos: readonly HistoryPhoto[];
   inspectionForm?: import("./inspection-form.ts").CheckoutInspectionForm | null;
+}
+
+/** Same unit. A check with no vehicle id only matches another check that also has none. */
+export function sameVehicle(a: { vehicleId?: string }, b: { vehicleId?: string }): boolean {
+  if (a.vehicleId && b.vehicleId) return a.vehicleId === b.vehicleId;
+  return !a.vehicleId && !b.vehicleId;
 }
 
 export interface Baseline {
@@ -151,6 +155,7 @@ export function lastCleanPhoto(report: HistoryCheck, history: readonly HistoryCh
     .filter((c) => c.id !== report.id && Date.parse(c.completedAt) < now)
     .sort((a, b) => Date.parse(b.completedAt) - Date.parse(a.completedAt));
   for (const check of earlier) {
+    if (!sameVehicle(report, check)) continue;
     const photo = check.photos.find((p) => p.angle === angle && p.dataUrl);
     if (!photo) continue;
     const damaged = damageCompareAngles(damageItemKeys(withoutKnownDamage(check)));
@@ -179,7 +184,7 @@ export function photoCheckPlan(
     const knownItem = known.find((k) => k.angle === angle && !k.repairedAt && k.sourceReportId);
     let baseline: Baseline | undefined;
     if (knownItem) {
-      const source = history.find((c) => c.id === knownItem.sourceReportId);
+      const source = history.find((c) => c.id === knownItem.sourceReportId && sameVehicle(report, c));
       const knownPhoto = source?.photos.find((p) => p.angle === angle && p.dataUrl);
       if (source && knownPhoto) {
         baseline = { reportId: source.id, dataUrl: knownPhoto.dataUrl, completedAt: source.completedAt, driverName: source.driverName, kind: "known" };
@@ -196,17 +201,21 @@ export const PHOTO_CHECK_PROMPT = [
   "Image 1 is BEFORE (known condition). Image 2 is AFTER (today).",
   "Report only NEW physical body damage visible in AFTER that is not in BEFORE: dents, scrapes, cracks, broken lights or mirrors, missing parts, bumper hanging.",
   "Ignore lighting, angle, reflections, rain, dirt, snow, shadows, background, photo date stamps, and damage that already shows in BEFORE.",
-  'Answer JSON only: {"changed": boolean, "confidence": number 0..1, "summary": short plain words (max 12 words), "box": {"x","y","w","h"} 0..1 on AFTER around the new damage, or null}.',
+  "box is null, or the new damage on AFTER only. x is the left edge, y is the top edge, w is the width, h is the height. Each number is a fraction from 0 to 1 of that photo. The top-left corner is 0,0. Do not use pixels, a 0 to 1000 scale, or ymin, xmin, ymax, xmax.",
+  'seenPlate is the license plate you can read on AFTER, or "". seenUnit is the unit-number sticker on AFTER, digits only, or "". Leave both empty when you cannot read them. Do not guess, and do not copy them from BEFORE.',
+  'Answer JSON only: {"changed": boolean, "confidence": number 0..1, "summary": short plain words (max 12 words), "box": {"x","y","w","h"} or null, "seenPlate": string, "seenUnit": string}.',
 ].join(" ");
 
 export const PHOTO_CHECK_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["changed", "confidence", "summary", "box"],
+  required: ["changed", "confidence", "summary", "box", "seenPlate", "seenUnit"],
   properties: {
     changed: { type: "boolean" },
     confidence: { type: "number" },
     summary: { type: "string" },
+    seenPlate: { type: "string" },
+    seenUnit: { type: "string" },
     box: {
       anyOf: [
         { type: "null" },
@@ -224,7 +233,14 @@ export const PHOTO_CHECK_SCHEMA = {
 const unit = (n: unknown) => typeof n === "number" && Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : NaN;
 
 /** Model answer -> verdict. Anything unreadable counts as "no change" so nothing false goes to the office. */
-export function parseVerdict(text: string): { changed: boolean; confidence: number; summary: string; box?: ChangeBox } {
+export function parseVerdict(text: string): {
+  changed: boolean;
+  confidence: number;
+  summary: string;
+  box?: ChangeBox;
+  seenPlate?: string;
+  seenUnit?: string;
+} {
   let raw: unknown;
   try {
     raw = JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, ""));
@@ -234,15 +250,76 @@ export function parseVerdict(text: string): { changed: boolean; confidence: numb
   const v = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const confidence = Number.isNaN(unit(v.confidence)) ? 0 : unit(v.confidence);
   const summary = typeof v.summary === "string" ? v.summary.trim().replace(/\s+/g, " ").slice(0, 120) : "";
-  const b = (v.box && typeof v.box === "object" ? v.box : null) as Record<string, unknown> | null;
-  const box = b ? { x: unit(b.x), y: unit(b.y), w: unit(b.w), h: unit(b.h) } : undefined;
-  const boxOk = box && [box.x, box.y, box.w, box.h].every((n) => !Number.isNaN(n)) && box.w > 0 && box.h > 0;
+  const box = normalizeChangeBox(v.box);
+  const seenPlate = typeof v.seenPlate === "string" ? v.seenPlate.trim().slice(0, 32) : "";
+  const seenUnit = typeof v.seenUnit === "string" ? v.seenUnit.trim().slice(0, 16) : "";
   return {
     changed: v.changed === true && confidence >= PHOTO_CHECK_MIN_CONFIDENCE,
     confidence: Math.round(confidence * 100) / 100,
     summary: summary || (v.changed === true ? "Possible new damage" : "No change"),
-    ...(boxOk ? { box } : {}),
+    ...(box ? { box } : {}),
+    ...(seenPlate ? { seenPlate } : {}),
+    ...(seenUnit ? { seenUnit } : {}),
   };
+}
+
+export interface SeenMark {
+  plate: string;
+  unit: string;
+}
+
+/** Digits of a unit sticker. "05" and "#5" are the same unit. A plate is not a unit. */
+export function unitKey(value: string | undefined): string | null {
+  const trimmed = value?.trim() ?? "";
+  if (!trimmed || /[A-Za-z]/.test(trimmed)) return null;
+  const digits = trimmed.replace(/\D/g, "");
+  if (!digits || digits.length > 3) return null;
+  const n = Number(digits);
+  if (!Number.isInteger(n)) return null;
+  return String(n);
+}
+
+/** A license plate, letters and numbers, ignoring spaces and hyphens. */
+export function plateKey(value: string | undefined): string | null {
+  const norm = normalizePlate(value ?? "");
+  if (norm.length < 5 || norm.length > 8) return null;
+  if (!/[A-Z]/.test(norm) || !/[0-9]/.test(norm)) return null;
+  return norm;
+}
+
+/**
+ * The AFTER photos show a different unit. Empty reads do not count.
+ * One photo that matches this unit wins, so a misread does not hide real damage.
+ */
+export function differentUnitReading(
+  expected: { unitNumber?: string; plate?: string },
+  marks: readonly SeenMark[]
+): { unit?: string; plate?: string } | null {
+  const expectedPlate = plateKey(expected.plate);
+  const expectedUnit = unitKey(expected.unitNumber?.replace(/^#/, ""));
+  let agrees = false;
+  let unit: string | undefined;
+  let plate: string | undefined;
+  for (const mark of marks) {
+    const seenPlate = plateKey(mark.plate);
+    const seenUnit = unitKey(mark.unit);
+    if (seenPlate && expectedPlate && seenPlate === expectedPlate) agrees = true;
+    if (seenUnit && expectedUnit && seenUnit === expectedUnit) agrees = true;
+    if (seenPlate && expectedPlate && seenPlate !== expectedPlate) plate = seenPlate;
+    if (seenUnit && expectedUnit && seenUnit !== expectedUnit) unit = seenUnit;
+  }
+  if (agrees || (!unit && !plate)) return null;
+  return { ...(unit ? { unit } : {}), ...(plate ? { plate } : {}) };
+}
+
+/** Office alert when the new photos are a different car. Not a damage post. */
+export function differentUnitAlertMessage(
+  unitLabel: string,
+  seen: { unit?: string; plate?: string }
+): string {
+  const which = seen.unit ? `#${seen.unit}?` : "another unit?";
+  const plate = seen.plate ? ` The new photo shows plate ${seen.plate}.` : "";
+  return `Photo looks like a different unit (${which}) on ${unitLabel}.${plate} Nothing was sent to Slack.`;
 }
 
 /** Cost of one call: the gateway's reported cost when present, else tokens x list price. */

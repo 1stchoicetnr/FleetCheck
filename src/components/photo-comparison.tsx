@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { OfficePhotoThumb, usePhotoLightbox } from "@/components/photo-lightbox";
+import { viewerSlides } from "@/lib/photo-viewer";
 import { CheckRecord, PHOTO_ANGLES } from "@/lib/types";
 import { formatDate } from "@/lib/utils";
 
@@ -23,6 +25,7 @@ export function PhotoComparison({ checkIns }: PhotoComparisonProps) {
 
   const previous = sorted.find((c) => c.id === prevId);
   const current = sorted.find((c) => c.id === currId);
+  const { open, viewer } = usePhotoLightbox();
 
   const anglesWithPhotos = PHOTO_ANGLES.filter((a) => {
     const p = previous?.photos.find((x) => x.angle === a.angle);
@@ -43,6 +46,28 @@ export function PhotoComparison({ checkIns }: PhotoComparisonProps) {
 
   const prevMap = photoMap(previous);
   const currMap = photoMap(current);
+
+  const openPair = (angle: string, id: string) => {
+    open(
+      viewerSlides([
+        {
+          id: `${angle}:prev`,
+          src: prevMap[angle],
+          label: previous
+            ? `Previous · ${formatDate(previous.createdAt)} · ${previous.driverName}`
+            : "Previous",
+        },
+        {
+          id: `${angle}:curr`,
+          src: currMap[angle],
+          label: current
+            ? `Current · ${formatDate(current.createdAt)} · ${current.driverName}`
+            : "Current",
+        },
+      ]),
+      id
+    );
+  };
 
   return (
     <div className="space-y-4">
@@ -84,13 +109,14 @@ export function PhotoComparison({ checkIns }: PhotoComparisonProps) {
             <div className="grid grid-cols-2 gap-2">
               <div className="rounded-lg border border-gray-200 bg-gray-50 overflow-hidden aspect-video">
                 {prevMap[a.angle] ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
+                  <OfficePhotoThumb
                     src={prevMap[a.angle]}
-                    alt={`Previous ${a.label}`}
-                    loading="lazy"
-                    decoding="async"
-                    className="w-full h-full object-cover"
+                    label={
+                      previous
+                        ? `${a.label}: Previous · ${formatDate(previous.createdAt)} · ${previous.driverName}`
+                        : `Previous ${a.label}`
+                    }
+                    onOpen={() => openPair(a.angle, `${a.angle}:prev`)}
                   />
                 ) : (
                   <div className="flex items-center justify-center h-full text-xs text-gray-400">
@@ -100,13 +126,14 @@ export function PhotoComparison({ checkIns }: PhotoComparisonProps) {
               </div>
               <div className="rounded-lg border border-gray-200 bg-gray-50 overflow-hidden aspect-video">
                 {currMap[a.angle] ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
+                  <OfficePhotoThumb
                     src={currMap[a.angle]}
-                    alt={`Current ${a.label}`}
-                    loading="lazy"
-                    decoding="async"
-                    className="w-full h-full object-cover"
+                    label={
+                      current
+                        ? `${a.label}: Current · ${formatDate(current.createdAt)} · ${current.driverName}`
+                        : `Current ${a.label}`
+                    }
+                    onOpen={() => openPair(a.angle, `${a.angle}:curr`)}
                   />
                 ) : (
                   <div className="flex items-center justify-center h-full text-xs text-gray-400">
@@ -118,6 +145,7 @@ export function PhotoComparison({ checkIns }: PhotoComparisonProps) {
           </div>
         ))}
       </div>
+      {viewer}
     </div>
   );
 }

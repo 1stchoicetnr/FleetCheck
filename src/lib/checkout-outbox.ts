@@ -31,6 +31,7 @@ import {
 import type { CheckoutReport, CheckoutType, PhotoAngle, PhotoFlagState } from "./types";
 import type { CheckoutInspectionForm } from "./inspection-form";
 import { driverUploadMessage } from "./delivery-status";
+import { draftMatchesVehicle } from "./checkout-draft-day";
 import { compressUploadPhoto } from "./utils";
 import { isSendablePhoto } from "./canvas-safe";
 
@@ -244,6 +245,10 @@ export async function submitCheckoutFromDraft(input: {
   }
   if (workers > 0) {
     await Promise.all(Array.from({ length: workers }, () => prepareOne()));
+  }
+
+  if (!draftMatchesVehicle(input.draftId, input.vehicleId)) {
+    throw new Error("These photos were taken for a different unit. Start that unit's check again.");
   }
 
   const now = new Date().toISOString();

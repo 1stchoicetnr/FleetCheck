@@ -3,6 +3,8 @@
 import { formatCheckoutTime } from "@/lib/checkout-slack";
 import { beforeCaption, spotText, type BeforeAfterPair } from "@/lib/damage-before-after";
 import { CarDiagram } from "@/components/car-diagram";
+import { OfficePhotoThumb, usePhotoLightbox } from "@/components/photo-lightbox";
+import { beforeAfterViewerSlides } from "@/lib/photo-viewer";
 
 /**
  * Side-by-side photos for each damaged slot: the unit's latest earlier photo of
@@ -16,12 +18,17 @@ export function DamageBeforeAfter({
   pairs: BeforeAfterPair[];
   compact?: boolean;
 }) {
+  const { open, viewer } = usePhotoLightbox();
   if (!pairs.length) return null;
   const box = compact ? "h-20" : "aspect-video";
   return (
     <div className="space-y-3">
-      {pairs.map((pair) => (
-        <div key={pair.angle}>
+      {pairs.map((pair) => {
+        const slides = beforeAfterViewerSlides(pair);
+        const beforeCaptionText = beforeCaption(pair, formatCheckoutTime);
+        const afterCaption = pair.afterIsCloseUp ? "After · close-up, this check" : "After · this check";
+        return (
+          <div key={pair.angle}>
           <p className="text-xs font-semibold text-gray-700 mb-1">
             {pair.label}
             {pair.spot ? ` · ${spotText(pair.spot)}` : ""}
@@ -29,17 +36,25 @@ export function DamageBeforeAfter({
           <div className={pair.spot ? "grid grid-cols-[1fr_1fr_auto] gap-2" : "grid grid-cols-2 gap-2"}>
             <Slot
               src={pair.before?.src}
-              alt={`${pair.label} before`}
-              caption={beforeCaption(pair, formatCheckoutTime)}
+              alt={`${pair.label}: ${beforeCaptionText}`}
+              caption={beforeCaptionText}
               box={box}
               empty="No earlier photo"
+              onOpen={
+                pair.before?.src
+                  ? () => open(slides, `${pair.angle}:before`)
+                  : undefined
+              }
             />
             <Slot
               src={pair.after?.src}
-              alt={`${pair.label} after`}
-              caption={pair.afterIsCloseUp ? "After · close-up, this check" : "After · this check"}
+              alt={`${pair.label}: ${afterCaption}`}
+              caption={afterCaption}
               box={box}
               empty="No photo on this check"
+              onOpen={
+                pair.after?.src ? () => open(slides, `${pair.angle}:after`) : undefined
+              }
             />
             {pair.spot && (
               <div className="flex items-start justify-center" title="Where the driver marked the damage">
@@ -47,8 +62,10 @@ export function DamageBeforeAfter({
               </div>
             )}
           </div>
-        </div>
-      ))}
+          </div>
+        );
+      })}
+      {viewer}
     </div>
   );
 }
@@ -59,21 +76,20 @@ function Slot({
   caption,
   box,
   empty,
+  onOpen,
 }: {
   src?: string;
   alt: string;
   caption: string;
   box: string;
   empty: string;
+  onOpen?: () => void;
 }) {
   return (
     <figure className="min-w-0">
       <div className={`rounded-lg border border-gray-200 bg-gray-50 overflow-hidden ${box}`}>
-        {src ? (
-          <a href={src} target="_blank" rel="noreferrer">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={src} alt={alt} loading="lazy" className="h-full w-full object-cover" />
-          </a>
+        {src && onOpen ? (
+          <OfficePhotoThumb src={src} label={alt} onOpen={onOpen} />
         ) : (
           <div className="flex items-center justify-center h-full text-xs text-gray-400 px-1 text-center">
             {empty}

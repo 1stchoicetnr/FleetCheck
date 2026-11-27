@@ -4,6 +4,7 @@ import {
   chooseCheckoutDraft,
   draftContentToCarry,
   draftIsPreviousPacificDay,
+  draftMatchesVehicle,
   previousDayOutboxMessage,
 } from "./checkout-draft-day.ts";
 import { idempotencyKeyForCheck } from "./checkout-idempotency.ts";
@@ -185,6 +186,38 @@ test("a previous-day draft is not reused", () => {
   assert.equal(stillSending.reuseContent, false);
   assert.notEqual(stillSending.id, BASE_ID);
   assert.deepEqual(stillSending.deleteDraftIds, []);
+});
+
+test("unit 5 and unit 11 do not share a draft, even when both are Chrysler 200s", () => {
+  const unit5 = "cr-company-vehicle-5-check_out-chris";
+  const unit11 = "cr-company-vehicle-11-check_out-chris";
+  const choice = chooseCheckoutDraft({
+    baseId: unit11,
+    drafts: [{ id: unit5, updatedAt: "2026-11-26T15:00:00.000Z", signedAt: "2026-11-26T15:10:00.000Z" }],
+    waitingDraftIds: [],
+    now: THIS_MORNING,
+    editingId: unit5,
+  });
+  assert.equal(choice.reuseContent, false);
+  assert.notEqual(choice.id, unit5);
+  assert.equal(choice.id.startsWith(unit11), true);
+  assert.equal(draftMatchesVehicle(choice.id, "vehicle-11"), true);
+  assert.equal(draftMatchesVehicle(unit5, "vehicle-11"), false);
+  assert.deepEqual(draftContentToCarry({ photos: { front: "unit-5-photo" } }, choice.reuseContent).photos, {});
+
+  const same = chooseCheckoutDraft({
+    baseId: unit11,
+    drafts: [{ id: unit11, updatedAt: "2026-11-26T15:00:00.000Z" }],
+    waitingDraftIds: [],
+    now: THIS_MORNING,
+    editingId: unit11,
+  });
+  assert.equal(same.id, unit11);
+  assert.equal(same.reuseContent, true);
+  assert.equal(
+    draftContentToCarry({ photos: { rear: "unit-11-photo" } }, same.reuseContent).photos.rear,
+    "unit-11-photo"
+  );
 });
 
 test("same-day resume still works", () => {

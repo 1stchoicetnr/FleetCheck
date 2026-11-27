@@ -210,6 +210,7 @@ test("a suppressed photo-check finding is saved and not alerted; a different spo
   const history = [
     {
       id: "old",
+      vehicleId: "v9",
       completedAt: "2026-11-01T16:00:00Z",
       driverName: "Mike",
       photos: [

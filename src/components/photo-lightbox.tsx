@@ -1,14 +1,24 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, Maximize2, X } from "lucide-react";
+import { normalizeChangeBox } from "@/lib/photo-box";
+import { changeBoxStyle, coverImageRect, type CoverRect, type ViewerBox, type ViewerSlide } from "@/lib/photo-viewer";
 
-export type LightboxPhoto = {
-  id: string;
-  src: string;
-  label: string;
-};
+export type LightboxPhoto = ViewerSlide;
+
+export function ChangeBoxMark({ box }: { box: ViewerBox }) {
+  if (!normalizeChangeBox(box)) return null;
+  return (
+    <div
+      className="pointer-events-none absolute rounded border-2 border-red-600 bg-red-500/10"
+      style={changeBoxStyle(box)}
+      role="img"
+      aria-label="Likely change"
+    />
+  );
+}
 
 const MIN_SCALE = 1;
 const MAX_SCALE = 4;
@@ -30,31 +40,99 @@ export function OfficePhotoThumb({
   src,
   label,
   onOpen,
+  children,
 }: {
   src: string;
   label: string;
   onOpen: () => void;
+  children?: ReactNode;
 }) {
+  const frameRef = useRef<HTMLButtonElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [cover, setCover] = useState<CoverRect | null>(null);
+
+  const measure = useCallback(() => {
+    const frame = frameRef.current;
+    const img = imgRef.current;
+    if (!frame || !img) return;
+    setCover(coverImageRect(img.naturalWidth, img.naturalHeight, frame.clientWidth, frame.clientHeight));
+  }, []);
+
+  useEffect(() => {
+    measure();
+    const frame = frameRef.current;
+    if (!frame || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => measure());
+    observer.observe(frame);
+    return () => observer.disconnect();
+  }, [measure, src]);
+
   return (
     <button
+      ref={frameRef}
       type="button"
-      onClick={onOpen}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onOpen();
+      }}
       aria-label={`Enlarge ${label}`}
-      className="relative block w-full h-full bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-inset"
+      className="relative block h-full w-full cursor-pointer touch-manipulation bg-gray-100 p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-inset"
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
+        ref={imgRef}
         src={src}
         alt={label}
         loading="lazy"
         decoding="async"
-        className="w-full h-full object-cover"
+        draggable={false}
+        className="pointer-events-none h-full w-full object-cover"
+        onLoad={measure}
       />
-      <span className="absolute bottom-1.5 right-1.5 rounded-md bg-black/55 p-1 text-white pointer-events-none">
+      {children && cover ? (
+        <span
+          className="pointer-events-none absolute"
+          style={{ left: cover.left, top: cover.top, width: cover.width, height: cover.height }}
+        >
+          {children}
+        </span>
+      ) : null}
+      <span className="pointer-events-none absolute bottom-1.5 right-1.5 rounded-md bg-black/55 p-1 text-white">
         <Maximize2 className="h-3.5 w-3.5" aria-hidden />
       </span>
     </button>
   );
+}
+
+/** Open one group of photos (a finding's before and after) in the shared viewer. */
+export function usePhotoLightbox() {
+  const [photos, setPhotos] = useState<LightboxPhoto[]>([]);
+  const [index, setIndex] = useState<number | null>(null);
+
+  const open = useCallback((next: readonly LightboxPhoto[], id: string) => {
+    const at = next.findIndex((photo) => photo.id === id);
+    if (at < 0) return;
+    setPhotos([...next]);
+    setIndex(at);
+  }, []);
+
+  const close = useCallback(() => setIndex(null), []);
+
+  const viewer = (
+    <PhotoLightbox
+      photos={photos}
+      index={index}
+      onClose={close}
+      onIndexChange={setIndex}
+    />
+  );
+
+  return { open, viewer };
+}
+
+function onLightboxPhoto(target: EventTarget | null): boolean {
+  return target instanceof Element && Boolean(target.closest("[data-lightbox-photo]"));
 }
 
 interface PhotoLightboxProps {
@@ -181,11 +259,15 @@ export function PhotoLightbox({
     const target = e.target as HTMLElement;
     if (target.closest("[data-lightbox-chrome]")) return;
 
-    e.currentTarget.setPointerCapture(e.pointerId);
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // The pointer can already be gone. Zoom and swipe still follow the move events.
+    }
     pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     movedRef.current = false;
 
-    const onImage = Boolean(target.closest("img"));
+    const onImage = onLightboxPhoto(target);
 
     if (pointersRef.current.size === 2) {
       const pts = [...pointersRef.current.values()];
@@ -287,7 +369,7 @@ export function PhotoLightbox({
       }
       lastTapRef.current = { t: now, x: e.clientX, y: e.clientY };
 
-      const onImage = Boolean((e.target as HTMLElement).closest("img"));
+      const onImage = onLightboxPhoto(e.target);
       if (!onImage && !swipe?.onImage) onClose();
     }
   };
@@ -297,7 +379,7 @@ export function PhotoLightbox({
       className="photo-lightbox"
       role="dialog"
       aria-modal="true"
-      aria-label={photo.label}
+      aria-label={photo.kicker ? `${photo.kicker}. ${photo.label}` : photo.label}
       data-photo-lightbox=""
     >
       <div
@@ -306,6 +388,7 @@ export function PhotoLightbox({
       >
         <div className="flex-1 min-w-0 pr-2">
           <p className="text-brand-300 text-xs font-bold tracking-wide uppercase">
+            {photo.kicker ? `${photo.kicker} · ` : null}
             Photo {index + 1} / {photos.length}
           </p>
           <h2 className="text-white text-lg sm:text-xl font-bold leading-tight drop-shadow-md">
@@ -331,16 +414,22 @@ export function PhotoLightbox({
         onPointerUp={endPointer}
         onPointerCancel={endPointer}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={photo.src}
-          alt={photo.label}
-          draggable={false}
-          className="photo-lightbox-image"
+        <div
+          data-lightbox-photo=""
+          className="photo-lightbox-frame"
           style={{
             transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
           }}
-        />
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={photo.src}
+            alt={photo.label}
+            draggable={false}
+            className="photo-lightbox-image"
+          />
+          {photo.box ? <ChangeBoxMark box={photo.box} /> : null}
+        </div>
       </div>
 
       {photos.length > 1 && (

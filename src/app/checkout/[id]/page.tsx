@@ -181,8 +181,10 @@ function CheckoutCapturePage() {
   }, [draft?.vehicleId, phase]);
 
   useEffect(() => {
+    let cancelled = false;
     async function load() {
       const d = await getCheckoutDraft(draftId);
+      if (cancelled) return;
       if (!d) {
         router.replace("/checkout");
         return;
@@ -220,14 +222,17 @@ function CheckoutCapturePage() {
           fetchVehicles(d.companyId, { includeArchived: true }),
           fetchCompanies(),
         ]);
+        if (cancelled) return;
         void saveCachedCompanies(companies);
         void saveCachedVehicles(d.companyId, vehicles);
         applyUnit(vehicles.find((item) => item.id === d.vehicleId) ?? null, companies);
       } catch {
+        if (cancelled) return;
         const [cachedVehicles, cachedCompanies] = await Promise.all([
           getCachedVehicles(d.companyId),
           getCachedCompanies(),
         ]);
+        if (cancelled) return;
         const companies = cachedCompanies?.length ? cachedCompanies : [companyFromDraft(d)];
         const cached = cachedVehicles?.find((item) => item.id === d.vehicleId);
         const found = (cached as SharedVehicle | undefined) ?? vehicleFromDraft(d);
@@ -235,6 +240,9 @@ function CheckoutCapturePage() {
       }
     }
     load();
+    return () => {
+      cancelled = true;
+    };
   }, [draftId, router, searchParams]);
 
   useEffect(() => {
@@ -244,7 +252,7 @@ function CheckoutCapturePage() {
   }, [draft, vehicle]);
 
   useEffect(() => {
-    if (!draft) return;
+    if (!draft || draft.id !== draftId) return;
     const timer = setTimeout(() => {
       void saveCheckoutDraft({
         ...draft,
@@ -260,7 +268,7 @@ function CheckoutCapturePage() {
       });
     }, 600);
     return () => clearTimeout(timer);
-  }, [draft, photos, photoFlags, inspectionForm, signatureDataUrl, signedAt, vehicle, company]);
+  }, [draft, draftId, photos, photoFlags, inspectionForm, signatureDataUrl, signedAt, vehicle, company]);
 
   useEffect(() => {
     if (isPrecheckRed(inspectionForm)) setPhase("inspect");

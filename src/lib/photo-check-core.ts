@@ -4,6 +4,8 @@ import {
   PHOTO_CHECK_PROMPT,
   PHOTO_CHECK_SCHEMA,
   parseVerdict,
+  differentUnitAlertMessage,
+  differentUnitReading,
   photoCheckAlertMessage,
   photoCheckPlan,
   underCap,
@@ -58,7 +60,7 @@ export async function compareOnce(
         model: PHOTO_CHECK_MODEL,
         stream: false,
         temperature: 0,
-        max_tokens: 300,
+        max_tokens: 450,
         reasoning: { effort: "none" },
         response_format: {
           type: "json_schema",
@@ -116,6 +118,7 @@ export async function runPhotoCheck(
   if (!token) return { ran: 0, found: [], skipped: "no gateway credential" };
   const now = (deps.now ?? (() => new Date()))();
   const results: Partial<Record<PhotoAngle, PhotoCheckResult>> = {};
+  const seen: Array<{ plate: string; unit: string }> = [];
   let ran = 0;
   for (const item of plan) {
     if (!underCap(spent, settings)) break;
@@ -129,6 +132,7 @@ export async function runPhotoCheck(
     const out = await compareOnce(before, after, token, deps.fetch);
     ran += 1;
     spent += out.costUsd;
+    seen.push({ plate: out.verdict.seenPlate ?? "", unit: out.verdict.seenUnit ?? "" });
     results[item.angle] = {
       changed: out.verdict.changed,
       confidence: out.verdict.confidence,
@@ -144,7 +148,15 @@ export async function runPhotoCheck(
     // No credential or no credits: stop instead of failing every slot.
     if (out.error && /gateway (401|402|403)/.test(out.error)) break;
   }
-  if (deps.alreadyOnFile) {
+  const mismatch = differentUnitReading({ unitNumber: report.unitNumber, plate: report.plate }, seen);
+  if (mismatch) {
+    for (const angle of Object.keys(results) as PhotoAngle[]) {
+      const row = results[angle];
+      if (!row) continue;
+      const { box: _dropped, ...rest } = row;
+      results[angle] = { ...rest, changed: false };
+    }
+  } else if (deps.alreadyOnFile) {
     const pending = (Object.entries(results) as Array<[PhotoAngle, PhotoCheckResult]>)
       .filter(([, row]) => row.changed)
       .map(([angle, row]) => ({ angle, summary: row.summary }));
@@ -163,6 +175,21 @@ export async function runPhotoCheck(
     }
   }
   if (Object.keys(results).length) await deps.save(results);
+  if (mismatch) {
+    const unit = formatUnitLabel(report.unitNumber, report.plate);
+    await deps.insertAlert({
+      id: `${report.id}:photo_check`,
+      type: "photo_check",
+      message: differentUnitAlertMessage(unit, mismatch),
+      vehicleId: report.vehicleId,
+      vehiclePlate: unit,
+      actorName: "Photo check",
+      reportId: report.id,
+      createdAt: now.toISOString(),
+      read: false,
+    });
+    return { ran, found: [] };
+  }
   const found = (Object.entries(results) as Array<[PhotoAngle, PhotoCheckResult]>).filter(([, r]) => r.changed);
   if (found.length) {
     const unit = formatUnitLabel(report.unitNumber, report.plate);
