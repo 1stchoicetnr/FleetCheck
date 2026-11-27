@@ -19,6 +19,8 @@ import {
   setOfficeAlertRead,
 } from "@/lib/checkout-api";
 import { DamageBeforeAfter } from "@/components/damage-before-after";
+import { OfficePhotoThumb, usePhotoLightbox } from "@/components/photo-lightbox";
+import { viewerSlides } from "@/lib/photo-viewer";
 import { WhoHadItLastBlock } from "@/components/who-had-it-last";
 import { PhotoCheckFindings } from "@/components/photo-check-findings";
 import { MarkKnownDamage } from "@/components/known-damage";
@@ -443,6 +445,7 @@ export default function AlertsPage() {
 }
 
 function AlertDetailsBlock({ alert }: { alert: ListedAlert }) {
+  const { open, viewer } = usePhotoLightbox();
   const d = alert.details;
   if (!d) return null;
   const lines = [
@@ -454,6 +457,13 @@ function AlertDetailsBlock({ alert }: { alert: ListedAlert }) {
   if (!lines.length) return null;
   // Before/after pairs show the photos when present, so skip the plain thumbnails.
   const thumbs = d.compare?.length ? [] : d.photos.filter((p) => p.src).slice(0, 3);
+  const slides = viewerSlides(
+    thumbs.map((p) => ({
+      id: p.angle,
+      src: p.src,
+      label: p.note ? `${p.label}: ${p.note}` : `${p.label} damage photo`,
+    }))
+  );
   return (
     <div className="mt-2 space-y-2">
       <ul className="text-sm text-gray-800 list-disc pl-5 space-y-0.5">
@@ -463,18 +473,20 @@ function AlertDetailsBlock({ alert }: { alert: ListedAlert }) {
       </ul>
       {thumbs.length > 0 && (
         <div className="flex gap-2">
-          {thumbs.map((p) => (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              key={p.angle}
-              src={p.src}
-              alt={`${p.label} damage photo`}
-              loading="lazy"
-              className="h-16 w-20 object-cover rounded-lg border border-gray-200"
-            />
-          ))}
+          {thumbs.map((p) =>
+            p.src ? (
+              <div key={p.angle} className="h-16 w-20 overflow-hidden rounded-lg border border-gray-200">
+                <OfficePhotoThumb
+                  src={p.src}
+                  label={p.note ? `${p.label}: ${p.note}` : `${p.label} damage photo`}
+                  onOpen={() => open(slides, p.angle)}
+                />
+              </div>
+            ) : null
+          )}
         </div>
       )}
+      {viewer}
     </div>
   );
 }
