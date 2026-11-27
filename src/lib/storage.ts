@@ -1196,6 +1196,10 @@ export async function getCheckoutDraft(
   return withDB((db) => db.get("checkoutDrafts", id));
 }
 
+export async function listCheckoutDrafts(): Promise<CheckoutDraft[]> {
+  return withDB((db) => db.getAll("checkoutDrafts"));
+}
+
 export async function deleteCheckoutDraft(id: string): Promise<void> {
   await withDB((db) => db.delete("checkoutDrafts", id));
 }

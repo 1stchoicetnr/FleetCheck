@@ -137,7 +137,8 @@ test("banner details list unit, driver, Pacific date and problem; only office ro
     httpError("Failed to save photo", 500),
     Date.now()
   );
-  const driverLines = outboxLines([server500], { signedIn: true, role: "driver" });
+  const seenAt = new Date("2026-10-21T02:00:00.000Z");
+  const driverLines = outboxLines([server500], { signedIn: true, role: "driver" }, seenAt);
   assert.equal(driverLines[0].unit, "Unit #11");
   assert.equal(driverLines[0].driver, "Ken Taylor");
   assert.equal(driverLines[0].when, "Oct 20, 5:31 PM");
@@ -147,8 +148,21 @@ test("banner details list unit, driver, Pacific date and problem; only office ro
   assert.equal(outboxLines([server500], { signedIn: true, role: "super_admin" })[0].canClear, true);
   assert.equal(outboxLines([server500], { signedIn: false, role: "super_admin" })[0].canClear, false);
   assert.equal(isOfficeRole("tech"), false);
+  const sameDay = new Date("2026-11-06T20:00:00.000Z");
+  const waiting = item({
+    id: "chk-other-123456",
+    createdAt: "2026-11-06T18:00:00.000Z",
+    signedAt: "2026-11-06T18:00:00.000Z",
+  });
   assert.equal(
-    outboxHeadline(outboxLines([server500, item({ id: "chk-other-123456" })], { signedIn: true }), true),
+    outboxHeadline(
+      outboxLines(
+        [waiting, item({ id: "chk-second-123456", createdAt: waiting.createdAt, signedAt: waiting.signedAt })],
+        { signedIn: true },
+        sameDay
+      ),
+      true
+    ),
     "2 checks didn't finish uploading. They are still on this phone."
   );
 });

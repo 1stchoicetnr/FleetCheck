@@ -1,6 +1,12 @@
 "use client";
 
-import { createCheckoutReport, markCheckoutSent, uploadCheckoutPhotos } from "./checkout-api";
+import {
+  createCheckoutReport,
+  fetchCheckoutReport,
+  fetchMyChecks,
+  markCheckoutSent,
+  uploadCheckoutPhotos,
+} from "./checkout-api";
 import {
   CheckoutOutboxItem,
   deliverOutboxItem,
@@ -11,11 +17,13 @@ import {
   outboxPhoto,
   releaseOutboxForRetry,
 } from "./checkout-idempotency";
+import { loadServerReportsForOutbox, removeSentOutboxItems } from "./checkout-reconcile";
 import {
   deleteCheckoutDraft,
   deleteCheckoutOutboxItem,
   saveCheckoutReport,
   getCheckoutOutboxItem,
+  getCheckoutReportById,
   getPendingSyncCount,
   listCheckoutOutbox,
   saveCheckoutOutboxItem,
@@ -106,6 +114,29 @@ export async function retryCheckoutOutbox(): Promise<number> {
   return flushCheckoutOutbox();
 }
 
+/**
+ * Drop outbox rows the server already marked sent, and the draft with them.
+ * Used when My checks opens and before each flush, so a lost success response
+ * does not keep yesterday's check on this phone. This does not create a report.
+ */
+export async function reconcileSentCheckoutOutbox(): Promise<void> {
+  const items = await listCheckoutOutbox();
+  if (!items.some((item) => item.serverReportId)) return;
+  const reports = await loadServerReportsForOutbox(items, fetchMyChecks, fetchCheckoutReport);
+  await removeSentOutboxItems(items, reports, {
+    deleteOutbox: deleteCheckoutOutboxItem,
+    deleteDraft: deleteCheckoutDraft,
+    beforeDelete: async (item) => {
+      const report = reports.find((row) => row.id === item.serverReportId);
+      if (!report?.sentAt) return;
+      await saveCheckoutReport({ ...report, sentAt: report.sentAt });
+      console.info(
+        `[outbox] reconciled sent item=${item.id} server=${item.serverReportId ?? "none"} unit=${item.unitNumber}`
+      );
+    },
+  });
+}
+
 /** Send every due outbox item. Returns how many checks are still waiting. */
 export function flushCheckoutOutbox(): Promise<number> {
   if (typeof navigator !== "undefined" && !navigator.onLine) {
@@ -120,6 +151,7 @@ export function flushCheckoutOutbox(): Promise<number> {
 }
 
 async function runFlush(): Promise<number> {
+  await reconcileSentCheckoutOutbox();
   const items = await listCheckoutOutbox();
   const now = Date.now();
   for (const item of items) {
@@ -303,6 +335,14 @@ export async function submitCheckoutFromDraft(input: {
       ...originalDriverFields(item),
     });
     return { state: "sent", report };
+  }
+  // Create, photos, and mark-sent can all succeed while the response is lost.
+  // If the server already has this check, drop the phone copy and say Sent.
+  await reconcileSentCheckoutOutbox();
+  const stillQueued = await getCheckoutOutboxItem(key);
+  if (!stillQueued && result.item.serverReportId) {
+    const saved = await getCheckoutReportById(result.item.serverReportId);
+    if (saved?.sentAt) return { state: "sent", report: saved };
   }
   return {
     state: "saved",

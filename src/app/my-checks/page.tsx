@@ -8,30 +8,18 @@ import { DeliveryBadge } from "@/components/delivery-badge";
 import { useAuth } from "@/hooks/use-auth";
 import { fetchMyChecks, markCheckoutSent } from "@/lib/checkout-api";
 import { driverUploadMessage } from "@/lib/delivery-status";
-import { retryCheckoutOutbox } from "@/lib/checkout-outbox";
+import { reconcileSentCheckoutOutbox, retryCheckoutOutbox } from "@/lib/checkout-outbox";
+import { buildMyCheckRows, type MyCheckRow } from "@/lib/my-check-rows";
 import {
   getCheckoutReports,
   listCheckoutOutbox,
 } from "@/lib/storage";
 import type { CheckoutReport } from "@/lib/types";
-import { isBeforeRolloutSlate } from "@/lib/rollout-slate";
-import { formatUnitLabel } from "@/lib/utils";
-
-interface CheckRow {
-  id: string;
-  title: string;
-  detail: string;
-  createdAt: string;
-  sentAt?: string;
-  localOnly?: boolean;
-  unfinished?: boolean;
-  archivedAt?: string;
-}
 
 export default function MyChecksPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
-  const [rows, setRows] = useState<CheckRow[]>([]);
+  const [rows, setRows] = useState<MyCheckRow[]>([]);
   const [ready, setReady] = useState(false);
   const [finishing, setFinishing] = useState("");
   const [finishNote, setFinishNote] = useState("");
@@ -45,6 +33,7 @@ export default function MyChecksPage() {
     if (!user) return;
     let cancelled = false;
     async function load() {
+      await reconcileSentCheckoutOutbox().catch(() => undefined);
       const [outbox, local] = await Promise.all([
         listCheckoutOutbox(),
         getCheckoutReports(),
@@ -55,49 +44,7 @@ export default function MyChecksPage() {
       } catch {
         remote = [];
       }
-      const byId = new Map<string, CheckRow>();
-      const waitingIds = new Set<string>();
-      for (const item of outbox) {
-        waitingIds.add(item.id);
-        if (item.serverReportId) waitingIds.add(item.serverReportId);
-        byId.set(item.serverReportId || item.id, {
-          id: item.serverReportId || item.id,
-          title: formatUnitLabel(item.unitNumber, item.plate),
-          detail: `${item.year} ${item.make} ${item.model}`,
-          createdAt: item.createdAt,
-          localOnly: !item.serverReportId,
-          unfinished: true,
-        });
-      }
-      for (const report of local) {
-        if (byId.has(report.id)) continue;
-        byId.set(report.id, {
-          id: report.id,
-          title: formatUnitLabel(report.unitNumber, report.plate),
-          detail: `${report.year} ${report.make} ${report.model}`,
-          createdAt: report.createdAt,
-          sentAt: report.sentAt,
-          archivedAt: report.archivedAt,
-        });
-      }
-      for (const report of remote) {
-        if (waitingIds.has(report.id)) continue;
-        byId.set(report.id, {
-          id: report.id,
-          title: formatUnitLabel(report.unitNumber, report.plate),
-          detail: `${report.year} ${report.make} ${report.model}`,
-          createdAt: report.createdAt,
-          sentAt: report.sentAt,
-        });
-      }
-      const remoteIds = new Set(remote.map((report) => report.id));
-      const next = Array.from(byId.values())
-        .filter((row) => {
-          if (row.archivedAt) return false;
-          if (remoteIds.has(row.id)) return true;
-          return !isBeforeRolloutSlate(row.createdAt);
-        })
-        .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+      const next = buildMyCheckRows({ outbox, local, remote });
       if (!cancelled) {
         setRows(next);
         setReady(true);
@@ -145,6 +92,7 @@ export default function MyChecksPage() {
                 unfinished={row.unfinished}
               />
             </div>
+            {row.note && <p className="mt-2 text-sm text-gray-800">{row.note}</p>}
             {(row.unfinished || !row.sentAt) && (
               <button
                 type="button"

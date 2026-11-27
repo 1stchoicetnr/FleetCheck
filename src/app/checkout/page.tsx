@@ -3,6 +3,7 @@
 import { OUT_OF_SERVICE_MESSAGE } from "@/lib/out-of-service";
 import { FormEvent, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "@/lib/types";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AppHeader } from "@/components/app-header";
 import { CheckoutAccountNotice } from "@/components/checkout-account-notice";
@@ -12,12 +13,20 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { useAuth } from "@/hooks/use-auth";
 import { canStartCheckout } from "@/lib/fleet-config";
-import { freshCheckoutDraftId } from "@/lib/checkout-idempotency";
+import {
+  chooseCheckoutDraft,
+  draftContentToCarry,
+  draftIsPreviousPacificDay,
+  previousDayOutboxMessage,
+  stalePreviousDayDraftIds,
+} from "@/lib/checkout-draft-day";
 import {
   checkoutDraftId,
+  deleteCheckoutDraft,
   getCachedCompanies,
   getCachedVehicles,
   getCheckoutDraft,
+  listCheckoutDrafts,
   listCheckoutOutbox,
   saveCachedCompanies,
   saveCachedVehicles,
@@ -111,6 +120,7 @@ function CheckoutStartPage() {
   const [allowDriverAdd, setAllowDriverAdd] = useState(false);
   const [companySettings, setCompanySettings] = useState<PublicCompanySettings | null>(null);
   const [showErrors, setShowErrors] = useState(false);
+  const [earlierNotices, setEarlierNotices] = useState<string[]>([]);
   const inspectionDate = formatDateOnly(new Date().toISOString());
 
   useEffect(() => {
@@ -158,7 +168,7 @@ function CheckoutStartPage() {
     const draftId = searchParams.get("draft");
     if (!draftId) return;
     void getCheckoutDraft(draftId).then((draft) => {
-      if (!draft) return;
+      if (!draft || draftIsPreviousPacificDay(draft)) return;
       setEditingDraftId(draft.id);
       setCompanyId(draft.companyId);
       setVehicleId(draft.vehicleId);
@@ -174,6 +184,30 @@ function CheckoutStartPage() {
       setOdometer(draft.odometer);
     });
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    void (async () => {
+      const [items, drafts] = await Promise.all([
+        listCheckoutOutbox().catch(() => []),
+        listCheckoutDrafts().catch(() => []),
+      ]);
+      if (cancelled) return;
+      const notes = items
+        .map((item) => previousDayOutboxMessage(item))
+        .filter((note): note is string => Boolean(note));
+      setEarlierNotices([...new Set(notes)]);
+      const stale = stalePreviousDayDraftIds(
+        drafts,
+        items.map((item) => item.draftId)
+      );
+      await Promise.all(stale.map((id) => deleteCheckoutDraft(id).catch(() => undefined)));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   useEffect(() => {
     if (!companyId) return;
@@ -356,16 +390,31 @@ function CheckoutStartPage() {
         );
       }
 
-      const baseId = editingDraftId || checkoutDraftId(companyId, vehicle.id, type, user.id);
-      // A finished check of this unit can still be waiting to send under the same
-      // draft. A new check must not reuse its photos, signature, or server row.
-      const id = editingDraftId
-        ? baseId
-        : freshCheckoutDraftId(
-            baseId,
-            (await listCheckoutOutbox().catch(() => [])).map((item) => item.draftId)
-          );
-      const existing = await getCheckoutDraft(id);
+      const baseId = checkoutDraftId(companyId, vehicle.id, type, user.id);
+      const now = new Date();
+      const [outboxItems, listedDrafts] = await Promise.all([
+        listCheckoutOutbox().catch(() => []),
+        listCheckoutDrafts().catch(() => []),
+      ]);
+      const drafts = [...listedDrafts];
+      if (editingDraftId && !drafts.some((draft) => draft.id === editingDraftId)) {
+        const extra = await getCheckoutDraft(editingDraftId);
+        if (extra) drafts.push(extra);
+      }
+      const choice = chooseCheckoutDraft({
+        baseId,
+        drafts,
+        waitingDraftIds: outboxItems.map((item) => item.draftId),
+        now,
+        editingId: editingDraftId || undefined,
+      });
+      for (const staleId of choice.deleteDraftIds) {
+        await deleteCheckoutDraft(staleId).catch(() => undefined);
+      }
+      const existing = choice.reuseContent
+        ? drafts.find((draft) => draft.id === choice.id)
+        : undefined;
+      const carried = draftContentToCarry(existing, choice.reuseContent);
       const powertrain = inferPowertrain(
         make.trim(),
         model.trim(),
@@ -374,7 +423,7 @@ function CheckoutStartPage() {
       const usesClover = cloverEnabled(companySettings, companyId);
       const inspectionForm = applyPowertrainToForm(
         {
-          ...(existing?.inspectionForm ??
+          ...(carried.inspectionForm ??
             createEmptyInspectionForm(powertrain, {
               inspectedAt: new Date().toISOString(),
             })),
@@ -392,7 +441,7 @@ function CheckoutStartPage() {
       }
       const company = companies.find((item) => item.id === companyId);
       await saveCheckoutDraft({
-        id,
+        id: choice.id,
         companyId,
         vehicleId: vehicle.id,
         type,
@@ -403,11 +452,11 @@ function CheckoutStartPage() {
         year: year.trim(),
         make: make.trim(),
         model: model.trim(),
-        photos: existing?.photos ?? {},
-        photoFlags: existing?.photoFlags,
+        photos: carried.photos,
+        photoFlags: carried.photoFlags,
         inspectionForm,
-        signatureDataUrl: existing?.signatureDataUrl,
-        signedAt: existing?.signedAt,
+        signatureDataUrl: carried.signatureDataUrl,
+        signedAt: carried.signedAt,
         unitNumber: vehicle.unitNumber,
         plate: vehicle.plate,
         companyName: company?.name,
@@ -415,7 +464,9 @@ function CheckoutStartPage() {
         updatedAt: new Date().toISOString(),
       });
       saveLastVehicleId(companyId, vehicle.id);
-      router.push(editingDraftId ? `/checkout/${id}?phase=review` : `/checkout/${id}`);
+      const resumeReview =
+        Boolean(editingDraftId) && choice.id === editingDraftId && choice.reuseContent;
+      router.push(resumeReview ? `/checkout/${choice.id}?phase=review` : `/checkout/${choice.id}`);
     } catch (err) {
       setError(
         err instanceof Error
@@ -455,6 +506,22 @@ function CheckoutStartPage() {
             to the photo walkaround. A red precheck parks the vehicle for Office.
           </p>
         </div>
+
+        {earlierNotices.map((note) => (
+          <div
+            key={note}
+            role="status"
+            className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+          >
+            <p>{note}</p>
+            <Link
+              href="/my-checks"
+              className="mt-2 inline-flex min-h-[44px] items-center font-semibold underline"
+            >
+              Finish sending
+            </Link>
+          </div>
+        ))}
 
         <Card>
           <CardContent className="py-5">

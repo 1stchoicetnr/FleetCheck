@@ -1,4 +1,5 @@
 import type { CheckoutOutboxItem } from "./checkout-idempotency";
+import { previousDayOutboxMessage } from "./checkout-draft-day";
 import { isPhotoWindowClosedError } from "./photo-window";
 
 export type OutboxProblemKind = "waiting" | "sign-in" | "office" | "error";
@@ -13,6 +14,8 @@ export interface OutboxLine {
   kind: OutboxProblemKind;
   /** Office, Manager and Owner may clear a stuck check from this phone. */
   canClear: boolean;
+  /** Set when this check was signed on an earlier Pacific day and is still here. */
+  previousDayNote?: string;
 }
 
 /** Office, Manager and Owner accounts (client roles). */
@@ -73,21 +76,24 @@ function photoTime(item: CheckoutOutboxItem): string | undefined {
 
 export function outboxLines(
   items: CheckoutOutboxItem[],
-  viewer: { signedIn: boolean; role?: string | null }
+  viewer: { signedIn: boolean; role?: string | null },
+  now: Date = new Date()
 ): OutboxLine[] {
   const office = viewer.signedIn && isOfficeRole(viewer.role);
   return [...items]
     .sort((a, b) => (photoTime(a) ?? "").localeCompare(photoTime(b) ?? ""))
     .map((item) => {
       const problem = outboxProblem(item, viewer.signedIn);
+      const previousDayNote = previousDayOutboxMessage(item, now) ?? undefined;
       return {
         id: item.id,
         unit: item.unitNumber ? `Unit ${item.unitNumber.startsWith("#") ? item.unitNumber : `#${item.unitNumber}`}` : "Unknown unit",
         driver: item.driverName || "Unknown driver",
         when: formatOutboxWhen(photoTime(item)),
-        problem: problem.text,
+        problem: previousDayNote && problem.kind === "waiting" ? previousDayNote : problem.text,
         kind: problem.kind,
         canClear: office,
+        previousDayNote,
       };
     });
 }
@@ -96,6 +102,10 @@ export function outboxLines(
 export function outboxHeadline(lines: OutboxLine[], online: boolean): string {
   if (lines.some((line) => line.kind === "sign-in")) return "Sign in to finish uploading.";
   if (!online) return "This check didn't finish uploading. It stays on this phone until there is a signal.";
+  const notes = lines
+    .map((line) => line.previousDayNote)
+    .filter((note): note is string => Boolean(note));
+  if (notes.length > 0 && notes.length === lines.length) return notes.join(" ");
   return lines.length > 1
     ? `${lines.length} checks didn't finish uploading. They are still on this phone.`
     : "This check didn't finish uploading. It is still on this phone.";
