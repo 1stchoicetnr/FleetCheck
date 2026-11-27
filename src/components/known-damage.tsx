@@ -1,17 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { OfficePhotoThumb, usePhotoLightbox } from "@/components/photo-lightbox";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardTitle } from "@/components/ui/card";
 import {
   addKnownDamage,
   fetchKnownDamage,
   fetchPriorReports,
+  reviewDamageAnswer,
   updateKnownDamage,
   type KnownDamageItem,
 } from "@/lib/checkout-api";
 import { onFileDamage, parseReportedDamageId, type OnFileDamage } from "@/lib/on-file-damage";
-import type { CheckoutReport } from "@/lib/types";
+import type { CheckoutReport, PhotoAngle } from "@/lib/types";
 import { formatCheckoutTime } from "@/lib/checkout-slack";
 import {
   KNOWN_DAMAGE_STATUS_LABELS,
@@ -22,7 +24,7 @@ import {
 } from "@/lib/known-damage";
 import { knownDamagePhotoSrc } from "@/lib/known-damage-photo";
 import { photoAngleLabel } from "@/lib/photo-flags";
-import type { PhotoAngle } from "@/lib/types";
+import { viewerSlides } from "@/lib/photo-viewer";
 
 /**
  * Office: mark a damage report as known. "Known – not fixing" or "Fix later"
@@ -309,13 +311,18 @@ function KnownDamageRow({
   onRepaired: (id: string) => void;
 }) {
   const src = knownDamagePhotoSrc(item);
+  const { open, viewer } = usePhotoLightbox();
+  const label = `${photoAngleLabel(item.angle)}: ${item.description}`;
   return (
     <div className="flex gap-3 rounded-lg border border-gray-200 bg-white p-2">
       {src ? (
-        <a href={src} target="_blank" rel="noreferrer" className="shrink-0">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={src} alt={`${photoAngleLabel(item.angle)} known damage`} className="h-16 w-20 rounded-md object-cover border border-gray-200" />
-        </a>
+        <div className="h-16 w-20 shrink-0 overflow-hidden rounded-md border border-gray-200">
+          <OfficePhotoThumb
+            src={src}
+            label={label}
+            onOpen={() => open(viewerSlides([{ id: item.id, src, label }]), item.id)}
+          />
+        </div>
       ) : null}
       <div className="min-w-0 flex-1 space-y-0.5">
         <p className="text-sm font-semibold text-gray-900">
@@ -338,6 +345,7 @@ function KnownDamageRow({
           </Button>
         )}
       </div>
+      {viewer}
     </div>
   );
 }
@@ -353,13 +361,14 @@ export function KnownDamageAnswers({
   canReview,
   onReviewed,
 }: {
-  report: import("@/lib/types").CheckoutReport;
+  report: CheckoutReport;
   known: KnownDamageItem[];
   canReview: boolean;
   onReviewed?: () => void;
 }) {
   const [busy, setBusy] = useState("");
   const [note, setNote] = useState("");
+  const { open, viewer } = usePhotoLightbox();
   const rows = report.photos.filter((photo) => photo.knownDamageId && photo.knownDamageAnswer);
   if (!rows.length) return null;
 
@@ -367,7 +376,6 @@ export function KnownDamageAnswers({
     setBusy(`${angle}:${verdict}`);
     setNote("");
     try {
-      const { reviewDamageAnswer } = await import("@/lib/checkout-api");
       const result = await reviewDamageAnswer(report.id, angle, verdict);
       setNote(
         verdict === "not_new"
@@ -403,6 +411,16 @@ export function KnownDamageAnswers({
                 }
               : undefined);
           const knownSrc = item ? knownDamagePhotoSrc(item) : "";
+          const knownCaption = item
+            ? item.createdAt
+              ? `Known · ${formatCheckoutTime(item.createdAt)}`
+              : "Earlier report"
+            : "Known damage (removed)";
+          const checkCaption = `This check · ${report.driverName}`;
+          const slides = viewerSlides([
+            { id: `${photo.angle}:known`, src: knownSrc, label: knownCaption },
+            { id: `${photo.angle}:check`, src: photo.dataUrl, label: checkCaption },
+          ]);
           const same = photo.knownDamageAnswer === "same";
           const reviewed = photo.damageReview;
           return (
@@ -412,8 +430,16 @@ export function KnownDamageAnswers({
                 {item ? `: ${item.description}` : ""}
               </p>
               <div className="grid grid-cols-2 gap-2">
-                <PhotoBox src={knownSrc} caption={item ? (item.createdAt ? `Known · ${formatCheckoutTime(item.createdAt)}` : "Earlier report") : "Known damage (removed)"} />
-                <PhotoBox src={photo.dataUrl} caption={`This check · ${report.driverName}`} />
+                <PhotoBox
+                  src={knownSrc}
+                  caption={knownCaption}
+                  onOpen={knownSrc ? () => open(slides, `${photo.angle}:known`) : undefined}
+                />
+                <PhotoBox
+                  src={photo.dataUrl}
+                  caption={checkCaption}
+                  onOpen={photo.dataUrl ? () => open(slides, `${photo.angle}:check`) : undefined}
+                />
               </div>
               <p className={`text-sm font-semibold ${same ? "text-gray-700" : "text-red-700"}`}>
                 Driver said: {same ? "Same as before" : "New damage"} · {report.driverName}
@@ -439,20 +465,26 @@ export function KnownDamageAnswers({
           );
         })}
         {note && <p className="text-xs text-gray-700">{note}</p>}
+        {viewer}
       </CardContent>
     </Card>
   );
 }
 
-function PhotoBox({ src, caption }: { src?: string; caption: string }) {
+function PhotoBox({
+  src,
+  caption,
+  onOpen,
+}: {
+  src?: string;
+  caption: string;
+  onOpen?: () => void;
+}) {
   return (
     <figure className="min-w-0">
       <div className="aspect-video overflow-hidden rounded-lg border border-gray-200 bg-gray-50">
-        {src ? (
-          <a href={src} target="_blank" rel="noreferrer">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={src} alt={caption} className="h-full w-full object-cover" loading="lazy" />
-          </a>
+        {src && onOpen ? (
+          <OfficePhotoThumb src={src} label={caption} onOpen={onOpen} />
         ) : (
           <div className="flex h-full items-center justify-center text-xs text-gray-400">No photo</div>
         )}
