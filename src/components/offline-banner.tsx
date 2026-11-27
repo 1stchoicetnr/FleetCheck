@@ -93,6 +93,14 @@ export function OfflineBanner() {
               {line.previousDayNote && line.previousDayNote !== line.problem && (
                 <div className="text-xs">{line.previousDayNote}</div>
               )}
+              {line.fixHref && (
+                <Link
+                  href={line.fixHref}
+                  className="mt-2 mr-2 inline-flex min-h-9 items-center rounded-md bg-amber-800 px-2 text-xs font-bold text-white"
+                >
+                  Fix this check
+                </Link>
+              )}
               {line.canClear && (
                 <button
                   type="button"

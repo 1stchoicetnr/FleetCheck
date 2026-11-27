@@ -6,7 +6,6 @@ import {
   legacyMissingNotes,
   photoStepsForClient,
   stuckReason,
-  sweepShouldPostSlack,
 } from "./legacy-checkout.ts";
 import { missingRequiredPhotos } from "./checkout-completion.ts";
 import type { PhotoStep } from "./types.ts";
@@ -39,11 +38,6 @@ test("old-app checks treat insurance as optional and note it", () => {
   const current = { ...base, idempotencyKey: "k" };
   assert.deepEqual(missingRequiredPhotos(current as never, photoStepsForClient(current, steps)), ["insurance"]);
   assert.deepEqual(legacyMissingNotes(current as never, steps), []);
-});
-
-test("sweep posts to Slack only for checks under 24h old", () => {
-  assert.equal(sweepShouldPostSlack(created, now), true);
-  assert.equal(sweepShouldPostSlack(created, now + 25 * 3600_000), false);
 });
 
 test("stuck reason is specific", () => {

@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   CHECKOUT_SLACK_MAX,
+  LATE_POST_AFTER_MS,
   SlackDeliveryError,
   checkoutSlackText,
+  latePostSlackLine,
   postCheckoutSlack,
   postSlackMessage,
 } from "./checkout-slack.ts";
@@ -186,6 +188,37 @@ test("Slack post lists each checklist issue with its reason and note", () => {
   const text = checkoutSlackText(r, { appOrigin: ORIGIN });
   assert.match(text, /\*Check issue:\* Headlights: Issue — Not working — left bulb/);
   assert.doesNotMatch(checkoutSlackText(report(), { appOrigin: ORIGIN }), /Check issue/);
+});
+
+test("a post more than 15 minutes after submit is labeled in Pacific time and still sends once", async () => {
+  const submitted = "2026-11-26T15:59:00.000Z";
+  const posted = "2026-11-27T18:07:00.000Z";
+  const late = report();
+  late.signedAt = submitted;
+  late.createdAt = submitted;
+  late.completedAt = submitted;
+  const line = latePostSlackLine(late, posted);
+  assert.equal(line, "Late post: submitted Nov 26 7:59 AM PT, posted Nov 27 10:07 AM PT");
+  const text = checkoutSlackText(late, { appOrigin: ORIGIN, postedAt: posted });
+  assert.match(text, /Late post: submitted Nov 26 7:59 AM PT, posted Nov 27 10:07 AM PT/);
+  assert.match(text, /\*PDF:\*/);
+
+  const onTime = new Date(Date.parse(submitted) + LATE_POST_AFTER_MS).toISOString();
+  assert.equal(latePostSlackLine(late, onTime), null);
+  assert.equal(checkoutSlackText(late, { appOrigin: ORIGIN, postedAt: onTime }).includes("Late post"), false);
+
+  const calls: string[] = [];
+  await postCheckoutSlack(late, {
+    webhookUrl: "https://hooks.example.test/radcab",
+    appOrigin: ORIGIN,
+    postedAt: posted,
+    fetchImpl: async (_url, init) => {
+      calls.push(String(JSON.parse(init.body).text));
+      return { ok: true, text: async () => "ok" };
+    },
+  });
+  assert.equal(calls.length, 1);
+  assert.match(calls[0], /Late post: submitted Nov 26 7:59 AM PT/);
 });
 
 test("slack says when a driver kept a dark or blurry photo", () => {

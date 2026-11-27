@@ -27,6 +27,11 @@ import { pollFinish } from "@/lib/checkout-finish";
 import type { CheckoutInspectionForm } from "@/lib/inspection-form";
 import { CheckoutType } from "@/lib/types";
 import { blocksCheckout, OUT_OF_SERVICE_MESSAGE } from "@/lib/out-of-service";
+import {
+  missingCheckoutFieldLabels,
+  missingCheckoutFieldsError,
+  readCheckoutCreateFields,
+} from "@/lib/checkout-missing";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -115,21 +120,14 @@ export async function POST(req: NextRequest) {
       capturedAt?: string;
     };
     if (typeof body.idempotencyKey === "string") ctx.reportId = `key:${body.idempotencyKey}`;
-    if (
-      !body.companyId ||
-      !body.vehicleId ||
-      !body.unitNumber ||
-      !body.make ||
-      !body.model ||
-      !body.driverName ||
-      !body.dispatcherName ||
-      body.year == null ||
-      body.odometer == null
-    ) {
-      return NextResponse.json(
-        { error: "Missing required checkout fields" },
-        { status: 400 }
+    const fields = readCheckoutCreateFields(body);
+    if (!fields) {
+      const missing = missingCheckoutFieldLabels(body);
+      const error = missingCheckoutFieldsError(missing);
+      console.log(
+        `[api-4xx] status=400 route=create report=key:${body.idempotencyKey ?? "none"} user=${auth.userId} error="${error}"`
       );
+      return NextResponse.json({ error, missing }, { status: 400 });
     }
     if (
       body.signatureDataUrl &&
@@ -144,10 +142,10 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    await assertDriverMayCheckVehicle(auth, body.vehicleId);
+    await assertDriverMayCheckVehicle(auth, fields.vehicleId);
     // Office set this unit Out of Service: no new check-outs. A check started
     // before that (sat in a phone's outbox) still goes through.
-    const unitNow = await getVehicle(orgId, body.vehicleId);
+    const unitNow = await getVehicle(orgId, fields.vehicleId);
     if (
       blocksCheckout(
         unitNow?.outOfService,
@@ -195,18 +193,18 @@ export async function POST(req: NextRequest) {
     }
     const completedAt = queuedCaptureTime(body.capturedAt);
     const report = await createReport(orgId, {
-      companyId: body.companyId,
-      vehicleId: body.vehicleId,
-      unitNumber: body.unitNumber,
+      companyId: fields.companyId,
+      vehicleId: fields.vehicleId,
+      unitNumber: fields.unitNumber,
       plate: body.plate,
-      year: Number(body.year),
-      make: body.make,
-      model: body.model,
-      odometer: Number(body.odometer),
+      year: fields.year,
+      make: fields.make,
+      model: fields.model,
+      odometer: fields.odometer,
       // The signed-in person, or the original driver when the office sends a
       // check that sat on a shared phone. Never a typed name.
       driverName: who.driverName,
-      dispatcherName: body.dispatcherName,
+      dispatcherName: fields.dispatcherName,
       type: body.type === "check_in" ? "check_in" : "check_out",
       inspectionForm: body.inspectionForm,
       signatureDataUrl: body.signatureDataUrl,

@@ -41,6 +41,7 @@ import {
 } from "@/lib/checkout-api";
 import { submitCheckoutFromDraft } from "@/lib/checkout-outbox";
 import { driverUploadMessage } from "@/lib/delivery-status";
+import { isDriverFixableOutboxError } from "@/lib/checkout-missing";
 import { isGenericDriverName } from "@/lib/driver-name";
 import {
   CheckoutDraft,
@@ -491,12 +492,15 @@ function CheckoutCapturePage() {
 
   if (savedOnPhone && !completed) {
     const needsSignIn = submitError.includes("Sign in first");
+    const needsFix = isDriverFixableOutboxError(submitError);
     return (
       <div className="min-h-screen bg-gray-50">
-        <AppHeader title="Didn't finish uploading" backHref="/dashboard" />
+        <AppHeader title={needsFix ? "Not sent" : "Didn't finish uploading"} backHref="/dashboard" />
         <div className="max-w-lg mx-auto px-4 py-8 space-y-4">
           <div className="rounded-2xl border-2 border-amber-500 bg-amber-50 px-4 py-4 text-amber-950 space-y-3">
-            <h2 className="text-xl font-bold">This check did not finish uploading</h2>
+            <h2 className="text-xl font-bold">
+              {needsFix ? "Not sent" : "This check did not finish uploading"}
+            </h2>
             <p className="text-sm">
               {formatUnitLabel(vehicle.unitNumber, vehicle.plate)} — {draft.year} {draft.make}{" "}
               {draft.model}
@@ -507,6 +511,11 @@ function CheckoutCapturePage() {
                 : "It is still on this phone, including any photos that are still waiting. Retry will not create a second report."}
             </p>
             {submitError && <p className="text-sm font-medium">{submitError}</p>}
+            {needsFix && (
+              <Button size="lg" className="w-full" onClick={() => setSavedOnPhone(false)}>
+                Fix this check
+              </Button>
+            )}
             <Button size="lg" className="w-full" onClick={() => void handleSubmit()} disabled={submitting}>
               {submitting ? "Retrying…" : "Retry"}
             </Button>

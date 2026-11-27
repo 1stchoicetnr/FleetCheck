@@ -104,7 +104,7 @@ import {
   isUniqueViolation,
   replayIsSameCheck,
 } from "@/lib/checkout-idempotency";
-import { photoStepsForClient, stuckReason, sweepShouldPostSlack } from "@/lib/legacy-checkout";
+import { photoStepsForClient, stuckReason } from "@/lib/legacy-checkout";
 import { finishDecision, type FinishDecision } from "@/lib/checkout-finish";
 import { HISTORICAL_SENT_BEFORE, isStuckUpload, STUCK_UPLOAD_AFTER_MS } from "@/lib/delivery-status";
 import {
@@ -697,11 +697,11 @@ export async function sweepUnsentReports(
       await recordAlertsWhenReady(orgId, report, "sweep-timeout");
       continue;
     }
-    const postSlack = sweepShouldPostSlack(report.createdAt, now);
     try {
-      await confirmReportSent(orgId, id, { appOrigin: options?.appOrigin, office: false, postSlack });
+      // Age does not skip Slack. A late check is labeled in the post instead of dropped.
+      await confirmReportSent(orgId, id, { appOrigin: options?.appOrigin, office: false });
       sent += 1;
-      console.log(`[checkout-sweep] report=${id} result=sent slack=${postSlack ? "post" : "skip-backlog"}`);
+      console.log(`[checkout-sweep] report=${id} result=sent slack=post`);
     } catch (err) {
       console.log(
         `[checkout-sweep] report=${id} result=failed ${err instanceof Error ? err.message : String(err)}`

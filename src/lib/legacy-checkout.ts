@@ -42,13 +42,13 @@ export function legacyMissingNotes(
   return missing.map((angle) => `Missing ${ANGLE_LABEL[angle] ?? angle} photo (old app)`);
 }
 
-export const SWEEP_SLACK_MAX_AGE_MS = 24 * 60 * 60 * 1000;
-
-/** Backlog older than 24h is recorded as sent without posting, so #radcabcr is not flooded. */
-export function sweepShouldPostSlack(createdAt: string, now = Date.now()): boolean {
-  const created = Date.parse(createdAt);
-  return Number.isFinite(created) && now - created <= SWEEP_SLACK_MAX_AGE_MS;
-}
+/**
+ * The sweep used to record a check older than 24h as sent and skip Slack.
+ * That disagreed with markSent, which posted the same check whenever the phone
+ * finished uploading, so #radcabcr still got 4-day-late posts with no label.
+ * A finished check now posts at any age the sweep still looks at. The Slack
+ * text labels it when the post is more than 15 minutes after the driver signed.
+ */
 
 /** Specific reason for an unsent check, or undefined when it is not stuck. */
 export function stuckReason(

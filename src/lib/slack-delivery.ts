@@ -14,11 +14,19 @@ export const STALL_UNFINISHED_AFTER_MS = 30 * 60 * 1000;
 export const STALL_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
- * The daily job may retry a failed post, or send one "Not sent" notice, only
- * while the check is this recent. Older checks stay quiet until someone sends
- * them by hand.
+ * A "Not sent" stall notice is only for a recent check. A checkout that did
+ * finish still posts after this, with a late-post label, for CHECKOUT_POST_MAX_AGE_MS.
  */
 export const SLACK_AUTOPOST_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Unattended checkout posts (a failed webhook retry, or a sent check Slack
+ * never got) go out this far back. Older than this stays quiet so a deploy
+ * does not replay months of history. The driver's own mark-sent is not capped:
+ * whenever the phone finishes, that post goes out and is labeled if it is late.
+ * Matches the sweep's 21-day lookback.
+ */
+export const CHECKOUT_POST_MAX_AGE_MS = 21 * 24 * 60 * 60 * 1000;
 
 export const STALL_REASON_PHOTOS = "Photos still uploading";
 export const STALL_REASON_UNFINISHED = "Unfinished for 30 minutes";
@@ -41,11 +49,18 @@ export function slackDeliveryExhausted(attempts: number): boolean {
   return attempts >= SLACK_DELIVERY_CAP;
 }
 
-/** True when this check is too old for the daily job to post or retry it. */
+/** True when a stall notice is too old for the daily job. */
 export function slackAutopostTooOld(createdAt: string, now: number): boolean {
   const created = Date.parse(createdAt);
   if (!Number.isFinite(created)) return false;
   return now - created > SLACK_AUTOPOST_MAX_AGE_MS;
+}
+
+/** True when an unattended checkout post is past the 21-day lookback. */
+export function checkoutPostTooOld(createdAt: string, now: number): boolean {
+  const created = Date.parse(createdAt);
+  if (!Number.isFinite(created)) return false;
+  return now - created > CHECKOUT_POST_MAX_AGE_MS;
 }
 
 /** Drop links and setup paths. A stall notice stays plain text. */
