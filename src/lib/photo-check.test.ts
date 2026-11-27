@@ -3,6 +3,8 @@ import test from "node:test";
 import {
   callCostUsd,
   cleanPhotoCheckSettings,
+  differentUnitAlertMessage,
+  differentUnitReading,
   lastCleanPhoto,
   openPhotoCheckFindings,
   pacificMonthStart,
@@ -42,6 +44,76 @@ test("model answers: only a confident change counts; junk counts as no change", 
   assert.equal(parseVerdict("not json").changed, false);
   assert.equal(parseVerdict('```json\n{"changed":false,"confidence":0.9,"summary":"","box":null}\n```').summary, "No change");
   assert.equal(parseVerdict('{"changed":true,"confidence":0.9,"summary":"x","box":{"x":0.1,"y":0.1,"w":0,"h":0.2}}').box, undefined);
+  assert.deepEqual(
+    parseVerdict('{"changed":true,"confidence":0.9,"summary":"Dent above the wheel","box":[350,550,500,750],"seenPlate":"CYR3806","seenUnit":"11"}'),
+    {
+      changed: true,
+      confidence: 0.9,
+      summary: "Dent above the wheel",
+      box: { x: 0.55, y: 0.35, w: 0.2, h: 0.15 },
+      seenPlate: "CYR3806",
+      seenUnit: "11",
+    }
+  );
+});
+
+test("unit 11 is not compared with unit 5 when both are Chrysler 200s", () => {
+  const eleven = {
+    id: "now11",
+    vehicleId: "v11",
+    completedAt: "2026-11-27T18:11:00Z",
+    driverName: "Alex",
+    photos: [{ angle: "rr_quarter_panel", dataUrl: "blob:rr-11" }],
+    inspectionForm: {},
+  };
+  const five = {
+    id: "five",
+    vehicleId: "v5",
+    completedAt: "2026-11-27T16:00:00Z",
+    driverName: "Sam",
+    photos: [{ angle: "rr_quarter_panel", dataUrl: "blob:rr-5" }],
+    inspectionForm: {},
+  };
+  const older = {
+    id: "old11",
+    vehicleId: "v11",
+    completedAt: "2026-11-20T16:00:00Z",
+    driverName: "Mike",
+    photos: [{ angle: "rr_quarter_panel", dataUrl: "blob:rr-old" }],
+    inspectionForm: {},
+  };
+  assert.equal(photoCheckPlan(eleven as never, [five] as never, []).length, 0);
+  assert.deepEqual(
+    photoCheckPlan(eleven as never, [five, older] as never, []).map((p) => [p.angle, p.baseline.reportId, p.baseline.kind]),
+    [["rr_quarter_panel", "old11", "clean"]]
+  );
+  const knownOnFive = photoCheckPlan(eleven as never, [five, older] as never, [
+    { angle: "rr_quarter_panel", sourceReportId: "five" },
+  ]);
+  assert.equal(knownOnFive[0]?.baseline.reportId, "old11");
+  assert.equal(lastCleanPhoto(eleven as never, [five, older] as never, "rr_quarter_panel")?.reportId, "old11");
+});
+
+test("a readable plate or unit sticker from the other car is not new damage", () => {
+  const expected = { unitNumber: "11", plate: "CYR3806" };
+  assert.deepEqual(
+    differentUnitReading(expected, [{ plate: "CNN8933", unit: "05" }]),
+    { unit: "5", plate: "CNN8933" }
+  );
+  assert.equal(differentUnitReading(expected, [{ plate: "CYR 3806", unit: "11" }]), null);
+  assert.equal(differentUnitReading(expected, [{ plate: "", unit: "" }]), null);
+  assert.equal(
+    differentUnitReading(expected, [
+      { plate: "CNN8933", unit: "05" },
+      { plate: "CYR3806", unit: "" },
+    ]),
+    null,
+    "one photo that matches this unit keeps the damage findings"
+  );
+  assert.match(
+    differentUnitAlertMessage("Unit 11 · CYR3806", { unit: "5", plate: "CNN8933" }),
+    /Photo looks like a different unit \(#5\?\) on Unit 11 · CYR3806\. The new photo shows plate CNN8933\. Nothing was sent to Slack\./
+  );
 });
 
 test("cost: the gateway's figure when present, else tokens x Gemini 2.5 Flash list price", () => {
@@ -120,6 +192,45 @@ test("a likely change goes to the office queue only, with the change boxed", asy
   assert.equal(alert.id, "now:photo_check");
   assert.equal(alert.type, "photo_check");
   assert.match(alert.message, /Found by photo check on .*: Driver.* New scrape on rear door \(80%\)/);
+});
+
+test("photos of unit 5 on a unit 11 check raise one office alert and no damage", async () => {
+  const report = { ...now, unitNumber: "11", plate: "CYR3806" };
+  const answer = JSON.stringify({
+    changed: true,
+    confidence: 0.9,
+    summary: "New RAD CAB and RC 05 stickers on the bumper",
+    box: { x: 0.4, y: 0.55, w: 0.2, h: 0.15 },
+    seenPlate: "CNN8933",
+    seenUnit: "05",
+  });
+  const { d, saved, alerts } = deps({}, {
+    "data:image/jpeg;base64,blob:front-now": answer,
+    "data:image/jpeg;base64,blob:dd-now": answer,
+  });
+  const out = await runPhotoCheck("org-1", report, history, d);
+  assert.deepEqual(out.found, []);
+  assert.equal(alerts.length, 1);
+  const alert = alerts[0] as { type: string; message: string };
+  assert.equal(alert.type, "photo_check");
+  assert.match(alert.message, /Photo looks like a different unit \(#5\?\)/);
+  assert.match(alert.message, /CNN8933/);
+  assert.doesNotMatch(alert.message, /Found by photo check|new damage/i);
+  const savedRow = saved[0] as Record<string, { changed: boolean; box?: unknown }>;
+  assert.equal(savedRow.front.changed, false);
+  assert.equal(savedRow.front.box, undefined);
+  assert.equal(savedRow.driver_doors.changed, false);
+});
+
+test("a plate that matches this unit still raises the damage finding", async () => {
+  const report = { ...now, unitNumber: "11", plate: "CYR3806" };
+  const { d, alerts } = deps({}, {
+    "data:image/jpeg;base64,blob:dd-now":
+      '{"changed":true,"confidence":0.8,"summary":"New scrape on rear door","box":{"x":0.5,"y":0.4,"w":0.2,"h":0.2},"seenPlate":"CYR3806","seenUnit":"11"}',
+  });
+  const out = await runPhotoCheck("org-1", report, history, d);
+  assert.deepEqual(out.found, ["driver_doors"]);
+  assert.match((alerts[0] as { message: string }).message, /Found by photo check/);
 });
 
 test("off, over the cap, or no credential: no calls", async () => {

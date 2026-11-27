@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, Maximize2, X } from "lucide-react";
-import { changeBoxStyle, type ViewerBox, type ViewerSlide } from "@/lib/photo-viewer";
+import { normalizeChangeBox } from "@/lib/photo-box";
+import { changeBoxStyle, coverImageRect, type CoverRect, type ViewerBox, type ViewerSlide } from "@/lib/photo-viewer";
 
 export type LightboxPhoto = ViewerSlide;
 
 export function ChangeBoxMark({ box }: { box: ViewerBox }) {
+  if (!normalizeChangeBox(box)) return null;
   return (
     <div
       className="pointer-events-none absolute rounded border-2 border-red-600 bg-red-500/10"
@@ -45,8 +47,29 @@ export function OfficePhotoThumb({
   onOpen: () => void;
   children?: ReactNode;
 }) {
+  const frameRef = useRef<HTMLButtonElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [cover, setCover] = useState<CoverRect | null>(null);
+
+  const measure = useCallback(() => {
+    const frame = frameRef.current;
+    const img = imgRef.current;
+    if (!frame || !img) return;
+    setCover(coverImageRect(img.naturalWidth, img.naturalHeight, frame.clientWidth, frame.clientHeight));
+  }, []);
+
+  useEffect(() => {
+    measure();
+    const frame = frameRef.current;
+    if (!frame || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => measure());
+    observer.observe(frame);
+    return () => observer.disconnect();
+  }, [measure, src]);
+
   return (
     <button
+      ref={frameRef}
       type="button"
       onClick={(event) => {
         event.preventDefault();
@@ -58,14 +81,23 @@ export function OfficePhotoThumb({
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
+        ref={imgRef}
         src={src}
         alt={label}
         loading="lazy"
         decoding="async"
         draggable={false}
         className="pointer-events-none h-full w-full object-cover"
+        onLoad={measure}
       />
-      {children}
+      {children && cover ? (
+        <span
+          className="pointer-events-none absolute"
+          style={{ left: cover.left, top: cover.top, width: cover.width, height: cover.height }}
+        >
+          {children}
+        </span>
+      ) : null}
       <span className="pointer-events-none absolute bottom-1.5 right-1.5 rounded-md bg-black/55 p-1 text-white">
         <Maximize2 className="h-3.5 w-3.5" aria-hidden />
       </span>

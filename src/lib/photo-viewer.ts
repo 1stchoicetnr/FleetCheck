@@ -1,5 +1,6 @@
 import { beforeCaption, type BeforeAfterPair } from "./damage-before-after.ts";
 import { formatCheckoutTime } from "./checkout-slack.ts";
+import { normalizeChangeBox } from "./photo-box.ts";
 
 /** Normalized highlight on a photo, 0..1, same coordinates the thumbnail uses. */
 export interface ViewerBox {
@@ -29,11 +30,38 @@ export function changeBoxStyle(box: ViewerBox): {
   width: string;
   height: string;
 } {
+  const placed = normalizeChangeBox(box) ?? { x: 0, y: 0, w: 0, h: 0 };
   return {
-    left: `${box.x * 100}%`,
-    top: `${box.y * 100}%`,
-    width: `${box.w * 100}%`,
-    height: `${box.h * 100}%`,
+    left: `${placed.x * 100}%`,
+    top: `${placed.y * 100}%`,
+    width: `${placed.w * 100}%`,
+    height: `${placed.h * 100}%`,
+  };
+}
+
+/** Where object-fit: cover paints the whole photo inside a frame. Parts may sit outside the frame and get clipped. */
+export interface CoverRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+export function coverImageRect(
+  imageW: number,
+  imageH: number,
+  frameW: number,
+  frameH: number
+): CoverRect | null {
+  if (!(imageW > 0 && imageH > 0 && frameW > 0 && frameH > 0)) return null;
+  const scale = Math.max(frameW / imageW, frameH / imageH);
+  const width = imageW * scale;
+  const height = imageH * scale;
+  return {
+    left: (frameW - width) / 2,
+    top: (frameH - height) / 2,
+    width,
+    height,
   };
 }
 

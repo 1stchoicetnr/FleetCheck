@@ -16,6 +16,7 @@ const fmt = (iso: string) => iso.slice(0, 10);
 
 type R = Parameters<typeof damageItemKeys>[0] & {
   id: string;
+  vehicleId?: string;
   completedAt: string;
   driverName: string;
   photos: Array<{ angle: string; flaggedDamage?: boolean; damageNote?: string; dataUrl?: string }>;
@@ -109,6 +110,27 @@ test("before is the latest earlier check that has that slot; later checks never 
   assert.equal(clientPair.before?.stored, undefined);
   assert.equal(clientPair.after?.stored, undefined);
   assert.equal(beforeCaption(pair, fmt), "Before · 2026-11-18 · Amber");
+});
+
+test("two units of the same model do not share a before photo", () => {
+  const now = check("u11", "2026-11-27T18:11:00Z", {
+    vehicleId: "v11",
+    photos: [{ angle: "rear", dataUrl: "after-11", flaggedDamage: true, damageNote: "Dent" }],
+  });
+  const history = [
+    check("u5", "2026-11-27T17:00:00Z", {
+      vehicleId: "v5",
+      photos: [{ angle: "rear", dataUrl: "unit-5" }],
+    }),
+    check("u11old", "2026-11-26T17:00:00Z", {
+      vehicleId: "v11",
+      driverName: "Mike",
+      photos: [{ angle: "rear", dataUrl: "unit-11" }],
+    }),
+  ];
+  const [pair] = beforeAfterPairs(now, history);
+  assert.equal(pair.before?.reportId, "u11old");
+  assert.equal(pair.before?.driverName, "Mike");
 });
 
 test("no earlier photo of that slot says so", () => {

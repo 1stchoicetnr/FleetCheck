@@ -1,6 +1,7 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { alreadyUploadReady } from "./checkout-idempotency";
+import { jpegNeedsOrientationBake } from "./image-size";
 import { displayPlate, normalizePlate } from "./plate";
 import { isUsableImageDataUrl, releaseCanvas, withFallbackAfter } from "./canvas-safe";
 import type { Vehicle } from "./types";
@@ -73,7 +74,10 @@ export const PHOTO_UPLOAD_JPEG_QUALITY = 0.68;
 
 export async function compressUploadPhoto(dataUrl: string): Promise<string> {
   if (!dataUrl.startsWith("data:")) return dataUrl;
-  if (alreadyUploadReady(dataUrl)) return dataUrl;
+  // A small JPEG can skip the resize, but a sideways phone photo still has to be
+  // drawn upright. The canvas bake applies the EXIF rotation and strips the tag,
+  // so the stored file, the screen, and the photo check all see the same pixels.
+  if (alreadyUploadReady(dataUrl) && !jpegNeedsOrientationBake(dataUrl)) return dataUrl;
   return compressImage(
     dataUrl,
     PHOTO_UPLOAD_MAX_EDGE,
