@@ -264,6 +264,15 @@ function CheckoutStartPage() {
     });
   }, [vehicles, unitQuery]);
 
+  // A search that hides the open check must not silently select another unit.
+  const listedVehicles = useMemo(() => {
+    if (!editingDraftId || !vehicleId || filteredVehicles.some((v) => v.id === vehicleId)) {
+      return filteredVehicles;
+    }
+    const current = vehicles.find((v) => v.id === vehicleId);
+    return current ? [current, ...filteredVehicles] : filteredVehicles;
+  }, [editingDraftId, filteredVehicles, vehicleId, vehicles]);
+
   const selected = useMemo(
     () => vehicles.find((v) => v.id === vehicleId),
     [vehicles, vehicleId]
@@ -291,8 +300,9 @@ function CheckoutStartPage() {
   useEffect(() => {
     if (addingUnit) return;
     if (filteredVehicles.some((v) => v.id === vehicleId)) return;
+    if (editingDraftId && vehicleId) return;
     setVehicleId(filteredVehicles[0]?.id ?? "");
-  }, [addingUnit, filteredVehicles, vehicleId]);
+  }, [addingUnit, editingDraftId, filteredVehicles, vehicleId]);
 
   useEffect(() => {
     if (!addingUnit) return;
@@ -414,7 +424,8 @@ function CheckoutStartPage() {
       const existing = choice.reuseContent
         ? drafts.find((draft) => draft.id === choice.id)
         : undefined;
-      const carried = draftContentToCarry(existing, choice.reuseContent);
+      const sameUnit = !existing?.vehicleId || existing.vehicleId === vehicle.id;
+      const carried = draftContentToCarry(sameUnit ? existing : undefined, choice.reuseContent && sameUnit);
       const powertrain = inferPowertrain(
         make.trim(),
         model.trim(),
@@ -582,7 +593,7 @@ function CheckoutStartPage() {
                             : "No units in this company. Ask Super Admin to add this vehicle."}
                         </option>
                       )}
-                      {filteredVehicles.map((v) => (
+                      {listedVehicles.map((v) => (
                         <option key={v.id} value={v.id}>
                           {formatUnitLabel(v.unitNumber, v.plate)} — {v.year}{" "}
                           {v.make} {v.model}

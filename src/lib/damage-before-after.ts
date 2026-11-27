@@ -13,6 +13,8 @@ export const SIDE_PHOTO_ANGLE: Record<string, PhotoAngle> = {
 
 export interface CompareReport extends DamageKeySource {
   id: string;
+  /** When set, an earlier check of a different unit is not the "before" photo. */
+  vehicleId?: string;
   completedAt: string;
   driverName: string;
   photos: ReadonlyArray<Pick<VehiclePhoto, "angle" | "flaggedDamage" | "damageNote" | "dataUrl"> & { damageSpot?: { x: number; y: number } }>;
@@ -80,6 +82,7 @@ export function beforeAfterPairs(
   const earlier = history
     .filter((item) => {
       if (item.id === report.id) return false;
+      if (report.vehicleId && item.vehicleId !== report.vehicleId) return false;
       const time = Date.parse(item.completedAt);
       return Number.isFinite(time) && Number.isFinite(now) && time < now;
     })

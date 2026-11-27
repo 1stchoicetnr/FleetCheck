@@ -331,7 +331,7 @@ export default function AlertsPage() {
                       </div>
                     )}
                     {alert.details?.whoHadIt && <WhoHadItLastBlock info={alert.details.whoHadIt} />}
-                    {alert.type === "photo_check" && alert.reportId && alert.details?.photoCheck && (
+                    {alert.type === "photo_check" && alert.reportId && alert.details?.photoCheck && alert.details.photoCheck.length > 0 && (
                       <PhotoCheckFindings
                         reportId={alert.reportId}
                         findings={alert.details.photoCheck}

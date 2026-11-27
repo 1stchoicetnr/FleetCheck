@@ -42,7 +42,9 @@ async function checkNow(orgId: string, reportId: string): Promise<void> {
   // Fresh copy: slots that already have a result are skipped.
   const report = await repo.getReport(orgId, reportId);
   if (!report) return;
-  const history = await repo.listVehicleReports(orgId, report.vehicleId).catch(() => [] as CheckoutReport[]);
+  const history = (await repo.listVehicleReports(orgId, report.vehicleId).catch(() => [] as CheckoutReport[])).filter(
+    (item) => item.vehicleId === report.vehicleId
+  );
   const { listKnownDamage } = await import("./known-damage-repo");
   const { pgInsertAlert } = await import("./postgres-store");
   const { localInsertAlert } = await import("./local-store");

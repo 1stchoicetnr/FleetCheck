@@ -5,6 +5,7 @@ import type { BeforeAfterPair } from "./damage-before-after.ts";
 import {
   beforeAfterViewerSlides,
   changeBoxStyle,
+  coverImageRect,
   photoCheckViewerSlides,
   viewerSlides,
   type PhotoCheckView,
@@ -109,6 +110,18 @@ test("the damage box uses the same fractions as the thumbnail", () => {
     width: "20%",
     height: "15%",
   });
+  assert.deepEqual(changeBoxStyle({ x: 200, y: 340, w: 200, h: 150 }), {
+    left: "20%",
+    top: "34%",
+    width: "20%",
+    height: "15%",
+  });
+});
+
+test("object-fit cover places the full photo, cropped evenly, behind the box", () => {
+  assert.deepEqual(coverImageRect(400, 300, 320, 180), { left: 0, top: -30, width: 320, height: 240 });
+  assert.deepEqual(coverImageRect(100, 200, 180, 180), { left: 0, top: -90, width: 180, height: 360 });
+  assert.equal(coverImageRect(0, 10, 10, 10), null);
 });
 
 test("damage before/after opens one slot, with the existing captions", () => {
