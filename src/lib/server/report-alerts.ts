@@ -38,6 +38,7 @@ import {
   repairStatusText,
   type RepairMention,
 } from "@/lib/repair-report";
+import { deliverRadCabDamage, repairDigestItemFromReport } from "@/lib/repair-digest";
 import { localInsertAlert, localListAlerts, localListReports } from "./local-store";
 import { pgInsertAlert, pgListAlerts, pgListVehicleReports } from "./postgres-store";
 import { sharedBackendMode } from "./shared-config";
@@ -159,16 +160,42 @@ async function postRepairText(companyId: string, text: string, tag: string): Pro
   }
 }
 
+async function enqueueDamageDigest(
+  orgId: string,
+  report: CheckoutReport,
+  alerts: SharedOfficeAlert[]
+): Promise<void> {
+  const mode = sharedBackendMode();
+  if (mode === "unconfigured") return;
+  const item = { ...repairDigestItemFromReport(report, alerts.map((alert) => alert.id)), orgId };
+  if (mode === "postgres") {
+    const { pgDb, pgMigrateAndSeed } = await import("./postgres-store");
+    const { enqueueRepairDigestItem } = await import("./org-data");
+    await pgMigrateAndSeed();
+    await enqueueRepairDigestItem(pgDb(), item);
+    return;
+  }
+  const { localEnqueueRepairDigest } = await import("./local-store");
+  await localEnqueueRepairDigest(item);
+}
+
 async function postRepairSlack(
   orgId: string,
   report: CheckoutReport,
   alerts: SharedOfficeAlert[],
   history: CheckoutReport[]
 ): Promise<void> {
-  if (!alerts.length || !postsRepairSlack(report.companyId)) return;
-  // Issue flags (needs repair, safety, ...) are listed from the check itself.
-  const text = await buildDamageRepairReport(orgId, report, history);
-  await postRepairText(report.companyId, text, report.id);
+  if (!alerts.length) return;
+  // Rad Cab damage waits for the 1 PM Pacific digest. Out of service does not use this path.
+  await deliverRadCabDamage({
+    companyId: report.companyId,
+    kind: "damage",
+    enqueue: () => enqueueDamageDigest(orgId, report, alerts),
+    postNow: async () => {
+      const text = await buildDamageRepairReport(orgId, report, history);
+      await postRepairText(report.companyId, text, report.id);
+    },
+  });
 }
 
 /**
@@ -332,7 +359,7 @@ export async function recordMissedDamageAlert(
   };
   if (mode === "postgres") await pgInsertAlert(orgId, alert);
   else await localInsertAlert(alert);
-  // Office confirmed it is new damage: the repair report goes out like any other.
+  // Office confirmed it is new damage. Rad Cab queues it for the daily digest.
   const history = await vehicleHistory(orgId, report).catch(() => []);
   await postRepairSlack(orgId, report, [alert], history);
   return true;

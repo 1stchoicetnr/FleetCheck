@@ -5,7 +5,22 @@ import { Button } from "@/components/ui/button";
 import { reviewPhotoCheck, type PhotoCheckFinding } from "@/lib/checkout-api";
 import { formatCheckoutTime } from "@/lib/checkout-slack";
 
-/** "Found by photo check": before and after with the change boxed, plus Confirm / Dismiss. Nothing is sent until Confirm. */
+function reviewLabel(verdict: "confirmed" | "dismissed" | "already_known"): string {
+  switch (verdict) {
+    case "confirmed":
+      return "Confirmed";
+    case "dismissed":
+      return "Dismissed";
+    case "already_known":
+      return "Already known";
+    default: {
+      const neverVerdict: never = verdict;
+      return neverVerdict;
+    }
+  }
+}
+
+/** "Found by photo check": before and after, plus Confirm, Already known, or Dismiss. Confirm waits for the daily digest. */
 export function PhotoCheckFindings({
   reportId,
   findings,
@@ -20,7 +35,7 @@ export function PhotoCheckFindings({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
 
-  async function decide(angle: string, verdict: "confirm" | "dismiss") {
+  async function decide(angle: string, verdict: "confirm" | "dismiss" | "already_known") {
     setBusy(`${angle}:${verdict}`);
     setError("");
     try {
@@ -36,7 +51,7 @@ export function PhotoCheckFindings({
   return (
     <div className="mt-2 space-y-3">
       <p className="text-xs text-gray-500">
-        Office only. Nothing goes to Slack or Bell unless you confirm.
+        Office only. Confirm adds it to the daily repair digest. Already known and Dismiss send nothing.
       </p>
       {findings.map((f) => (
         <div key={f.angle} className="rounded-lg border border-amber-300 bg-amber-50/40 p-2 space-y-2">
@@ -84,13 +99,16 @@ export function PhotoCheckFindings({
           </div>
           {f.review ? (
             <p className="text-xs text-gray-600">
-              {f.review.verdict === "confirmed" ? "Confirmed" : "Dismissed"} by {f.review.by} · {formatCheckoutTime(f.review.at)}
+              {reviewLabel(f.review.verdict)} by {f.review.by} · {formatCheckoutTime(f.review.at)}
             </p>
           ) : (
             canDecide && (
-              <div className="grid grid-cols-2 gap-2">
+              <div className="flex flex-col gap-2">
                 <Button size="sm" variant="danger" disabled={busy !== null} onClick={() => void decide(f.angle, "confirm")}>
                   {busy === `${f.angle}:confirm` ? "Saving…" : "Confirm new damage"}
+                </Button>
+                <Button size="sm" variant="secondary" disabled={busy !== null} onClick={() => void decide(f.angle, "already_known")}>
+                  {busy === `${f.angle}:already_known` ? "Saving…" : "Already known"}
                 </Button>
                 <Button size="sm" variant="secondary" disabled={busy !== null} onClick={() => void decide(f.angle, "dismiss")}>
                   {busy === `${f.angle}:dismiss` ? "Saving…" : "Dismiss"}

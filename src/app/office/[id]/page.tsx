@@ -19,6 +19,7 @@ import { onFileDamage, splitNewDamage } from "@/lib/on-file-damage";
 import { KnownDamageAnswers, MarkKnownDamage } from "@/components/known-damage";
 import { fetchKnownDamage, type KnownDamageItem } from "@/lib/checkout-api";
 import { photoAngleLabel } from "@/lib/photo-flags";
+import { PHOTO_CHECK_ON_FILE_NOTE } from "@/lib/photo-check";
 import { beforeAfterPairs, damageCompareAngles } from "@/lib/damage-before-after";
 import { damageItemKeys } from "@/lib/damage-keys";
 import {
@@ -673,6 +674,17 @@ export default function OfficeReportDetailPage() {
               </p>
             )}
           </div>
+
+          {report.photos.some((photo) => photo.photoCheck?.onFile === "already_on_file") && (
+            <p className="text-xs text-gray-600">
+              {PHOTO_CHECK_ON_FILE_NOTE} (
+              {report.photos
+                .filter((photo) => photo.photoCheck?.onFile === "already_on_file")
+                .map((photo) => photoAngleLabel(photo.angle))
+                .join(", ")}
+              )
+            </p>
+          )}
 
           <div className="flex gap-2">
             <Button

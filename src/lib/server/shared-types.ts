@@ -12,6 +12,7 @@ import {
 import type { FleetSettings } from "@/lib/fleet-settings";
 import type { UserRole } from "@/lib/types";
 import type { StoredFeedback } from "@/lib/feedback";
+import type { RepairDigestItem } from "@/lib/repair-digest";
 
 export interface SharedFleet {
   id: string;
@@ -133,6 +134,8 @@ export interface SharedStore {
   feedback?: StoredFeedback[];
   /** Set after the one-time rollout archive. A second boot does not archive again. */
   rolloutSlateAt?: string;
+  /** Rad Cab damage waiting for the 1 PM Pacific digest. Local dev only. */
+  repairDigest?: RepairDigestItem[];
 }
 
 export type { FleetSettings, CheckoutReport, Company, VehiclePhoto };

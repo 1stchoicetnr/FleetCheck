@@ -1,6 +1,6 @@
 import { damageItemKeys } from "./damage-keys.ts";
 import { damageCompareAngles } from "./damage-before-after.ts";
-import { withoutKnownDamage } from "./known-damage.ts";
+import { cleanKnownDamageInput, withoutKnownDamage, type KnownDamageInput } from "./known-damage.ts";
 import type { PhotoAngle, VehiclePhoto } from "./types.ts";
 
 /**
@@ -8,7 +8,9 @@ import type { PhotoAngle, VehiclePhoto } from "./types.ts";
  * unit's last clean photo of that slot (or the known-damage photo when the
  * slot has known damage) using a vision model through Vercel AI Gateway.
  * A likely change goes to the office queue ONLY ("Found by photo check") with
- * Confirm / Dismiss. Nothing goes to Slack or Bell until the office confirms.
+ * Confirm, Already known, or Dismiss. Confirm queues Rad Cab damage for the
+ * daily digest. Already known and Dismiss send nothing. A finding that
+ * matches damage already on file is not raised.
  * Off by default; a monthly spend cap stops calls for the rest of the month.
  */
 
@@ -69,8 +71,54 @@ export interface PhotoCheckResult {
   costUsd: number;
   at: string;
   error?: string;
+  /** Set when the finding matched damage already on file. It is not raised. */
+  onFile?: "already_on_file";
   /** Office decision on a "Found by photo check" alert. */
-  review?: { verdict: "confirmed" | "dismissed"; by: string; at: string };
+  review?: { verdict: "confirmed" | "dismissed" | "already_known"; by: string; at: string };
+}
+
+/** Shown on the check when a finding matched damage already on file. */
+export const PHOTO_CHECK_ON_FILE_NOTE = "Photo check: already on file";
+
+export type PhotoCheckOfficeVerdict = "confirm" | "dismiss" | "already_known";
+
+export function photoCheckOfficeDecision(verdict: PhotoCheckOfficeVerdict): {
+  review: "confirmed" | "dismissed" | "already_known";
+  /** Flag the photo and queue the repair digest, the same as other confirmed damage. */
+  flagDamage: boolean;
+  queueAlert: boolean;
+  /** Add Known – not fixing. No Slack and no digest. */
+  markKnown: boolean;
+} {
+  switch (verdict) {
+    case "confirm":
+      return { review: "confirmed", flagDamage: true, queueAlert: true, markKnown: false };
+    case "dismiss":
+      return { review: "dismissed", flagDamage: false, queueAlert: false, markKnown: false };
+    case "already_known":
+      return { review: "already_known", flagDamage: false, queueAlert: false, markKnown: true };
+    default: {
+      const neverVerdict: never = verdict;
+      return neverVerdict;
+    }
+  }
+}
+
+/** Known – not fixing row for the Already known button. */
+export function knownNotFixingFromFinding(input: {
+  angle: string;
+  summary: string;
+  reportId: string;
+  alertId: string;
+}): KnownDamageInput | { error: string } {
+  const description = input.summary.replace(/\s+/g, " ").trim().slice(0, 500) || "Damage";
+  return cleanKnownDamageInput({
+    angle: input.angle,
+    description,
+    status: "not_fixing",
+    sourceReportId: input.reportId,
+    sourceAlertId: input.alertId,
+  });
 }
 
 type HistoryPhoto = Pick<VehiclePhoto, "angle" | "dataUrl" | "flaggedDamage" | "damageNote"> & {

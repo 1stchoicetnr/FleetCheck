@@ -1,5 +1,7 @@
 import { after } from "next/server";
+import { onFileDamage } from "@/lib/on-file-damage";
 import { cleanPhotoCheckSettings, pacificMonthStart, type PhotoCheckResult } from "@/lib/photo-check";
+import { priorPhotoCheckDecisions, suppressPhotoFindings } from "@/lib/photo-check-on-file";
 import type { CheckoutReport, PhotoAngle } from "@/lib/types";
 import { blobAccessKind, readStoredPhotoBytes } from "./photo-store";
 import { gatewayToken, runPhotoCheck } from "./photo-check-run";
@@ -46,10 +48,11 @@ async function checkNow(orgId: string, reportId: string): Promise<void> {
   const { listKnownDamage } = await import("./known-damage-repo");
   const { pgInsertAlert } = await import("./postgres-store");
   const { localInsertAlert } = await import("./local-store");
+  const known = await listKnownDamage(orgId, report.vehicleId).catch(() => []);
   const result = await runPhotoCheck(orgId, report, history, {
     settings: async () => settings,
     spentThisMonth: async () => (await photoCheckSpend(orgId)).spend,
-    knownDamage: () => listKnownDamage(orgId, report.vehicleId).catch(() => []),
+    knownDamage: async () => known,
     imageDataUrl: storedToDataUrl,
     token: gatewayToken,
     fetch: (url, init) => fetch(url, init),
@@ -61,6 +64,20 @@ async function checkNow(orgId: string, reportId: string): Promise<void> {
     insertAlert: async (alert: SharedOfficeAlert) => {
       if (sharedBackendMode() === "postgres") await pgInsertAlert(orgId, alert);
       else await localInsertAlert(alert);
+    },
+    alreadyOnFile: async (findings) => {
+      const asOf = report.completedAt || new Date().toISOString();
+      const earlier = history.filter((item) => item.id !== report.id);
+      const angles = suppressPhotoFindings({
+        vehicleId: report.vehicleId,
+        findings,
+        onFile: onFileDamage(earlier, known, asOf),
+        decisions: priorPhotoCheckDecisions(earlier, report.id, asOf),
+      });
+      if (angles.length) {
+        console.info(`[photo-check] already on file report=${reportId} angles=${angles.join(",")}`);
+      }
+      return angles;
     },
   });
   console.info(

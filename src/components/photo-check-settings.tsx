@@ -47,8 +47,8 @@ export function PhotoCheckSettingsCard() {
         <p className="text-sm text-gray-600">
           After each check, a vision model ({status.model}, through Vercel AI Gateway) compares each outside
           photo with the unit&apos;s last clean or known-damage photo. Likely new damage goes to the office
-          Alerts queue only, as &quot;Found by photo check&quot;, with Confirm / Dismiss. Nothing goes to Slack or Bell
-          unless the office confirms.
+          Alerts queue only, as &quot;Found by photo check&quot;, with Confirm new damage, Already known, or Dismiss.
+          Confirm adds Rad Cab damage to the daily repair digest. Already known and Dismiss send nothing.
         </p>
         <label className="flex items-center justify-between gap-3 rounded-xl bg-gray-50 p-3">
           <span className="text-sm font-medium">Turn on photo check</span>
