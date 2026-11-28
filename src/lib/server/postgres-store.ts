@@ -142,7 +142,7 @@ let migrating: Promise<void> | null = null;
  * or one-time fix). While the database already has this version, a new server
  * instance skips the ~100 one-by-one setup queries and makes one quick check.
  */
-export const SCHEMA_VERSION = "2026-11-20.3";
+export const SCHEMA_VERSION = "2026-11-27.1";
 
 async function schemaIsCurrent(): Promise<boolean> {
   try {
@@ -360,6 +360,27 @@ async function runMigrateAndSeed(): Promise<void> {
       UNIQUE (org_id, report_id, kind)
     )
   `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS repair_digest_items (
+      id TEXT PRIMARY KEY,
+      org_id TEXT NOT NULL,
+      company_id TEXT NOT NULL,
+      report_id TEXT NOT NULL,
+      vehicle_id TEXT NOT NULL,
+      unit_label TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      found_by TEXT NOT NULL,
+      found_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL,
+      digested_at TIMESTAMPTZ,
+      digest_key TEXT
+    )
+  `;
+  await sql`
+    CREATE INDEX IF NOT EXISTS repair_digest_items_pending_idx
+    ON repair_digest_items (org_id, created_at)
+    WHERE digested_at IS NULL
+  `;
   await sql`ALTER TABLE checkout_reports ADD COLUMN IF NOT EXISTS idempotency_key TEXT`;
   await sql`ALTER TABLE checkout_reports ADD COLUMN IF NOT EXISTS sent_at TIMESTAMPTZ`;
   await sql`ALTER TABLE checkout_reports ADD COLUMN IF NOT EXISTS driver_user_id TEXT`;
@@ -470,6 +491,11 @@ async function runMigrateAndSeed(): Promise<void> {
     console.log(
       `[manager-role] office memberships left as office: ${managerRole.officeCount}`
     );
+  }
+
+  const seededKnown = await orgData.seedRadCabKnownNotFixing(db, orgId);
+  if (seededKnown > 0) {
+    console.log(`[known-damage] seeded ${seededKnown} Rad Cab items`);
   }
 }
 

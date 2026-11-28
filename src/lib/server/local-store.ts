@@ -36,6 +36,7 @@ import {
   DEFAULT_FLEET_SETTINGS,
 } from "@/lib/fleet-settings";
 import type { StoredFeedback } from "@/lib/feedback";
+import type { RepairDigestItem } from "@/lib/repair-digest";
 
 const STORE_PATH = path.join(process.cwd(), ".data", "shared.json");
 
@@ -768,6 +769,32 @@ export async function localSetKnownDamage(vehicleId: string, list: unknown[]): P
     store.knownDamage = { ...(store.knownDamage ?? {}), [vehicleId]: list };
     await writeStore(store);
     return true;
+  });
+}
+
+export async function localEnqueueRepairDigest(item: RepairDigestItem): Promise<void> {
+  return enqueueWrite(async () => {
+    const store = await loadAndSeedUnlocked();
+    const queue = store.repairDigest ?? [];
+    if (queue.some((row) => row.id === item.id)) return;
+    store.repairDigest = [...queue, item];
+    await writeStore(store);
+  });
+}
+
+/** Mark undigested rows and return them. A second call returns none. */
+export async function localClaimRepairDigest(digestKey: string, at: string): Promise<RepairDigestItem[]> {
+  return enqueueWrite(async () => {
+    const store = await loadAndSeedUnlocked();
+    const queue = store.repairDigest ?? [];
+    const claimed = queue.filter((row) => !row.digestedAt);
+    if (!claimed.length) return [];
+    const ids = new Set(claimed.map((row) => row.id));
+    store.repairDigest = queue.map((row) =>
+      ids.has(row.id) ? { ...row, digestedAt: at, digestKey } : row
+    );
+    await writeStore(store);
+    return claimed.map((row) => ({ ...row, digestedAt: at, digestKey }));
   });
 }
 

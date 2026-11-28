@@ -33,6 +33,12 @@ export interface PhotoCheckDeps {
   fetch: FetchLike;
   save: (results: Partial<Record<PhotoAngle, PhotoCheckResult>>) => Promise<void>;
   insertAlert: (alert: SharedOfficeAlert) => Promise<void>;
+  /**
+   * Angles already on file for this unit. Those results are saved with a note
+   * and are not added to the office queue. A lookup failure still raises the
+   * finding, so a bad read cannot hide new damage.
+   */
+  alreadyOnFile?: (findings: Array<{ angle: PhotoAngle; summary: string }>) => Promise<Iterable<string>>;
   now?: () => Date;
 }
 
@@ -149,6 +155,23 @@ export async function runPhotoCheck(
       if (!row) continue;
       const { box: _dropped, ...rest } = row;
       results[angle] = { ...rest, changed: false };
+    }
+  } else if (deps.alreadyOnFile) {
+    const pending = (Object.entries(results) as Array<[PhotoAngle, PhotoCheckResult]>)
+      .filter(([, row]) => row.changed)
+      .map(([angle, row]) => ({ angle, summary: row.summary }));
+    if (pending.length) {
+      try {
+        const suppress = new Set(await deps.alreadyOnFile(pending));
+        for (const angle of suppress) {
+          const slot = angle as PhotoAngle;
+          const row = results[slot];
+          if (!row?.changed) continue;
+          results[slot] = { ...row, changed: false, onFile: "already_on_file" };
+        }
+      } catch (err) {
+        console.error("[photo-check] on-file check failed", err);
+      }
     }
   }
   if (Object.keys(results).length) await deps.save(results);

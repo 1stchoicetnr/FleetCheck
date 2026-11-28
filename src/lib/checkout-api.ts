@@ -318,7 +318,7 @@ export interface PhotoCheckFinding {
   confidence: number;
   box?: import("./photo-check").ChangeBox;
   againstKind: "clean" | "known";
-  review?: { verdict: "confirmed" | "dismissed"; by: string; at: string };
+  review?: { verdict: "confirmed" | "dismissed" | "already_known"; by: string; at: string };
   knownDamageAnswer?: "same" | "new";
   after: { src: string; completedAt: string; driverName: string };
   before?: { src: string; completedAt: string; driverName: string };
@@ -327,7 +327,7 @@ export interface PhotoCheckFinding {
 export async function reviewPhotoCheck(
   reportId: string,
   angle: string,
-  verdict: "confirm" | "dismiss"
+  verdict: "confirm" | "dismiss" | "already_known"
 ): Promise<{ ok: boolean; verdict?: string; alert?: string }> {
   return api(`/api/checkout-reports/${reportId}/photo-check`, {
     method: "POST",

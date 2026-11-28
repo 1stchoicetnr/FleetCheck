@@ -1,3 +1,7 @@
+import { RAD_CAB_COMPANY_ID } from "../company-rules";
+import { parseKnownDamageList } from "../known-damage";
+import { mergeRadCabKnownSeed } from "../rad-cab-known-seed";
+import type { RepairDigestItem } from "../repair-digest";
 import {
   rolloutSlateCutoffIso,
   rolloutUserDecision,
@@ -2425,4 +2429,71 @@ export async function updateOwnName(db: OrgDb, orgId: string, id: string, name: 
     [name, id, org(orgId)]
   );
   if (!rows[0]) throw new OrgAccessError();
+}
+
+/** Queue one Rad Cab damage item for the daily digest. A repeat id is ignored. */
+export async function enqueueRepairDigestItem(db: OrgDb, item: RepairDigestItem): Promise<void> {
+  await db.query(
+    `INSERT INTO repair_digest_items (
+      id, org_id, company_id, report_id, vehicle_id, unit_label, summary, found_by, found_at, created_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    ON CONFLICT (id) DO NOTHING`,
+    [
+      item.id,
+      org(item.orgId),
+      item.companyId,
+      item.reportId,
+      item.vehicleId,
+      item.unitLabel,
+      item.summary,
+      item.foundBy,
+      item.foundAt,
+      item.createdAt,
+    ]
+  );
+}
+
+/**
+ * Mark every undigested item for this org and return them.
+ * A second call returns nothing, so a retry cannot post the same digest twice.
+ */
+export async function claimRepairDigestItems(db: OrgDb, orgId: string, digestKey: string, at: string) {
+  return db.query(
+    `UPDATE repair_digest_items
+     SET digested_at = $3::timestamptz, digest_key = $2
+     WHERE org_id = $1 AND digested_at IS NULL
+     RETURNING id, report_id, vehicle_id, unit_label, summary, found_by, found_at, created_at`,
+    [org(orgId), digestKey, at]
+  );
+}
+
+/**
+ * Add the Rad Cab known-damage seed where the unit number matches.
+ * Does not read or write alerts. A second run adds nothing.
+ */
+export async function seedRadCabKnownNotFixing(db: OrgDb, orgId: string): Promise<number> {
+  const rows = await db.query(
+    "SELECT id, unit_number, company_id, known_damage FROM vehicles WHERE org_id = $1 AND company_id = $2",
+    [org(orgId), RAD_CAB_COMPANY_ID]
+  );
+  let added = 0;
+  for (const row of rows) {
+    const vehicleId = String(row.id);
+    const existing = parseKnownDamageList(row.known_damage, vehicleId);
+    const merged = mergeRadCabKnownSeed(
+      String(row.unit_number ?? ""),
+      String(row.company_id ?? ""),
+      existing,
+      vehicleId
+    );
+    if (!merged.added) continue;
+    added += merged.added;
+    const stored = merged.list.map((item) => {
+      const { vehicleId: _vehicleId, ...rest } = item;
+      void _vehicleId;
+      return rest;
+    });
+    await setVehicleKnownDamage(db, orgId, vehicleId, stored);
+  }
+  return added;
 }
