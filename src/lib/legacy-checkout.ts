@@ -43,11 +43,10 @@ export function legacyMissingNotes(
 }
 
 /**
- * The sweep used to record a check older than 24h as sent and skip Slack.
- * That disagreed with markSent, which posted the same check whenever the phone
- * finished uploading, so #radcabcr still got 4-day-late posts with no label.
- * A finished check now posts at any age the sweep still looks at. The Slack
- * text labels it when the post is more than 15 minutes after the driver signed.
+ * Checks created before CHECKOUT_SLACK_CUTOFF are recorded as sent and not
+ * posted, so a deploy does not dump the old backlog into Slack. A check created
+ * after that still posts, and the Slack text labels it when the post is more
+ * than 15 minutes after the driver signed.
  */
 
 /** Specific reason for an unsent check, or undefined when it is not stuck. */

@@ -16,10 +16,11 @@ import {
 import {
   SLACK_DELIVERY_CAP,
   SLACK_AUTOPOST_MAX_AGE_MS,
-  CHECKOUT_POST_MAX_AGE_MS,
   STALL_LOOKBACK_MS,
   STALL_PHOTOS_AFTER_MS,
+  checkoutAutopostOldest,
   checkoutPostTooOld,
+  checkoutSlackSkipReason,
   slackAutopostTooOld,
   slackDeliveryExhausted,
   slackRetryDelayMs,
@@ -64,7 +65,6 @@ const BATCH = 8;
 const SKIP_BATCH = 50;
 
 const OLD_STALL = "older than 24h";
-const OLD_CHECKOUT = "older than 21d";
 
 /** Stall notices stay on a 24h cap. Unattended checkout posts stay eligible for 21 days. */
 function deliveryTooOld(kind: SlackDeliveryKind, createdAt: string, now: number): boolean {
@@ -80,10 +80,10 @@ function deliveryTooOld(kind: SlackDeliveryKind, createdAt: string, now: number)
   }
 }
 
-function oldDeliveryReason(kind: SlackDeliveryKind): string {
+function oldDeliveryReason(kind: SlackDeliveryKind, createdAt: string, now: number): string {
   switch (kind) {
     case "checkout":
-      return OLD_CHECKOUT;
+      return checkoutSlackSkipReason(createdAt, now) ?? "older than 21d";
     case "stall":
       return OLD_STALL;
     default: {
@@ -574,7 +574,13 @@ export async function runSlackDeliveries(
       continue;
     }
     if (deliveryTooOld(row.kind, report.createdAt, now)) {
-      await skipOldAutopost(db, input.orgId, report.id, row.kind, oldDeliveryReason(row.kind));
+      await skipOldAutopost(
+        db,
+        input.orgId,
+        report.id,
+        row.kind,
+        oldDeliveryReason(row.kind, report.createdAt, now)
+      );
       continue;
     }
     if (row.kind === "stall") {
@@ -626,7 +632,7 @@ export async function runSlackDeliveries(
   }
 
   const freshOldest = new Date(now - SLACK_AUTOPOST_MAX_AGE_MS).toISOString();
-  const checkoutOldest = new Date(now - CHECKOUT_POST_MAX_AGE_MS).toISOString();
+  const checkoutOldest = checkoutAutopostOldest(now);
   const unposted = await listRadCabUnpostedCheckouts(db, {
     orgId: input.orgId,
     companyId: RAD_CAB_COMPANY_ID,

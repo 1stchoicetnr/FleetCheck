@@ -20,13 +20,21 @@ export const STALL_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
 export const SLACK_AUTOPOST_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Unattended checkout posts (a failed webhook retry, or a sent check Slack
- * never got) go out this far back. Older than this stays quiet so a deploy
- * does not replay months of history. The driver's own mark-sent is not capped:
- * whenever the phone finishes, that post goes out and is labeled if it is late.
- * Matches the sweep's 21-day lookback.
+ * Unattended checkout retries stop after this. Checks created before
+ * CHECKOUT_SLACK_CUTOFF are not posted at all, whatever their age.
  */
 export const CHECKOUT_POST_MAX_AGE_MS = 21 * 24 * 60 * 60 * 1000;
+
+/**
+ * Backlog cutoff. A checkout created before this is recorded as handled and
+ * is not posted to Slack by the sweep, by mark-sent, or by the daily job.
+ * 6:00 PM PT on Nov 27, 2026 — before this change ships — so the deploy cannot
+ * dump the existing #radcabcr backlog. A check created after this still posts,
+ * and the Slack text labels it when the post is more than 15 minutes late.
+ */
+export const CHECKOUT_SLACK_CUTOFF = "2026-11-28T02:00:00.000Z";
+
+export const CHECKOUT_BEFORE_CUTOFF = "before slack cutoff";
 
 export const STALL_REASON_PHOTOS = "Photos still uploading";
 export const STALL_REASON_UNFINISHED = "Unfinished for 30 minutes";
@@ -56,11 +64,33 @@ export function slackAutopostTooOld(createdAt: string, now: number): boolean {
   return now - created > SLACK_AUTOPOST_MAX_AGE_MS;
 }
 
-/** True when an unattended checkout post is past the 21-day lookback. */
-export function checkoutPostTooOld(createdAt: string, now: number): boolean {
+/** True when this check was created before the backlog cutoff. A bad date counts as before it. */
+export function checkoutCreatedBeforeSlackCutoff(createdAt: string): boolean {
   const created = Date.parse(createdAt);
-  if (!Number.isFinite(created)) return false;
+  if (!Number.isFinite(created)) return true;
+  return created < Date.parse(CHECKOUT_SLACK_CUTOFF);
+}
+
+/**
+ * True when an unattended checkout post must not go out: the check is from
+ * before the cutoff, or it is past the 21-day retry window.
+ */
+export function checkoutPostTooOld(createdAt: string, now: number): boolean {
+  if (checkoutCreatedBeforeSlackCutoff(createdAt)) return true;
+  const created = Date.parse(createdAt);
+  if (!Number.isFinite(created)) return true;
   return now - created > CHECKOUT_POST_MAX_AGE_MS;
+}
+
+/** Why an unattended checkout post is skipped, or null when it should post. */
+export function checkoutSlackSkipReason(createdAt: string, now: number): string | null {
+  if (!checkoutPostTooOld(createdAt, now)) return null;
+  return checkoutCreatedBeforeSlackCutoff(createdAt) ? CHECKOUT_BEFORE_CUTOFF : "older than 21d";
+}
+
+/** Start of the window the daily job may still post. Never earlier than the cutoff. */
+export function checkoutAutopostOldest(now: number): string {
+  return new Date(Math.max(now - CHECKOUT_POST_MAX_AGE_MS, Date.parse(CHECKOUT_SLACK_CUTOFF))).toISOString();
 }
 
 /** Drop links and setup paths. A stall notice stays plain text. */

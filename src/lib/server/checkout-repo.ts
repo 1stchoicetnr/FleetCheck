@@ -105,6 +105,7 @@ import {
   replayIsSameCheck,
 } from "@/lib/checkout-idempotency";
 import { photoStepsForClient, stuckReason } from "@/lib/legacy-checkout";
+import { checkoutCreatedBeforeSlackCutoff } from "@/lib/slack-delivery";
 import { finishDecision, type FinishDecision } from "@/lib/checkout-finish";
 import { HISTORICAL_SENT_BEFORE, isStuckUpload, STUCK_UPLOAD_AFTER_MS } from "@/lib/delivery-status";
 import {
@@ -554,8 +555,11 @@ export async function confirmReportSent(
   const alreadyPosted =
     mode === "postgres" &&
     slackAlreadyHasCheckout(await slackCheckoutStatus(pgDb(), orgId, id));
-  if (options?.postSlack === false) {
-    console.log(`[checkout-sent] report=${id} result=recorded-without-slack`);
+  const beforeCutoff = checkoutCreatedBeforeSlackCutoff(existing.createdAt);
+  if (options?.postSlack === false || beforeCutoff) {
+    console.log(
+      `[checkout-sent] report=${id} result=${beforeCutoff ? "recorded-before-cutoff" : "recorded-without-slack"}`
+    );
   } else if (mode === "postgres") {
     if (!alreadyPosted) {
       try {
@@ -656,9 +660,10 @@ const SWEEP_NO_SLACK_LOOKBACK_MS = 21 * 24 * 60 * 60 * 1000;
 /**
  * Safety net for checks the phone never finished sending. Any check older than
  * 5 minutes with every required photo stored (or a red precheck) and no sent
- * time is marked sent and posted to Slack. Slack posting is idempotent, so a
- * check already in Slack is not posted twice. Checks still missing photos are
- * left alone and logged with the missing angles.
+ * time is marked sent. Slack is posted only when the check was created after
+ * the backlog cutoff; an older one is recorded as handled and not posted.
+ * Slack posting is idempotent, so a check already in Slack is not posted twice.
+ * Checks still missing photos are left alone and logged with the missing angles.
  */
 export async function sweepUnsentReports(
   orgId: string,
@@ -698,10 +703,16 @@ export async function sweepUnsentReports(
       continue;
     }
     try {
-      // Age does not skip Slack. A late check is labeled in the post instead of dropped.
-      await confirmReportSent(orgId, id, { appOrigin: options?.appOrigin, office: false });
+      const postSlack = !checkoutCreatedBeforeSlackCutoff(report.createdAt);
+      await confirmReportSent(orgId, id, {
+        appOrigin: options?.appOrigin,
+        office: false,
+        postSlack,
+      });
       sent += 1;
-      console.log(`[checkout-sweep] report=${id} result=sent slack=post`);
+      console.log(
+        `[checkout-sweep] report=${id} result=sent slack=${postSlack ? "post" : "skip-before-cutoff"}`
+      );
     } catch (err) {
       console.log(
         `[checkout-sweep] report=${id} result=failed ${err instanceof Error ? err.message : String(err)}`
