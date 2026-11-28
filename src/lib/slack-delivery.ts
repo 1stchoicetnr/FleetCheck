@@ -28,11 +28,13 @@ export const CHECKOUT_POST_MAX_AGE_MS = 21 * 24 * 60 * 60 * 1000;
 /**
  * Backlog cutoff. A checkout created before this is recorded as handled and
  * is not posted to Slack by the sweep, by mark-sent, or by the daily job.
- * 6:00 PM PT on Nov 27, 2026 — before this change ships — so the deploy cannot
- * dump the existing #radcabcr backlog. A check created after this still posts,
- * and the Slack text labels it when the post is more than 15 minutes late.
+ * 4:30 PM PT on Nov 27, 2026, which is already past. Every check created
+ * after that posts normally, including ones submitted between now and deploy.
+ * Only older stuck checks are recorded as handled and kept out of #radcabcr.
+ * A check created after this still gets the late label when the post is more
+ * than 15 minutes after the driver signed.
  */
-export const CHECKOUT_SLACK_CUTOFF = "2026-11-28T02:00:00.000Z";
+export const CHECKOUT_SLACK_CUTOFF = "2026-11-28T00:30:00.000Z";
 
 export const CHECKOUT_BEFORE_CUTOFF = "before slack cutoff";
 

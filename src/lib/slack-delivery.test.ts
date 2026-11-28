@@ -574,6 +574,7 @@ test("a completed check does not get a stall retry", async () => {
 });
 
 test("checks created before the slack cutoff are never auto-posted", () => {
+  assert.equal(CHECKOUT_SLACK_CUTOFF, "2026-11-28T00:30:00.000Z");
   const created = Date.parse(STARTED);
   assert.equal(slackAutopostTooOld(STARTED, created + SLACK_AUTOPOST_MAX_AGE_MS), false);
   assert.equal(slackAutopostTooOld(STARTED, created + SLACK_AUTOPOST_MAX_AGE_MS + 1), true);
