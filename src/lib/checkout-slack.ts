@@ -76,6 +76,54 @@ export function formatCheckoutTime(iso: string): string {
   return `${formatted} PT`;
 }
 
+/** A post this far after the driver signed is labeled late. It still posts. */
+export const LATE_POST_AFTER_MS = 15 * 60 * 1000;
+
+/** Compact Pacific time for the late-post line: "Nov 26 7:59 AM PT". */
+export function formatLatePostClock(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "—";
+  const formatted = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  })
+    .format(date)
+    .replace(/,/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return `${formatted} PT`;
+}
+
+/** When the driver signed the check. createdAt is the server row, used when the phone sent no signature time. */
+export function checkoutSubmitInstant(
+  report: { signedAt?: string | null; createdAt?: string | null; completedAt?: string | null }
+): string | undefined {
+  for (const value of [report.signedAt, report.createdAt, report.completedAt]) {
+    if (value && Number.isFinite(Date.parse(value))) return value;
+  }
+  return undefined;
+}
+
+/**
+ * One line when Slack is more than 15 minutes after submit. Null when the post
+ * is on time, so a normal check's message stays unchanged.
+ */
+export function latePostSlackLine(
+  report: { signedAt?: string | null; createdAt?: string | null; completedAt?: string | null },
+  postedAt: string | undefined
+): string | null {
+  if (!postedAt) return null;
+  const submitted = checkoutSubmitInstant(report);
+  if (!submitted) return null;
+  const lag = Date.parse(postedAt) - Date.parse(submitted);
+  if (!Number.isFinite(lag) || lag <= LATE_POST_AFTER_MS) return null;
+  return `Late post: submitted ${formatLatePostClock(submitted)}, posted ${formatLatePostClock(postedAt)}`;
+}
+
 export function checkoutDamageLines(
   report: Pick<CheckoutReport, "photos" | "inspectionForm"> & {
     driverName?: string | null;
@@ -162,13 +210,15 @@ export function missingPhotosSlackLine(missing: number): string | null {
 
 export function checkoutSlackText(
   report: CheckoutReport,
-  options?: { appOrigin?: string | null; photoSteps?: PhotoStep[] }
+  options?: { appOrigin?: string | null; photoSteps?: PhotoStep[]; postedAt?: string }
 ): string {
   const unit = formatUnitLabel(report.unitNumber, report.plate);
   const dispatcher = report.dispatcherName.trim() || "—";
   const links = checkoutReportLinks(report.id, options?.appOrigin);
+  const late = latePostSlackLine(report, options?.postedAt);
   const head = [
     "*Checkout*",
+    ...(late ? [late] : []),
     `*Unit #:* ${unit}`,
     `*Driver:* ${report.driverName.trim() || "—"}`,
     `*Dispatcher:* ${dispatcher}`,
@@ -228,11 +278,14 @@ export async function postCheckoutSlack(
     fetchImpl?: CheckoutFetch;
     appOrigin?: string | null;
     photoSteps?: PhotoStep[];
+    /** When this Slack message is sent. A gap over 15 minutes adds the late-post line. */
+    postedAt?: string;
   }
 ): Promise<{ text: string }> {
   const text = checkoutSlackText(report, {
     appOrigin: options.appOrigin,
     photoSteps: options.photoSteps,
+    postedAt: options.postedAt,
   });
   await postSlackMessage(options.webhookUrl, text, options.fetchImpl);
   return { text };

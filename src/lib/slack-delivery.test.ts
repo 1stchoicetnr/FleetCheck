@@ -3,12 +3,17 @@ import test from "node:test";
 import { PGlite } from "@electric-sql/pglite";
 import type { CheckoutFetch } from "./checkout-slack.ts";
 import {
+  CHECKOUT_POST_MAX_AGE_MS,
+  CHECKOUT_SLACK_CUTOFF,
+  CHECKOUT_BEFORE_CUTOFF,
   SLACK_AUTOPOST_MAX_AGE_MS,
   SLACK_DELIVERY_CAP,
   STALL_PHOTOS_AFTER_MS,
   STALL_REASON_PHOTOS,
   STALL_REASON_UNFINISHED,
   STALL_UNFINISHED_AFTER_MS,
+  checkoutCreatedBeforeSlackCutoff,
+  checkoutPostTooOld,
   slackAutopostTooOld,
   slackDeliveryExhausted,
   slackPlain,
@@ -568,13 +573,23 @@ test("a completed check does not get a stall retry", async () => {
   assert.equal(String(rows.rows[0]?.last_error), "completed");
 });
 
-test("the daily job does not auto-post a check older than 24 hours", () => {
+test("checks created before the slack cutoff are never auto-posted", () => {
+  assert.equal(CHECKOUT_SLACK_CUTOFF, "2026-11-28T00:30:00.000Z");
   const created = Date.parse(STARTED);
   assert.equal(slackAutopostTooOld(STARTED, created + SLACK_AUTOPOST_MAX_AGE_MS), false);
   assert.equal(slackAutopostTooOld(STARTED, created + SLACK_AUTOPOST_MAX_AGE_MS + 1), true);
+  assert.equal(checkoutCreatedBeforeSlackCutoff(STARTED), true);
+  assert.equal(checkoutPostTooOld(STARTED, created + 60_000), true);
+  const after = new Date(Date.parse(CHECKOUT_SLACK_CUTOFF) + 60 * 60 * 1000).toISOString();
+  const afterMs = Date.parse(after);
+  assert.equal(checkoutCreatedBeforeSlackCutoff(after), false);
+  assert.equal(checkoutPostTooOld(after, afterMs + 4 * 24 * 60 * 60 * 1000), false);
+  assert.equal(checkoutPostTooOld(after, afterMs + CHECKOUT_POST_MAX_AGE_MS), false);
+  assert.equal(checkoutPostTooOld(after, afterMs + CHECKOUT_POST_MAX_AGE_MS + 1), true);
+  assert.equal(checkoutPostTooOld("not-a-date", afterMs), true);
 });
 
-test("checks older than 24 hours are marked skipped and a fresh stall still posts", async () => {
+test("a checkout created before the cutoff is recorded skipped and a fresh stall still posts", async () => {
   const db = new PGlite();
   await db.exec(SCHEMA);
   const org = runner(db);
@@ -615,7 +630,8 @@ test("checks older than 24 hours are marked skipped and a fresh stall still post
   assert.equal(counts.stalls, 1);
   assert.equal(counts.sent, 1);
   assert.equal(hook.calls.length, 1);
-  assert.match(hook.texts[0], /\*Not sent\*/);
+  assert.equal(hook.texts.join("\n").includes("Late post"), false);
+  assert.match(hook.texts.join("\n"), /\*Not sent\*/);
   const rows = await org.query(
     `SELECT report_id, kind, status, last_error
      FROM slack_deliveries
@@ -625,7 +641,7 @@ test("checks older than 24 hours are marked skipped and a fresh stall still post
   assert.equal(byKey.get("cr-old-stall:stall")?.status, "skipped");
   assert.equal(byKey.get("cr-old-stall:stall")?.last_error, "older than 24h");
   assert.equal(byKey.get("cr-old-checkout:checkout")?.status, "skipped");
-  assert.equal(byKey.get("cr-old-checkout:checkout")?.last_error, "older than 24h");
+  assert.equal(byKey.get("cr-old-checkout:checkout")?.last_error, CHECKOUT_BEFORE_CUTOFF);
   assert.equal(byKey.get("cr-fresh-stall:stall")?.status, "sent");
   const again = await runSlackDeliveries(org, {
     orgId: ORG,
@@ -638,26 +654,30 @@ test("checks older than 24 hours are marked skipped and a fresh stall still post
     now,
   });
   assert.equal(again.stalls, 0);
+  assert.equal(again.sent, 0);
   assert.equal(hook.calls.length, 1);
 });
 
-test("a fresh sent check with no Slack row is posted, and an older one stays quiet", async () => {
+test("a late checkout created after the cutoff posts once, and one created before it stays quiet", async () => {
   const db = new PGlite();
   await db.exec(SCHEMA);
   const org = runner(db);
-  const now = Date.parse(STARTED) + 30 * 60 * 60 * 1000;
-  const freshAt = new Date(now - 60 * 60 * 1000).toISOString();
-  await insertReport(db, { id: "cr-fresh-miss", createdAt: freshAt, sentAt: freshAt });
-  await insertReport(db, { id: "cr-old-miss", createdAt: STARTED, sentAt: STARTED });
+  const after = new Date(Date.parse(CHECKOUT_SLACK_CUTOFF) + 60 * 60 * 1000).toISOString();
+  const before = new Date(Date.parse(CHECKOUT_SLACK_CUTOFF) - 60 * 60 * 1000).toISOString();
+  const now = Date.parse(after) + 26 * 60 * 60 * 1000;
+  await insertReport(db, { id: "cr-after-cutoff", createdAt: after, sentAt: after });
+  await insertReport(db, { id: "cr-before-cutoff", createdAt: before, sentAt: before });
   const hook = recorder();
+  const getReport = async (id: string) =>
+    report({
+      id,
+      createdAt: id === "cr-after-cutoff" ? after : before,
+      sentAt: id === "cr-after-cutoff" ? after : before,
+      signedAt: id === "cr-after-cutoff" ? after : before,
+    });
   const counts = await runSlackDeliveries(org, {
     orgId: ORG,
-    getReport: async (id) =>
-      report({
-        id,
-        createdAt: id === "cr-fresh-miss" ? freshAt : STARTED,
-        sentAt: id === "cr-fresh-miss" ? freshAt : STARTED,
-      }),
+    getReport,
     routes: {},
     webhooks: { radcabcr: RAD },
     requiredRadCabAngles: REQUIRED,
@@ -668,11 +688,52 @@ test("a fresh sent check with no Slack row is posted, and an older one stays qui
   assert.equal(counts.sent, 1);
   assert.equal(hook.calls.length, 1);
   assert.match(hook.texts[0], /\*Checkout\*/);
+  assert.match(hook.texts[0], /Late post:/);
+  const again = await runSlackDeliveries(org, {
+    orgId: ORG,
+    getReport,
+    routes: {},
+    webhooks: { radcabcr: RAD },
+    requiredRadCabAngles: REQUIRED,
+    fetchImpl: async () => {
+      throw new Error("should not post again");
+    },
+    slackApi: null,
+    now,
+  });
+  assert.equal(again.sent, 0);
+  assert.equal(hook.calls.length, 1);
   const rows = await org.query(`SELECT report_id, status FROM slack_deliveries ORDER BY report_id`);
   assert.deepEqual(
     rows.map((row) => `${row.report_id}:${row.status}`),
-    ["cr-fresh-miss:sent"]
+    ["cr-after-cutoff:sent"]
   );
+});
+
+test("mark-sent posts a checkout once and a second call does not post again", async () => {
+  const db = new PGlite();
+  await db.exec(SCHEMA);
+  const org = runner(db);
+  const saved = report({ id: "cr-once", signedAt: STARTED, createdAt: STARTED });
+  const hook = recorder();
+  const options = {
+    orgId: ORG,
+    webhooks: { radcabcr: RAD },
+    fetchImpl: hook.fetchImpl,
+    slackApi: null as null,
+    now: Date.parse(STARTED) + 4 * 24 * 60 * 60 * 1000,
+  };
+  const first = await deliverCheckoutSlack(org, saved, options);
+  const second = await deliverCheckoutSlack(org, saved, {
+    ...options,
+    fetchImpl: async () => {
+      throw new Error("should not post again");
+    },
+  });
+  assert.equal(first, "sent");
+  assert.equal(second, "skipped");
+  assert.equal(hook.calls.length, 1);
+  assert.match(hook.texts[0], /Late post:/);
 });
 
 test("an owner resend posts a missed check once and does not repeat a sent one", async () => {
@@ -708,12 +769,13 @@ test("an owner resend posts a missed check once and does not repeat a sent one",
   assert.equal(again, "already_sent");
 });
 
-test("a failed checkout from the last day still retries", async () => {
+test("a failed checkout created after the cutoff still retries", async () => {
   const db = new PGlite();
   await db.exec(SCHEMA);
   const org = runner(db);
-  const now = Date.parse(STARTED) + 2 * 60 * 60 * 1000;
-  const saved = report({ id: "cr-fresh-fail", createdAt: STARTED, sentAt: STARTED });
+  const createdAt = new Date(Date.parse(CHECKOUT_SLACK_CUTOFF) + 60 * 60 * 1000).toISOString();
+  const now = Date.parse(createdAt) + 2 * 60 * 60 * 1000;
+  const saved = report({ id: "cr-fresh-fail", createdAt, sentAt: createdAt, signedAt: createdAt });
   await db.query(
     `INSERT INTO slack_deliveries (
        id, org_id, report_id, kind, status, attempts, next_attempt_at

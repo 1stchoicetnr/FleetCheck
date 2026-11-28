@@ -42,13 +42,12 @@ export function legacyMissingNotes(
   return missing.map((angle) => `Missing ${ANGLE_LABEL[angle] ?? angle} photo (old app)`);
 }
 
-export const SWEEP_SLACK_MAX_AGE_MS = 24 * 60 * 60 * 1000;
-
-/** Backlog older than 24h is recorded as sent without posting, so #radcabcr is not flooded. */
-export function sweepShouldPostSlack(createdAt: string, now = Date.now()): boolean {
-  const created = Date.parse(createdAt);
-  return Number.isFinite(created) && now - created <= SWEEP_SLACK_MAX_AGE_MS;
-}
+/**
+ * Checks created before CHECKOUT_SLACK_CUTOFF are recorded as sent and not
+ * posted, so a deploy does not dump the old backlog into Slack. A check created
+ * after that still posts, and the Slack text labels it when the post is more
+ * than 15 minutes after the driver signed.
+ */
 
 /** Specific reason for an unsent check, or undefined when it is not stuck. */
 export function stuckReason(

@@ -30,6 +30,7 @@ import {
 } from "./storage";
 import type { CheckoutReport, CheckoutType, PhotoAngle, PhotoFlagState } from "./types";
 import type { CheckoutInspectionForm } from "./inspection-form";
+import { registerCheckoutBackgroundSync } from "./checkout-flush";
 import { driverUploadMessage } from "./delivery-status";
 import { draftMatchesVehicle } from "./checkout-draft-day";
 import { compressUploadPhoto } from "./utils";
@@ -174,7 +175,9 @@ async function runFlush(): Promise<number> {
     await deleteCheckoutOutboxItem(item.id);
     await deleteCheckoutDraft(item.draftId);
   }
-  return getPendingSyncCount();
+  const left = await getPendingSyncCount();
+  if (left > 0) registerCheckoutBackgroundSync();
+  return left;
 }
 
 export async function submitCheckoutFromDraft(input: {
@@ -281,6 +284,7 @@ export async function submitCheckoutFromDraft(input: {
   const item = mergeOutboxAttempt(await getCheckoutOutboxItem(key), next);
   await saveCheckoutOutboxItem(item);
   askPersistentStorage();
+  registerCheckoutBackgroundSync();
 
   if (typeof navigator !== "undefined" && !navigator.onLine) {
     return { state: "saved", pending: await getPendingSyncCount() };

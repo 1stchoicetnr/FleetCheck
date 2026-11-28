@@ -18,6 +18,9 @@ import {
   SLACK_AUTOPOST_MAX_AGE_MS,
   STALL_LOOKBACK_MS,
   STALL_PHOTOS_AFTER_MS,
+  checkoutAutopostOldest,
+  checkoutPostTooOld,
+  checkoutSlackSkipReason,
   slackAutopostTooOld,
   slackDeliveryExhausted,
   slackRetryDelayMs,
@@ -61,7 +64,34 @@ const BATCH = 8;
 /** Old quiet rows are recorded in one run so they do not fill the post batch. */
 const SKIP_BATCH = 50;
 
-const OLD_AUTOPOST = "older than 24h";
+const OLD_STALL = "older than 24h";
+
+/** Stall notices stay on a 24h cap. Unattended checkout posts stay eligible for 21 days. */
+function deliveryTooOld(kind: SlackDeliveryKind, createdAt: string, now: number): boolean {
+  switch (kind) {
+    case "checkout":
+      return checkoutPostTooOld(createdAt, now);
+    case "stall":
+      return slackAutopostTooOld(createdAt, now);
+    default: {
+      const never: never = kind;
+      return never;
+    }
+  }
+}
+
+function oldDeliveryReason(kind: SlackDeliveryKind, createdAt: string, now: number): string {
+  switch (kind) {
+    case "checkout":
+      return checkoutSlackSkipReason(createdAt, now) ?? "older than 21d";
+    case "stall":
+      return OLD_STALL;
+    default: {
+      const never: never = kind;
+      return never;
+    }
+  }
+}
 
 function deliveryId(kind: SlackDeliveryKind, reportId: string): string {
   return `slack-${kind}-${reportId}`.slice(0, 120);
@@ -152,7 +182,8 @@ async function skipOldAutopost(
   db: OrgDb,
   orgId: string,
   reportId: string,
-  kind: SlackDeliveryKind
+  kind: SlackDeliveryKind,
+  reason: string
 ): Promise<void> {
   const claimed = await claimDelivery(db, orgId, reportId, kind);
   if (!claimed) return;
@@ -161,9 +192,9 @@ async function skipOldAutopost(
     reportId,
     kind,
     status: "skipped",
-    error: OLD_AUTOPOST,
+    error: reason,
   });
-  logDelivery(kind, reportId, claimed.attempts, "skipped", OLD_AUTOPOST);
+  logDelivery(kind, reportId, claimed.attempts, "skipped", reason);
 }
 
 async function recordFailure(
@@ -254,6 +285,7 @@ export async function deliverCheckoutSlack(
   }
   const claimed = await claimDelivery(db, options.orgId, report.id, "checkout");
   if (!claimed) return "skipped";
+  const postedAt = new Date(options.now ?? Date.now()).toISOString();
   const slackFetch: SlackHttp = options.slackFetch ?? (fetch as unknown as SlackHttp);
   let progress = parseSlackThreadProgress(claimed.body);
   try {
@@ -262,6 +294,7 @@ export async function deliverCheckoutSlack(
         const text = checkoutSlackText(report, {
           appOrigin: options.appOrigin,
           photoSteps: options.photoSteps,
+          postedAt,
         });
         const posted = await postSlackApiMessage(slackFetch, {
           token: api.token,
@@ -282,6 +315,7 @@ export async function deliverCheckoutSlack(
           fetchImpl: options.fetchImpl,
           appOrigin: options.appOrigin,
           photoSteps: options.photoSteps,
+          postedAt,
         });
         await finishSlackDelivery(db, {
           orgId: options.orgId,
@@ -355,6 +389,7 @@ export async function deliverCheckoutSlack(
           fetchImpl: options.fetchImpl,
           appOrigin: options.appOrigin,
           photoSteps: options.photoSteps,
+          postedAt,
         });
         await finishSlackDelivery(db, {
           orgId: options.orgId,
@@ -538,8 +573,14 @@ export async function runSlackDeliveries(
       logDelivery("stall", report.id, claimed.attempts, "skipped", "completed");
       continue;
     }
-    if (slackAutopostTooOld(report.createdAt, now)) {
-      await skipOldAutopost(db, input.orgId, report.id, row.kind);
+    if (deliveryTooOld(row.kind, report.createdAt, now)) {
+      await skipOldAutopost(
+        db,
+        input.orgId,
+        report.id,
+        row.kind,
+        oldDeliveryReason(row.kind, report.createdAt, now)
+      );
       continue;
     }
     if (row.kind === "stall") {
@@ -591,15 +632,16 @@ export async function runSlackDeliveries(
   }
 
   const freshOldest = new Date(now - SLACK_AUTOPOST_MAX_AGE_MS).toISOString();
+  const checkoutOldest = checkoutAutopostOldest(now);
   const unposted = await listRadCabUnpostedCheckouts(db, {
     orgId: input.orgId,
     companyId: RAD_CAB_COMPANY_ID,
-    oldest: freshOldest,
+    oldest: checkoutOldest,
     limit: BATCH,
   });
   for (const reportId of unposted) {
     const report = await input.getReport(reportId);
-    if (!report || report.archivedAt || slackAutopostTooOld(report.createdAt, now)) continue;
+    if (!report || report.archivedAt || checkoutPostTooOld(report.createdAt, now)) continue;
     await reopenCheckoutDelivery(db, input.orgId, report.id);
     tally(
       "checkout",
@@ -635,7 +677,7 @@ export async function runSlackDeliveries(
       now,
     });
     if (!reason) continue;
-    await skipOldAutopost(db, input.orgId, candidate.id, "stall");
+    await skipOldAutopost(db, input.orgId, candidate.id, "stall", OLD_STALL);
   }
   const candidates = await listRadCabStallCandidates(db, {
     orgId: input.orgId,

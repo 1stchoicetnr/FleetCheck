@@ -1,4 +1,5 @@
 import type { CheckoutOutboxItem } from "./checkout-idempotency";
+import { isDriverFixableOutboxError, notSentValidationMessage } from "./checkout-missing";
 import { previousDayOutboxMessage } from "./checkout-draft-day";
 import { isPhotoWindowClosedError } from "./photo-window";
 
@@ -16,6 +17,8 @@ export interface OutboxLine {
   canClear: boolean;
   /** Set when this check was signed on an earlier Pacific day and is still here. */
   previousDayNote?: string;
+  /** Opens the check so the driver can fill in what the server refused. */
+  fixHref?: string;
 }
 
 /** Office, Manager and Owner accounts (client roles). */
@@ -55,6 +58,8 @@ export function outboxProblem(
   if (/needs its photos/i.test(message)) {
     return { kind: "waiting", text: "Photos are still saving. This phone will keep trying." };
   }
+  const validation = notSentValidationMessage(message);
+  if (validation) return { kind: "office", text: validation };
   return { kind: item.permanent ? "office" : "error", text: message };
 }
 
@@ -94,6 +99,7 @@ export function outboxLines(
         kind: problem.kind,
         canClear: office,
         previousDayNote,
+        fixHref: isDriverFixableOutboxError(item.lastError) ? `/checkout/${item.draftId}` : undefined,
       };
     });
 }

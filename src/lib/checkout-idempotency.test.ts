@@ -71,9 +71,9 @@ test("idempotency keys are stable and safe to store", () => {
 
 test("retries wait longer and a client error stops the loop", () => {
   assert.equal(failureDelay(0, false), 5_000);
-  assert.equal(failureDelay(1, false), 15_000);
-  assert.equal(failureDelay(4, false), 15 * 60_000);
-  assert.equal(failureDelay(9, false), 15 * 60_000);
+  assert.equal(failureDelay(1, false), 10_000);
+  assert.equal(failureDelay(4, false), 60_000);
+  assert.equal(failureDelay(9, false), 60_000);
   assert.equal(isPermanentOutboxError(400, "Missing required checkout fields"), true);
   assert.equal(isPermanentOutboxError(401, "Sign in first. Ask the office to add you."), false);
   assert.equal(

@@ -31,6 +31,7 @@ export async function notifyCheckoutReport(
       webhookUrl: url,
       fetchImpl: options?.fetchImpl,
       appOrigin: options?.appOrigin,
+      postedAt: new Date().toISOString(),
     });
   } catch {
     // Office already has the row.

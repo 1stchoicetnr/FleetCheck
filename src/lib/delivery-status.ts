@@ -1,3 +1,5 @@
+import { notSentValidationMessage } from "./checkout-missing";
+
 /** Reports created before this were already in Office. They count as sent. */
 export const HISTORICAL_SENT_BEFORE = "2026-10-20T19:45:00.000Z";
 
@@ -47,6 +49,8 @@ export function deliveryView(input: {
 
 /** Plain text for a driver when sending stops. */
 export function driverUploadMessage(message: string): string {
+  const validation = notSentValidationMessage(message);
+  if (validation) return validation;
   if (/needs its photos/i.test(message)) {
     return "Photos are still saving. This phone will keep trying.";
   }

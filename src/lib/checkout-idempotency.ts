@@ -26,7 +26,8 @@ export function alreadyUploadReady(dataUrl: string): boolean {
   );
 }
 
-const BACKOFF_MS = [5_000, 15_000, 60_000, 5 * 60_000, 15 * 60_000];
+/** Short waits so a phone that still has signal posts within a minute or two, not a quarter hour. */
+const BACKOFF_MS = [5_000, 10_000, 20_000, 30_000, 60_000];
 const PERMANENT_DELAY_MS = 24 * 60 * 60 * 1000;
 
 export interface OutboxPhoto {

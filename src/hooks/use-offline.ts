@@ -1,12 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   clearCheckoutOutboxItem,
   flushCheckoutOutbox,
   listOutboxForBanner,
   retryCheckoutOutbox,
 } from "@/lib/checkout-outbox";
+import {
+  FLUSH_OUTBOX_DONE_MESSAGE,
+  OUTBOX_FLUSH_INTERVAL_MS,
+  isFlushOutboxMessage,
+  registerCheckoutBackgroundSync,
+  shouldRegisterBackgroundSync,
+} from "@/lib/checkout-flush";
 import type { CheckoutOutboxItem } from "@/lib/checkout-idempotency";
 import { getPendingSyncCount, syncPendingRecords } from "@/lib/storage";
 
@@ -33,23 +40,56 @@ export function usePendingSync() {
   const [items, setItems] = useState<CheckoutOutboxItem[]>([]);
   const [retrying, setRetrying] = useState(false);
   const online = useOnlineStatus();
+  const pendingRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
     async function refresh() {
       if (online) await syncPendingRecords();
       const pending = online ? await flushCheckoutOutbox() : await getPendingSyncCount();
+      pendingRef.current = pending;
+      if (shouldRegisterBackgroundSync(pending)) registerCheckoutBackgroundSync();
       const waiting = pending > 0 ? await listOutboxForBanner() : [];
       if (!cancelled) {
         setCount(pending);
         setItems(waiting);
       }
+      return pending;
     }
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    const onHide = () => {
+      if (document.visibilityState === "hidden" && shouldRegisterBackgroundSync(pendingRef.current)) {
+        registerCheckoutBackgroundSync();
+      }
+    };
+    const onOnline = () => {
+      void refresh();
+    };
+    const onSyncMessage = (event: MessageEvent) => {
+      if (!isFlushOutboxMessage(event.data)) return;
+      void refresh().then((pending) => {
+        const reply = { type: FLUSH_OUTBOX_DONE_MESSAGE, pending };
+        const source = event.source;
+        if (source && "postMessage" in source) {
+          source.postMessage(reply);
+        }
+      });
+    };
     void refresh();
-    const interval = setInterval(() => void refresh(), online ? 15000 : 5000);
+    const interval = setInterval(() => void refresh(), online ? OUTBOX_FLUSH_INTERVAL_MS : 5000);
+    document.addEventListener("visibilitychange", onVisible);
+    document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("online", onOnline);
+    navigator.serviceWorker?.addEventListener("message", onSyncMessage);
     return () => {
       cancelled = true;
       clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+      document.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("online", onOnline);
+      navigator.serviceWorker?.removeEventListener("message", onSyncMessage);
     };
   }, [online]);
 
